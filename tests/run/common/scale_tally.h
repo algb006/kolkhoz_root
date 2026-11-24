@@ -24,6 +24,7 @@
 #include <time.h>
 #endif
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <optional>
@@ -32,6 +33,7 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/time_probe.h"
 #include "core_common/world_state.h"
 #include "env_value.h"
 
@@ -57,7 +59,13 @@ class ScaleTally {
 #endif
   }
 
-  void AddSimulation(double seconds) { year_.simulation += seconds; }
+  void AddSimulation(double seconds) {
+    if (!probe_started_) {  // PROBE #2118: the village's baseline on its first day
+      probe_last_ = core::probe::Thread();
+      probe_started_ = true;
+    }
+    year_.simulation += seconds;
+  }
 
   void AddChairman(double seconds) { year_.chairman += seconds; }
 
@@ -67,6 +75,14 @@ class ScaleTally {
     year_.residents = world.residents.rows.size();
     year_.units = world.units.rows.size();
     year_.fields = world.fields.rows.size();
+    if (probe_started_) {  // PROBE #2118: this thread's slots since the last close
+      const core::probe::Counters& now = core::probe::Thread();
+      for (std::size_t slot = 0; slot < core::probe::kSlots; ++slot) {
+        year_.slot_s[slot] = static_cast<double>(now.ns[slot] - probe_last_.ns[slot]) * 1e-9;
+      }
+      year_.pairs = static_cast<double>(now.measure_pairs - probe_last_.measure_pairs);
+      probe_last_ = now;
+    }
     years_.push_back(year_);
     year_ = Year{};
   }
@@ -81,6 +97,35 @@ class ScaleTally {
     }
     PrintFit(out, seed, ground, "simulation", [](const Year& year) { return year.simulation; });
     PrintFit(out, seed, ground, "chairman", [](const Year& year) { return year.chairman; });
+    // PROBE #2118: every slot's year lines and fit, and MeasureRoads' pairs.
+    static constexpr std::array<const char*, core::probe::kSlots> kNames = {"prologue",
+                                                                            "time_weather",
+                                                                            "needs",
+                                                                            "decisions",
+                                                                            "production",
+                                                                            "metrics",
+                                                                            "events",
+                                                                            "measure_roads",
+                                                                            "plan_assignments",
+                                                                            "collect",
+                                                                            "make_day",
+                                                                            "with_trails",
+                                                                            "tread",
+                                                                            "decay"};
+    for (const Year& year : years_) {
+      out << "population_curve: SCALE2118P seed " << seed << " year " << year.year << " residents "
+          << year.residents << " units " << year.units << " pairs_per_day "
+          << year.pairs / core::kDaysPerYear;
+      for (std::size_t slot = 0; slot < core::probe::kSlots; ++slot) {
+        out << ' ' << kNames[slot] << ' ' << year.slot_s[slot] / core::kDaysPerYear;
+      }
+      out << '\n';
+    }
+    for (std::size_t slot = 0; slot < core::probe::kSlots; ++slot) {
+      PrintFit(
+          out, seed, ground, kNames[slot], [slot](const Year& year) { return year.slot_s[slot]; });
+    }
+    PrintFit(out, seed, ground, "measure_pairs", [](const Year& year) { return year.pairs; });
   }
 
  private:
@@ -88,6 +133,8 @@ class ScaleTally {
     std::uint32_t year = 0;
     double simulation = 0.0;
     double chairman = 0.0;
+    std::array<double, core::probe::kSlots> slot_s{};  // PROBE #2118
+    double pairs = 0.0;                                // PROBE #2118
     std::size_t residents = 0;
     std::size_t units = 0;
     std::size_t fields = 0;
@@ -149,6 +196,8 @@ class ScaleTally {
 
   Year year_;
   std::vector<Year> years_;
+  bool probe_started_ = false;          // PROBE #2118
+  core::probe::Counters probe_last_{};  // PROBE #2118
 };
 
 }  // namespace run

@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "core_common/road_rules.h"
+#include "core_common/time_probe.h"
 #include "core_common/world_state.h"
 #include "trail_lattice.h"
 
@@ -220,6 +221,7 @@ std::shared_ptr<const RoadIndex> WithTrails(const std::shared_ptr<const RoadInde
                                             const TrailTable& trails,
                                             const RoadBeds& beds,
                                             std::span<const WalkPair> walked) {
+  const probe::Timer probe_timer(probe::Slot::kWithTrails);  // PROBE #2118
   const DayWeights* previous = nullptr;
   std::shared_ptr<const RoadIndex> base = BareOf(index, &previous);
   if (base == nullptr) {

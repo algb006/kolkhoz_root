@@ -18,6 +18,7 @@
 
 #include "care_reprice.h"
 #include "core_common/geometry.h"
+#include "core_common/time_probe.h"
 #include "people_cart.h"
 #include "placement_diagnosis.h"
 #include "placement_rank.h"
@@ -653,6 +654,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
                                               std::vector<std::uint8_t>* road_blocked,
                                               PlacementDiagnosis* diagnosis,
                                               std::vector<std::uint32_t>* rides_cart_with) {
+  const probe::Timer probe_timer(probe::Slot::kPlanAssignments);  // PROBE #2118
   std::vector<std::uint32_t> result(candidates.size(), kNoJobAssigned);
   std::vector<std::optional<JobShortfall>> shortfall(jobs.size());
   if (rides_horse != nullptr) {

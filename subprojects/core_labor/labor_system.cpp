@@ -70,6 +70,7 @@
 #include "core_common/site_supply_queue.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/time_probe.h"
 #include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 #include "core_log/log.h"
@@ -1584,6 +1585,7 @@ class LaborSystem final : public ILaborSystem {
                     const std::vector<AssignmentJob>& jobs,
                     std::vector<AssignmentCandidate>& candidates,
                     AssignmentParams& params) const {
+    const probe::Timer probe_timer(probe::Slot::kMeasureRoads);  // PROBE #2118
     const std::shared_ptr<const RoadIndex> index = RoadIndexOf(current);
     std::vector<Vec2> homes;
     for (AssignmentCandidate& candidate : candidates) {
@@ -1607,6 +1609,7 @@ class LaborSystem final : public ILaborSystem {
     }
     params.home_slots = static_cast<std::uint32_t>(homes.size());
     params.road_km.assign(jobs.size() * homes.size() * 2U, 0.0F);
+    probe::Thread().measure_pairs += jobs.size() * homes.size();  // PROBE #2118
     // THE HORSE YARD, once the team stands there (horse_yard_road.h;
     // 0.37.158): every home's walk to it, every job's ride from it.
     Vec2 yard{};
@@ -3528,6 +3531,7 @@ class LaborSystem final : public ILaborSystem {
       std::vector<std::uint32_t>* resting = nullptr,
       std::vector<std::uint32_t>* mourning = nullptr,
       std::vector<std::uint32_t>* truant = nullptr) const {
+    const probe::Timer probe_timer(probe::Slot::kCollect);  // PROBE #2118
     const std::vector<bool> horse_locked = MarkHorseHosts(current);
     const float aging_from = AgingFromYears(config_, current);
     std::vector<AssignmentCandidate> candidates;

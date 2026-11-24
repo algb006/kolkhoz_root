@@ -21,6 +21,7 @@
 #include "core_common/road_view.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/time_probe.h"
 #include "core_sim/step.h"
 
 namespace core {
@@ -143,14 +144,35 @@ class StepEngine final : public ISimulation {
     }
     // Buffer law, rule 2: current starts as an exact copy of previous, then
     // takes what the boundary staged, before any phase sees it.
-    current_ = previous_;
-    ApplyStaged();
-    phases_.time_and_weather->RunSequential(previous_, current_);
-    RunParallelPhase(*phases_.needs);
-    phases_.decisions->RunSequential(previous_, current_);
-    RunParallelPhase(*phases_.production);
-    RunParallelPhase(*phases_.metrics);
-    phases_.events->RunSequential(previous_, current_);
+    {
+      const probe::Timer timer(probe::Slot::kPrologue);  // PROBE #2118
+      current_ = previous_;
+      ApplyStaged();
+    }
+    {
+      const probe::Timer timer(probe::Slot::kTimeAndWeather);
+      phases_.time_and_weather->RunSequential(previous_, current_);
+    }
+    {
+      const probe::Timer timer(probe::Slot::kNeeds);
+      RunParallelPhase(*phases_.needs);
+    }
+    {
+      const probe::Timer timer(probe::Slot::kDecisions);
+      phases_.decisions->RunSequential(previous_, current_);
+    }
+    {
+      const probe::Timer timer(probe::Slot::kProduction);
+      RunParallelPhase(*phases_.production);
+    }
+    {
+      const probe::Timer timer(probe::Slot::kMetrics);
+      RunParallelPhase(*phases_.metrics);
+    }
+    {
+      const probe::Timer timer(probe::Slot::kEvents);
+      phases_.events->RunSequential(previous_, current_);
+    }
     // Rule 8: the just-built state becomes the completed one.
     std::swap(previous_, current_);
   }

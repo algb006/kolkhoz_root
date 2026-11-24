@@ -13,6 +13,7 @@
 #include <utility>
 
 #include "core_common/state_table_ops.h"
+#include "core_common/time_probe.h"
 #include "core_common/world_state.h"
 #include "road_day.h"
 #include "trail_lattice.h"
@@ -955,6 +956,7 @@ std::shared_ptr<const DayWeights> MakeDay(const RoadIndex& bare,
                                           const RoadBeds& beds,
                                           const DayWeights* previous,
                                           std::shared_ptr<const lattice::TrailLookup> lookup) {
+  const probe::Timer probe_timer(probe::Slot::kMakeDay);  // PROBE #2118
   return Impl(bare).MakeDay(trails, beds, previous, std::move(lookup));
 }
 
