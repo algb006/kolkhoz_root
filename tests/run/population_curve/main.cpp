@@ -109,6 +109,9 @@ constexpr std::array<std::uint64_t, 16> kSeeds = {
     1931, 1932, 1933, 1934, 1935, 1936, 1937, 1938, 1939, 1940, 1941, 1942, 1943, 1944, 1945, 1946};
 
 constexpr std::uint32_t kYears = 33;
+/// `--years=N` (#2118's stress arm, boss 24 Nov): live N years instead of the canon's 33 - a
+/// village grown toward Epoch III's size for SCALE2118's fit. Every village-long count reads it.
+std::uint32_t g_years = kYears;
 /// #1355's return condition (econ 399d8d1 §1): a P99 passed-over run longer
 /// than this many working days buys the rotation's save field.
 constexpr std::uint32_t kPassedOverReturnDays = 8;
@@ -872,7 +875,7 @@ void CountStandingShut(const run::TransitionPolicy& transition,
 bool Walk(std::uint64_t seed,
           bool print_years,
           Trajectory& out,
-          std::uint32_t years = kYears,
+          std::uint32_t years = g_years,
           bool warm_off = false) {
   const run::Simulation world =
       run::Start(seed, 1, "tables", core::StubTables::kRefused, g_avatar_key);
@@ -1058,7 +1061,7 @@ bool Walk(std::uint64_t seed,
   // EVERY YEAR DECOMPOSED (0.37.230): with six, E3's holder stood in a year
   // the table did not print (1938's wintering of years 9-11 on the yard's
   // move), and the finding had to be aimed by guesswork.
-  run::TransitionTally transition_tally(*world.tables, kYears);
+  run::TransitionTally transition_tally(*world.tables, years);
   // Every write-off of an advance at the second share-out, by name
   // (advance_write_off_tally.h; #170).
   run::AdvanceWriteOffTally advance_write_offs;
@@ -1411,7 +1414,7 @@ bool Walk(std::uint64_t seed,
     if (year == 1) {
       out.year1_components = ComponentsOf(state.readiness);
     }
-    if (year == kYears) {
+    if (year == years) {
       out.year33_components = ComponentsOf(state.readiness);
     }
     const core::TransitionBlocks& blocks = state.readiness.blocks;
@@ -1614,7 +1617,7 @@ bool Walk(std::uint64_t seed,
   transition_tally.Print("population_curve", seed);
   advance_write_offs.Print("population_curve", seed);
   std::cout << "population_curve (seed " << seed << "): days off worked on the hay lamp's advice "
-            << hay_day_off.Ordered() << " in " << kYears << " years\n";
+            << hay_day_off.Ordered() << " in " << years << " years\n";
   if (births_herd_on != nullptr) {
     births_herd_on->Print("population_curve", seed);
   }
@@ -1936,6 +1939,10 @@ int main(int argc, char** argv) {
           std::string(argument.substr(std::string_view("--seed-offset=").size())).c_str(),
           nullptr,
           10);
+    } else if (argument.starts_with("--years=")) {
+      const auto years = std::strtoul(
+          std::string(argument.substr(std::string_view("--years=").size())).c_str(), nullptr, 10);
+      g_years = years >= 3U ? static_cast<std::uint32_t>(years) : kYears;  // #2118's stress arm
     } else {
       probe_seed = std::strtoull(argv[index], nullptr, 10);
     }
@@ -2096,7 +2103,8 @@ int main(int argc, char** argv) {
     // every phase of the step removed, this run passed in 2.6 seconds against
     // the usual 25: eighty residents never born, never dead, never married,
     // under every ceiling (boss, standstill parcel 9).
-    failures += run::Expect(walk.lived_years >= kYears, "the curve lived its thirty-three years");
+    failures +=
+        run::Expect(walk.lived_years >= g_years, "the curve lived its years (33, or --years)");
     failures += run::Expect(walk.year33 != walk.start_population,
                             "and the village it drew is not the genesis standing still");
     year7.push_back(walk.year7);
@@ -2729,7 +2737,7 @@ int main(int argc, char** argv) {
   // reader that its absence means "all honest".
   std::uint8_t best_run = 0;
   for (const Trajectory& walk : walks) {
-    std::cout << "population_curve: seed " << walk.seed << " readiness at year " << kYears
+    std::cout << "population_curve: seed " << walk.seed << " readiness at year " << g_years
               << " — economy " << walk.economic_index << ", society " << walk.social_index
               << ", longest run of BOTH above threshold "
               << static_cast<int>(walk.longest_both_above) << " years (of 3 needed); "
@@ -2763,8 +2771,8 @@ int main(int argc, char** argv) {
   // that never unlocks however high the indices climb, and one open all
   // thirty-three is a block that blocks nothing. Either is worth knowing, and
   // neither could be read off the two indices that were printed beside them.
-  std::cout << "population_curve: transition blocks, mean years OPEN of " << kYears
-            << " (0 = the door never unlocks; " << kYears << " = it never blocks)\n";
+  std::cout << "population_curve: transition blocks, mean years OPEN of " << g_years
+            << " (0 = the door never unlocks; " << g_years << " = it never blocks)\n";
   for (std::size_t index = 0; index < kBlockNames.size(); ++index) {
     float open_years = 0.0F;
     for (const Trajectory& walk : walks) {
@@ -3124,13 +3132,13 @@ int main(int argc, char** argv) {
   }
   std::cout << "population_curve: the transition order's answer at the yearly sample, mean years "
                "of "
-            << kYears << " per village:\n";
+            << g_years << " per village:\n";
   for (std::size_t slot = 0; slot < answers.size(); ++slot) {
     std::cout << "  " << kDoorAnswerNames[slot] << "  "
               << answers[slot] / static_cast<float>(walks.size()) << '\n';
   }
   std::cout << "population_curve: ALL SIX blocks open together — " << (all_six / villages)
-            << " years of " << kYears << ", in " << villages_opened << " villages of "
+            << " years of " << g_years << ", in " << villages_opened << " villages of "
             << walks.size() << "; years with exactly one shut, by which:\n";
   for (std::size_t index = 0; index < kBlockNames.size(); ++index) {
     std::cout << "  " << kBlockNames[index] << "  " << (sole[index] / villages) << '\n';
@@ -3177,7 +3185,7 @@ int main(int argc, char** argv) {
     ordered += static_cast<float>(walk.upgrades_ordered);
     at_required += static_cast<float>(walk.units_at_required);
   }
-  std::cout << "population_curve: units at year " << kYears << " — " << (at_level / villages)
+  std::cout << "population_curve: units at year " << g_years << " — " << (at_level / villages)
             << " of " << (standing / villages) << " kolkhoz buildings have reached level 2, "
             << (at_required / villages) << " stand at the level their era REQUIRES, after "
             << (ordered / villages) << " upgrades ORDERED (means of nine)\n";
