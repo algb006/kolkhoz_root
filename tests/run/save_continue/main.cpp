@@ -9,8 +9,14 @@
 //
 // WHAT IS COMPARED: the whole world through the save codec, byte for byte (determinism's
 // rule: a summary agrees on worlds that differ where it does not look).
-// WHEN: a year and a half in (trails and walks exist), at hour 7 - after the morning's
-// placement, before the evening; then ten more days on both.
+// THE VILLAGE HAS A CHAIRMAN (population_curve's BuildingChairman): the bare harness village
+// placed nobody on foot in a whole year (its first three runs: walking 0 of 55 at work - the
+// field crews ride), so its save had nothing of 229's to lose. The chairman keeps state of his
+// own outside the save, so BOTH games run in step from genesis, each with its own chairman;
+// at the save the second's world is replaced by the decoded one. Any difference after that is
+// the save's.
+// WHEN: from a year and a half in, the first day whose hour 7 holds trails, a pending tread
+// and priced walks; then ten more days on both.
 
 #include <cstdint>
 #include <iostream>
@@ -18,6 +24,7 @@
 #include <string>
 #include <vector>
 
+#include "../common/building_chairman.h"
 #include "../common/run_harness.h"
 #include "core_common/calendar.h"
 #include "core_common/work_seam.h"
@@ -45,6 +52,45 @@ std::size_t FirstDifference(const std::vector<std::byte>& left,
   return shorter;
 }
 
+/// Working heads, and how many of them walk (WorkRidesOut false: the tread's own predicate).
+std::string Working(const core::WorldState& world) {
+  std::size_t count = 0;
+  std::size_t walking = 0;
+  for (const core::ResidentRow& person : world.residents.rows) {
+    if (person.work.kind == core::WorkKind::kNone) {
+      continue;
+    }
+    ++count;
+    walking += core::WorkRidesOut(world, person.work) ? 0U : 1U;
+  }
+  return std::to_string(count) + " (walking " + std::to_string(walking) + ")";
+}
+
+/// Two games in step: the ticks on both, the chairman's day on both after the day's last tick.
+struct Pair {
+  run::Simulation& continued;
+  run::Simulation& loaded;
+  run::BuildingChairman& continued_chairman;
+  run::BuildingChairman& loaded_chairman;
+
+  void Ticks(std::uint32_t from_hour, std::uint32_t to_hour) const {
+    for (std::uint32_t hour = from_hour; hour < to_hour; ++hour) {
+      continued->AdvanceStep();
+      loaded->AdvanceStep();
+    }
+    if (to_hour == core::kTicksPerDay) {
+      continued_chairman.RunDay(*continued);
+      loaded_chairman.RunDay(*loaded);
+    }
+  }
+
+  void Days(std::uint32_t days) const {
+    for (std::uint32_t day = 0; day < days; ++day) {
+      Ticks(0, core::kTicksPerDay);
+    }
+  }
+};
+
 }  // namespace
 
 int main() {
@@ -59,43 +105,22 @@ int main() {
   if (!continued || !loaded) {
     return 1;
   }
-  run::AdvanceDays(*continued, kDaysBefore);
-  // THE FIRST DAY WITH ALL THREE TO LOSE, within a year (the first run saved a July day: its
-  // field crews ride the brigade cart, so nobody the accountant placed trod anything).
+  run::BuildingChairman continued_chairman(*continued.tables);
+  run::BuildingChairman loaded_chairman(*loaded.tables);
+  const Pair games{continued, loaded, continued_chairman, loaded_chairman};
+  games.Days(kDaysBefore);
+
+  // THE FIRST DAY WITH ALL THREE TO LOSE, within a year.
   std::uint32_t save_day = kDaysBefore;
-  // Working heads, and how many of them walk (WorkRidesOut false: the tread's own predicate).
-  const auto working = [](const core::WorldState& world) {
-    std::size_t count = 0;
-    std::size_t walking = 0;
-    for (const core::ResidentRow& person : world.residents.rows) {
-      if (person.work.kind == core::WorkKind::kNone) {
-        continue;
-      }
-      ++count;
-      walking += core::WorkRidesOut(world, person.work) ? 0U : 1U;
-    }
-    return std::to_string(count) + " (walking " + std::to_string(walking) + ")";
-  };
+  bool found = false;
   for (std::uint32_t search = 0; search < core::kDaysPerYear; ++search) {
-    for (std::uint32_t tick = 0; tick < kSaveHour; ++tick) {
-      continued->AdvanceStep();
-      // THE SEARCH'S OWN PRINT (the guard found nothing on two runs): what each early hour
-      // holds, the first five days.
-      if (search < 5) {
-        const core::WorldState& hour = continued.State();
-        std::cout << "save_continue: day " << save_day << " after tick " << tick << " working "
-                  << working(hour) << " today " << hour.walks.today.size() << " yesterday "
-                  << hour.walks.yesterday.size() << " pending " << hour.walks.pending.size()
-                  << " trails " << hour.trails.rows.size() << '\n';
-      }
-    }
+    games.Ticks(0, kSaveHour);
     const core::WorldState& now = continued.State();
     if (!now.trails.rows.empty() && !now.walks.pending.empty() && !now.walks.yesterday.empty()) {
+      found = true;
       break;
     }
-    for (std::uint32_t tick = kSaveHour; tick < core::kTicksPerDay; ++tick) {
-      continued->AdvanceStep();
-    }
+    games.Ticks(kSaveHour, core::kTicksPerDay);
     ++save_day;
   }
   const core::WorldState& at_save = continued.State();
@@ -103,12 +128,12 @@ int main() {
   const std::size_t trails = at_save.trails.rows.size();
   const std::size_t pending = at_save.walks.pending.size();
   const std::size_t walks = at_save.walks.yesterday.size();
-  failures += Expect(trails > 0 && pending > 0 && walks > 0,
+  std::cout << "save_continue: at the save (day " << save_day << " hour " << kSaveHour
+            << ") - trails " << trails << ", pending passes " << pending << ", yesterday's walks "
+            << walks << ", residents at work " << Working(at_save) << '\n';
+  failures += Expect(found && trails > 0 && pending > 0 && walks > 0,
                      "the save carries trails, a pending tread and yesterday's walks - a save "
                      "with none of them would pass for the wrong reason");
-  std::cout << "save_continue: at the save - trails " << trails << ", pending passes " << pending
-            << ", yesterday's walks " << walks << ", residents at work " << working(at_save)
-            << '\n';
 
   const std::vector<std::byte> bytes = core::EncodeWorld(at_save, *continued.tables);
   core::WorldState decoded;
@@ -121,13 +146,13 @@ int main() {
   }
   loaded->ResetWorld(decoded);
 
-  run::AdvanceDays(*continued, kDaysAfter);
-  run::AdvanceDays(*loaded, kDaysAfter);
+  games.Ticks(kSaveHour, core::kTicksPerDay);
+  games.Days(kDaysAfter);
   const std::vector<std::byte> left = core::EncodeWorld(continued.State(), *continued.tables);
   const std::vector<std::byte> right = core::EncodeWorld(loaded.State(), *loaded.tables);
   const bool same = left == right;
   failures += Expect(same,
-                     "loaded at hour 7 and stepped ten days, the world is the continued "
+                     "loaded at hour 7 and stepped on ten days, the world is the continued "
                      "one byte for byte");
   if (!same) {
     std::cout << "   sizes " << left.size() << " / " << right.size() << ", first difference at "
