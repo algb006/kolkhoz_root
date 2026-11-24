@@ -748,6 +748,12 @@ class RoadIndexImpl final : public RoadIndex {
 
   /// The road pieces a place may reach the network by, nearest first.
   std::vector<Access> Accesses(TravelMode mode, Vec2 place) const {
+    const std::uint64_t probe_started = probe::ThreadNanos();  // PROBE #2118
+    const auto probe_book = [probe_started](probe::Slot slot) {
+      const auto at = static_cast<std::size_t>(slot);
+      probe::Thread().ns[at] += probe::ThreadNanos() - probe_started;
+      ++probe::Thread().calls[at];
+    };
     std::vector<Access> found;
     if (segments_.empty()) {
       return found;
@@ -791,6 +797,7 @@ class RoadIndexImpl final : public RoadIndex {
         if (found.size() > kAccessCandidates) {
           found.resize(kAccessCandidates);
         }
+        probe_book(probe::Slot::kAccessNear);
         return found;
       }
     }
@@ -862,6 +869,7 @@ class RoadIndexImpl final : public RoadIndex {
     if (found.size() > kAccessCandidates) {
       found.resize(kAccessCandidates);
     }
+    probe_book(probe::Slot::kAccessRing);
     return found;
   }
 

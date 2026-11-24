@@ -79,6 +79,7 @@ class ScaleTally {
       const core::probe::Counters& now = core::probe::Thread();
       for (std::size_t slot = 0; slot < core::probe::kSlots; ++slot) {
         year_.slot_s[slot] = static_cast<double>(now.ns[slot] - probe_last_.ns[slot]) * 1e-9;
+        year_.slot_calls[slot] = static_cast<double>(now.calls[slot] - probe_last_.calls[slot]);
       }
       year_.pairs = static_cast<double>(now.measure_pairs - probe_last_.measure_pairs);
       probe_last_ = now;
@@ -112,13 +113,17 @@ class ScaleTally {
                                                                             "with_trails",
                                                                             "tread",
                                                                             "decay",
-                                                                            "measure_pairs_loop"};
+                                                                            "measure_pairs_loop",
+                                                                            "measure_head",
+                                                                            "access_near",
+                                                                            "access_ring"};
     for (const Year& year : years_) {
       out << "population_curve: SCALE2118P seed " << seed << " year " << year.year << " residents "
           << year.residents << " units " << year.units << " pairs_per_day "
           << year.pairs / core::kDaysPerYear;
       for (std::size_t slot = 0; slot < core::probe::kSlots; ++slot) {
         out << ' ' << kNames[slot] << ' ' << year.slot_s[slot] / core::kDaysPerYear;
+        out << " calls_" << kNames[slot] << ' ' << year.slot_calls[slot] / core::kDaysPerYear;
       }
       out << '\n';
     }
@@ -134,8 +139,9 @@ class ScaleTally {
     std::uint32_t year = 0;
     double simulation = 0.0;
     double chairman = 0.0;
-    std::array<double, core::probe::kSlots> slot_s{};  // PROBE #2118
-    double pairs = 0.0;                                // PROBE #2118
+    std::array<double, core::probe::kSlots> slot_s{};      // PROBE #2118
+    std::array<double, core::probe::kSlots> slot_calls{};  // PROBE #2118
+    double pairs = 0.0;                                    // PROBE #2118
     std::size_t residents = 0;
     std::size_t units = 0;
     std::size_t fields = 0;

@@ -1587,6 +1587,7 @@ class LaborSystem final : public ILaborSystem {
                     std::vector<AssignmentCandidate>& candidates,
                     AssignmentParams& params) const {
     const probe::Timer probe_timer(probe::Slot::kMeasureRoads);  // PROBE #2118
+    const std::uint64_t head_started = probe::ThreadNanos();     // PROBE #2118
     const std::shared_ptr<const RoadIndex> index = RoadIndexOf(current);
     std::vector<Vec2> homes;
     // THE HOMES BY A HASH, NOT A SCAN (#2118, exact): the first-seen order numbers the slots as
@@ -1640,6 +1641,11 @@ class LaborSystem final : public ILaborSystem {
             walk_hours_per_km;
       }
       params.yard_ride_km.resize(jobs.size());
+    }
+    {  // PROBE #2118: the head, before the pairs
+      const auto head = static_cast<std::size_t>(probe::Slot::kMeasureHead);
+      probe::Thread().ns[head] += probe::ThreadNanos() - head_started;
+      ++probe::Thread().calls[head];
     }
     const probe::Timer pairs_timer(probe::Slot::kMeasurePairs);  // PROBE #2118
     for (std::size_t job_index = 0; job_index < jobs.size(); ++job_index) {

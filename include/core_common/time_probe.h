@@ -34,6 +34,9 @@ enum class Slot : std::uint8_t {
   kTread,            ///< trails: the placed walkers' tread
   kDecay,            ///< trails: the morning's decay
   kMeasurePairs,     ///< labor: MeasureRoads' (job, home) loop alone
+  kMeasureHead,      ///< labor: MeasureRoads before its pairs loop (homes, locates, yard)
+  kAccessNear,       ///< roads: Accesses answered by the near table
+  kAccessRing,       ///< roads: Accesses by the ring search (the table did not answer)
   kCount,
 };
 
