@@ -58,6 +58,7 @@
 #include "top_up_checks.h"
 #include "trail_tread_checks.h"
 #include "truancy_checks.h"
+#include "winter_horse_checks.h"
 #include "work_orders.h"
 
 static_assert(std::is_abstract_v<core::ILaborSystem>, "ILaborSystem is a contract");
@@ -5248,6 +5249,7 @@ int main() {
   failures += CheckTheHayCartsRank();
   failures += CheckManureIsTheLastWinterCart();
   failures += CheckThePeoplesCart();
+  failures += CheckTheWinterHorse();  // econ's #2072 rule, Alex #2401
   failures += CheckTheCareReprice();
   failures += CheckTheGroomsPlan();
   failures += TestPlacementDiagnosis();

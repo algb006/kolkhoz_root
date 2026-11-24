@@ -18,6 +18,7 @@ kolkhoz_add_module(core_labor
     trail_config.cpp
     trail_tread.cpp
     truancy.cpp
+    winter_felling_horse.cpp
     work_orders.cpp)
 
 target_link_libraries(core_labor

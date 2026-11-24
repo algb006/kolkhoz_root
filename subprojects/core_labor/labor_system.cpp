@@ -84,6 +84,7 @@
 #include "rush.h"
 #include "trail_tread.h"
 #include "truancy.h"
+#include "winter_felling_horse.h"
 #include "work_orders.h"
 
 namespace core {
@@ -2831,6 +2832,14 @@ class LaborSystem final : public ILaborSystem {
     MarkTheUrgentLoads(current, jobs);
     DropPausedLoads(current, jobs);
     PriceTheWalkersShares(current, jobs);
+    // THE LOADS THAT YIELD THE WINTER HORSE, on a winter-horse day only (winter_felling_horse.h;
+    // econ's #2072 rule, Alex #2401): every other day no job yields, and the placement is as
+    // before.
+    if (config_.winter_horse_reserve > 0 && WinterFellingHorseDay(current, config_.timber)) {
+      for (AssignmentJob& job : jobs) {
+        job.yields_winter_horse = YieldsTheWinterHorse(current, job);
+      }
+    }
     return jobs;
   }
 
@@ -3742,6 +3751,9 @@ class LaborSystem final : public ILaborSystem {
     params.carter_min_trips_per_day = config_.carter_min_trips_per_day;
     params.people_cart_seats = config_.people_cart_seats;
     params.people_cart_min_walk_hours = config_.people_cart_min_walk_hours;
+    // The winter horse for the fellers (winter_felling_horse.h; econ's #2072 rule, Alex #2401).
+    params.winter_horse_reserve =
+        WinterFellingHorseDay(current, config_.timber) ? config_.winter_horse_reserve : 0U;
     return params;
   }
 

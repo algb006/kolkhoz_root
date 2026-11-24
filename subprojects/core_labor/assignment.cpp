@@ -686,11 +686,17 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
   // supply_floor) - there the carters WITH HORSES it may still take: the fill
   // stops when they are spent or the pool is dry, places nobody on foot and
   // writes no shortfall (the job's own place in the queue answers for it).
+  // A HORSE FOR THIS JOB: one left in the pool - and for a load that yields the winter horse
+  // (winter_felling_horse.h; econ's #2072 rule, Alex #2401), one beyond the reserve kept for
+  // the fellers' ride. With no reserve (every day but a winter-horse day) it is horses_left > 0.
+  const auto horse_for = [&horses_left, &params](const AssignmentJob& job) {
+    return horses_left > (job.yields_winter_horse ? params.winter_horse_reserve : 0U);
+  };
   const auto fill_job =
       [&](std::uint32_t job_index, const std::vector<std::uint8_t>* only, std::uint32_t* floor) {
         const bool second_pass = only != nullptr;
         const AssignmentJob& job = jobs[job_index];
-        if (floor != nullptr && (*floor == 0 || horses_left == 0)) {
+        if (floor != nullptr && (*floor == 0 || !horse_for(job))) {
           return;
         }
         // A harnessed job takes a horse out of the day's pool exactly as
@@ -714,7 +720,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
         // carts behind it were not offered at all: on seed 1936 the vegetables
         // lay a day with 45 hands idle, and a December potato load went to the
         // snow. A cart with no horse is a back.
-        if (StopsWithoutHorse(job, params) && horses_left == 0) {
+        if (StopsWithoutHorse(job, params) && !horse_for(job)) {
           if (job.work_days_remaining > 0.0F && !second_pass) {
             shortfall[job_index] = JobShortfall::kNoHorse;
           }
@@ -741,9 +747,9 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
         // the pool before anybody was placed — a meadow nobody reached held one —
         // and with none left the mowers were judged and sent by the ride all the
         // same.
-        const bool takes_mower = meadow_cut && horses_left > 0 && !second_pass;
+        const bool takes_mower = meadow_cut && horse_for(job) && !second_pass;
         const bool takes_cart =
-            (job.brigade_cart && !job.cart_out && horses_left > 0 && !second_pass) || takes_mower;
+            (job.brigade_cart && !job.cart_out && horse_for(job) && !second_pass) || takes_mower;
         AssignmentJob judged = job;
         judged.cart_out = job.cart_out || takes_cart || (second_pass && cart_today[job_index] != 0);
         if (meadow_cut && !takes_mower && (!second_pass || mowers_walk[job_index] != 0)) {
@@ -781,7 +787,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
             break;
           }
           // The floor gives carters with horses and nobody else (#734).
-          if (floor != nullptr && (*floor == 0 || horses_left == 0)) {
+          if (floor != nullptr && (*floor == 0 || !horse_for(job))) {
             break;
           }
           // A HORSE IS TAKEN IF ONE IS FREE. Whether its absence STOPS the work
@@ -798,7 +804,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
           bool took_horse = false;
           float daily_norm = pick.daily_norm;
           if (horse_work) {
-            if (horses_left > 0) {
+            if (horse_for(job)) {
               --horses_left;
               took_horse = true;
             } else if (StopsWithoutHorse(job, params)) {
@@ -914,10 +920,27 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
   // before they take theirs, or a felling that took the last horse would
   // refuse itself its own ride the next morning.
   const std::uint32_t horses_for_rides = horses_left;
+  // ON A WINTER-HORSE DAY THE FELLINGS RIDE FIRST (winter_felling_horse.h; econ's #2072 rule,
+  // Alex #2401): the horse the yielding loads left goes to the fellers' cart before any other
+  // far work's; every other day the queue's own order.
+  std::vector<std::uint32_t> cart_order;
+  if (params.winter_horse_reserve > 0) {
+    cart_order.reserve(order.size());
+    for (const std::uint32_t job_index : order) {
+      if (jobs[job_index].kind == WorkKind::kFelling) {
+        cart_order.push_back(job_index);
+      }
+    }
+    for (const std::uint32_t job_index : order) {
+      if (jobs[job_index].kind != WorkKind::kFelling) {
+        cart_order.push_back(job_index);
+      }
+    }
+  }
   GivePeoplesCarts(PeoplesCartPlan{.jobs = &jobs,
                                    .candidates = &candidates,
                                    .params = &params,
-                                   .order = &order,
+                                   .order = params.winter_horse_reserve > 0 ? &cart_order : &order,
                                    .result = &result,
                                    .covered = &covered,
                                    .cart_today = &cart_today,

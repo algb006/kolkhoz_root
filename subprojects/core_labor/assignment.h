@@ -235,6 +235,11 @@ struct AssignmentJob {
   /// loading point within the road limit.
   bool log_cart = false;
 
+  /// True for an own-cart load that yields the winter horse on a winter-horse day
+  /// (winter_felling_horse.h; econ's #2072 rule, Alex #2401): it may not take the horse kept
+  /// for the fellers' ride (AssignmentParams::winter_horse_reserve). Set by CollectJobs.
+  bool yields_winter_horse = false;
+
   /// True for the carting of the hay lying mown at a meadow — a heap on land
   /// that is not arable — WHILE THE STORES HOLD THE HAY THE HERDS NEED AHEAD
   /// (0.37.131; LaborConfig::hay_cart_need_days). The job then has no window
@@ -484,6 +489,13 @@ struct AssignmentParams {
   /// and no rider, the day as before stage A.
   std::uint32_t people_cart_seats = 0;
   float people_cart_min_walk_hours = 0.0F;
+
+  /// THE WINTER HORSE (winter_felling_horse.h; econ's #2072 rule, Alex #2401): on a
+  /// winter-horse day 1 - the last horse of the pool is not for a load that yields it
+  /// (AssignmentJob::yields_winter_horse), and the people's carts serve the fellings first, so
+  /// it goes to the fellers' ride, or stays in the morning's horses left for tomorrow's offer;
+  /// 0 every other day (the placement as before).
+  std::uint32_t winter_horse_reserve = 0;
 
   /// Placement quality 0-3 (society design §1): 0 = naive "whoever is
   /// there", 1 = skill and strength, 2 = plus road and fatigue, 3 = master

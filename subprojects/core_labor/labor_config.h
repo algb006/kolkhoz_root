@@ -810,6 +810,11 @@ struct LaborConfig {
   /// first build stays at 0 until #589 brings the tally clerk's post.
   bool no_auto_placement = false;
 
+  /// econ's #2072 winter horse (Alex 25 Nov «Зимнюю лошадь давать», #2401;
+  /// winter_felling_horse.h): the horses a winter-horse day keeps for the fellers' ride ahead
+  /// of the loads that can wait. world_params `winter_horse_reserve`; 1 by the rule, 0 off.
+  std::uint32_t winter_horse_reserve = 1;
+
   /// #2072: the trodden paths' numbers (world_params `trail_*`; trail_state.h). The morning
   /// placement decays the trails, treads the placed walkers' legs and re-trails the index.
   TrailRules trails;
