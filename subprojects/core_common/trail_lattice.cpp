@@ -32,6 +32,9 @@ constexpr std::int32_t kSearchMarginCells = 8;
 constexpr float kSamplesPerCell = 2.0F;
 /// A queue entry is stale when its estimate exceeds the cell's settled cost by more than this.
 constexpr float kStaleSlack = 1e-6F;
+/// The off-trail floor's share kept in the heuristic: a hair under, so float sums of the
+/// chamfer distances never lift it above a true way's cost.
+constexpr float kHeuristicUnder = 0.999F;
 constexpr std::uint32_t kNoCell = 0xFFFFFFFFU;
 
 float Distance(Vec2 a, Vec2 b) {
@@ -299,7 +302,68 @@ TrailLookup MakeLookup(const TrailTable& table) {
     lookup.grid[(static_cast<std::size_t>((cell_row * lookup.columns) + column) * 4U) +
                 static_cast<std::size_t>(direction)] = &row;
   }
+  // THE NEAREST TRAIL (#2116 item 3): every cell a row touches is 0, then two chamfer passes
+  // with the 8-neighbour weights (1, √2) give each cell its octile distance to the nearest.
+  const auto cells =
+      static_cast<std::size_t>(lookup.columns) * static_cast<std::size_t>(lookup.rows_of_cells);
+  std::vector<float>& near = lookup.nearest_trail;
+  near.assign(cells, std::numeric_limits<float>::infinity());
+  const auto at = [&lookup](std::int32_t column, std::int32_t row) {
+    return (static_cast<std::size_t>(row) * static_cast<std::size_t>(lookup.columns)) +
+           static_cast<std::size_t>(column);
+  };
+  for (const TrailRow& row : table.rows) {
+    for (const TrailEnd end : {row.a, row.b}) {
+      near[at(end.x - left, end.y - bottom)] = 0.0F;
+    }
+  }
+  const auto relax =
+      [&](std::int32_t column, std::int32_t row, std::int32_t step_x, std::int32_t step_y) {
+        const std::int32_t from_x = column + step_x;
+        const std::int32_t from_y = row + step_y;
+        if (from_x < 0 || from_y < 0 || from_x >= lookup.columns ||
+            from_y >= lookup.rows_of_cells) {
+          return;
+        }
+        const float weight = step_x != 0 && step_y != 0 ? kSqrtTwo : 1.0F;
+        float& here = near[at(column, row)];
+        here = std::min(here, near[at(from_x, from_y)] + weight);
+      };
+  for (std::int32_t row = 0; row < lookup.rows_of_cells; ++row) {
+    for (std::int32_t column = 0; column < lookup.columns; ++column) {
+      relax(column, row, -1, 0);
+      relax(column, row, -1, -1);
+      relax(column, row, 0, -1);
+      relax(column, row, 1, -1);
+    }
+  }
+  for (std::int32_t row = lookup.rows_of_cells - 1; row >= 0; --row) {
+    for (std::int32_t column = lookup.columns - 1; column >= 0; --column) {
+      relax(column, row, 1, 0);
+      relax(column, row, 1, 1);
+      relax(column, row, 0, 1);
+      relax(column, row, -1, 1);
+    }
+  }
   return lookup;
+}
+
+float TrailLookup::NearestTrailCells(TrailEnd cell) const {
+  if (nearest_trail.empty()) {
+    return std::numeric_limits<float>::infinity();
+  }
+  const std::int32_t column = cell.x - origin.x;
+  const std::int32_t row = cell.y - origin.y;
+  if (column >= 0 && row >= 0 && column < columns && row < rows_of_cells) {
+    return nearest_trail[(static_cast<std::size_t>(row) * static_cast<std::size_t>(columns)) +
+                         static_cast<std::size_t>(column)];
+  }
+  // Outside the box: every trail is inside it, so the octile distance to the box is a floor.
+  const auto across =
+      static_cast<float>(column < 0 ? -column : (column >= columns ? column - columns + 1 : 0));
+  const auto up =
+      static_cast<float>(row < 0 ? -row : (row >= rows_of_cells ? row - rows_of_cells + 1 : 0));
+  return std::max(across, up) + (kOctileDiagonal * std::min(across, up));
 }
 
 std::shared_ptr<const TrailLookup> LookupOf(const TrailTable* table) {
@@ -377,6 +441,20 @@ float RouteKm(const TrailLookup& trails,
     const auto up = static_cast<float>(std::abs(y - goal.y));
     return cell_km * (std::max(across, up) + (kOctileDiagonal * std::min(across, up)));
   };
+  // A HEURISTIC THAT KNOWS WHERE THE TRAILS ARE (#2116 item 3, the Fable review; boss's
+  // pre-approval, a paired arm): no trodden edge is reached before a cell a trail touches, so
+  // a way from a cell walks at least its distance to the nearest trail on open ground, and the
+  // goal's likewise at its end - the open price on min(d, dt(n) + dt(goal)) of the octile d, the
+  // cheapest on the rest. Still a floor (a hair under, for the float sums); the old one priced
+  // every cell at the cheapest, and on snow (2.0 open, 1.22 the trail) the search flooded.
+  const float open_km_cost = open_weight * open_cost;
+  const float goal_off_trail = trails.NearestTrailCells(goal);
+  const auto floor_km = [&](std::int32_t x, std::int32_t y) {
+    const float d_km = octile_km(x, y);
+    const float off_cells = trails.NearestTrailCells({.x = x, .y = y}) + goal_off_trail;
+    const float off_km = std::min(d_km, off_cells * cell_km * kHeuristicUnder);
+    return (cheapest * (d_km - off_km)) + (open_km_cost * off_km);
+  };
   std::vector<float> settled(static_cast<std::size_t>(width) * static_cast<std::size_t>(height),
                              std::numeric_limits<float>::infinity());
   std::vector<std::uint32_t> came_from(settled.size(), kNoCell);
@@ -385,7 +463,7 @@ float RouteKm(const TrailLookup& trails,
   const std::uint32_t start_index = index_of(start.x, start.y);
   const std::uint32_t goal_index = index_of(goal.x, goal.y);
   settled[start_index] = 0.0F;
-  frontier.emplace(octile_km(start.x, start.y) * cheapest, start_index);
+  frontier.emplace(floor_km(start.x, start.y), start_index);
   while (!frontier.empty()) {
     const auto [estimate, node] = frontier.top();
     frontier.pop();
@@ -394,7 +472,7 @@ float RouteKm(const TrailLookup& trails,
     }
     const TrailEnd here = cell_of(node);
     const float cost_here = settled[node];
-    if (estimate > cost_here + (octile_km(here.x, here.y) * cheapest) + kStaleSlack) {
+    if (estimate > cost_here + floor_km(here.x, here.y) + kStaleSlack) {
       continue;  // a stale entry
     }
     for (std::int32_t step_y = -1; step_y <= 1; ++step_y) {
@@ -414,7 +492,7 @@ float RouteKm(const TrailLookup& trails,
         if (cost_next < settled[next]) {
           settled[next] = cost_next;
           came_from[next] = node;
-          frontier.emplace(cost_next + (octile_km(next_x, next_y) * cheapest), next);
+          frontier.emplace(cost_next + floor_km(next_x, next_y), next);
         }
       }
     }
