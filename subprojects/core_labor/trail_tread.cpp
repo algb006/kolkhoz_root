@@ -4,6 +4,8 @@
 #include "trail_tread.h"
 
 #include <algorithm>
+#include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -127,7 +129,9 @@ void TreadPlacedWalkers(const TrailRules& rules,
     return;
   }
   const bool over_snow = current.weather.snow_cover_days > 0;
-  std::vector<std::pair<TrailEnd, TrailEnd>> steps;
+  // THE WALKS BY DISTINCT PAIR (#2390 item 2b, the second Fable review; exact): a household's
+  // walkers to one place share one route - it is asked once and its steps pass k times.
+  std::vector<std::pair<Vec2, Vec2>> walks;
   for (std::size_t slot = 0; slot < candidates.size() && slot < plan.size(); ++slot) {
     if (plan[slot] == kNoJobAssigned) {
       continue;
@@ -144,14 +148,35 @@ void TreadPlacedWalkers(const TrailRules& rules,
       if (WorkPlaceOf(current, work, place)) {
         // His lattice route, on the index as it stood this morning; trodden only after every
         // route is taken, and the index is not re-dated today (the day's costs are frozen).
-        WalkRouteKm(current, home, place, &steps);
+        walks.emplace_back(home, place);
       }
       continue;
     }
     Vec2 yard{};
     if (DayStartsAtHorseYard(current, work) && HorseYardPositionOf(current, horse_kind, yard)) {
-      WalkRouteKm(current, home, yard, &steps);
+      walks.emplace_back(home, yard);
     }
+  }
+  const auto bits = [](const std::pair<Vec2, Vec2>& walk) {
+    return std::array<std::uint32_t, 4>{std::bit_cast<std::uint32_t>(walk.first.x),
+                                        std::bit_cast<std::uint32_t>(walk.first.y),
+                                        std::bit_cast<std::uint32_t>(walk.second.x),
+                                        std::bit_cast<std::uint32_t>(walk.second.y)};
+  };
+  std::sort(walks.begin(), walks.end(), [&bits](const auto& left, const auto& right) {
+    return bits(left) < bits(right);
+  });
+  // Each distinct walk's steps with how many walked it.
+  std::vector<std::pair<TrailEnd, TrailEnd>> steps;
+  std::vector<std::uint32_t> times;
+  for (std::size_t at = 0; at < walks.size();) {
+    std::size_t next = at + 1;
+    while (next < walks.size() && bits(walks[next]) == bits(walks[at])) {
+      ++next;
+    }
+    WalkRouteKm(current, walks[at].first, walks[at].second, &steps);
+    times.resize(steps.size(), static_cast<std::uint32_t>(next - at));
+    at = next;
   }
   // PENDING TILL TOMORROW'S MORNING (save 229): the trails stay the morning's all day, so an
   // index rebuilt mid-day - the loader's, a laid road's - is the morning's.
@@ -164,7 +189,8 @@ void TreadPlacedWalkers(const TrailRules& rules,
   // was the tread's cost) - the same rows and counts in the same key order.
   std::vector<TrailPass> passes = std::move(pending);
   const std::vector<StandingCrop> crops = StandingCropsOf(current);
-  for (auto [a, b] : steps) {
+  for (std::size_t at = 0; at < steps.size(); ++at) {
+    auto [a, b] = steps[at];
     const Vec2 from = TrailEndPosition(a);
     const Vec2 to = TrailEndPosition(b);
     if (CrossesAStandingCrop(crops, from, to)) {
@@ -173,7 +199,7 @@ void TreadPlacedWalkers(const TrailRules& rules,
     if (std::tie(b.x, b.y) < std::tie(a.x, a.y)) {
       std::swap(a, b);
     }
-    passes.push_back(TrailPass{.a = a, .b = b, .passes = 1});
+    passes.push_back(TrailPass{.a = a, .b = b, .passes = times[at]});
   }
   std::sort(passes.begin(), passes.end(), [&key](const TrailPass& left, const TrailPass& right) {
     return key(left) < key(right);
