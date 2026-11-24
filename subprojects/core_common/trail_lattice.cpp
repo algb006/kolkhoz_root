@@ -473,15 +473,21 @@ float RouteKm(const TrailLookup& trails,
     const float off_km = std::min(d_km, off_cells * cell_km * kHeuristicUnder);
     return (cheapest * (d_km - off_km)) + (open_km_cost * off_km);
   };
-  std::vector<float> settled(static_cast<std::size_t>(width) * static_cast<std::size_t>(height),
-                             std::numeric_limits<float>::infinity());
-  std::vector<std::uint32_t> came_from(settled.size(), kNoCell);
+  // THE SEARCH'S BUFFERS ARE THE THREAD'S (#2390 item 5, exact): filled afresh, not allocated.
+  const std::size_t cells = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+  thread_local std::vector<float> settled;
+  thread_local std::vector<std::uint32_t> came_from;
+  thread_local std::vector<float> pushed;  // the estimate each cell was last pushed at
+  settled.assign(cells, std::numeric_limits<float>::infinity());
+  came_from.assign(cells, kNoCell);
+  pushed.assign(cells, std::numeric_limits<float>::infinity());
   using Entry = std::pair<float, std::uint32_t>;
   std::priority_queue<Entry, std::vector<Entry>, std::greater<>> frontier;
   const std::uint32_t start_index = index_of(start.x, start.y);
   const std::uint32_t goal_index = index_of(goal.x, goal.y);
   settled[start_index] = 0.0F;
-  frontier.emplace(floor_km(start.x, start.y), start_index);
+  pushed[start_index] = 0.0F + floor_km(start.x, start.y);
+  frontier.emplace(pushed[start_index], start_index);
   while (!frontier.empty()) {
     const auto [estimate, node] = frontier.top();
     frontier.pop();
@@ -490,8 +496,10 @@ float RouteKm(const TrailLookup& trails,
     }
     const TrailEnd here = cell_of(node);
     const float cost_here = settled[node];
-    if (estimate > cost_here + floor_km(here.x, here.y) + kStaleSlack) {
-      continue;  // a stale entry
+    // A stale entry: the cell was pushed again cheaper since. pushed[node] is cost_here plus
+    // its floor by the very expression that pushed it, so the test is the old one, bit for bit.
+    if (estimate > pushed[node] + kStaleSlack) {
+      continue;
     }
     for (std::int32_t step_y = -1; step_y <= 1; ++step_y) {
       for (std::int32_t step_x = -1; step_x <= 1; ++step_x) {
@@ -510,7 +518,8 @@ float RouteKm(const TrailLookup& trails,
         if (cost_next < settled[next]) {
           settled[next] = cost_next;
           came_from[next] = node;
-          frontier.emplace(cost_next + floor_km(next_x, next_y), next);
+          pushed[next] = cost_next + floor_km(next_x, next_y);
+          frontier.emplace(pushed[next], next);
         }
       }
     }
