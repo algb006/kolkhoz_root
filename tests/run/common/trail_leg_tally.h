@@ -22,6 +22,9 @@
 #include <map>
 #include <memory>
 #include <ostream>
+#include <sstream>
+#include <string>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -77,6 +80,11 @@ class TrailLegTally {
         row.ratio_lo = ratio < row.ratio_lo ? ratio : row.ratio_lo;
         row.ratio_hi = ratio > row.ratio_hi ? ratio : row.ratio_hi;
         row.straight_cheaper += straight < routed - 1e-4F ? 1U : 0U;
+        // boss 24 Nov: THE STRAIGHT-CHEAPER SAMPLE - two a village-year, every leg of the way
+        // with both doors' answers and the edges each door crosses.
+        if (straight < routed - 1e-4F && row.samples.size() < 2U) {
+          row.samples.push_back(SampleOf(world, *index, home, place, straight, routed));
+        }
         // boss 24 Nov: WHERE the doors part - by the open ground's state today, the pair's
         // line length and whether the way is one open leg (across) or rides the network.
         {
@@ -191,6 +199,10 @@ class TrailLegTally {
         }
       }
       out << '\n';
+      for (const std::string& sample : row.samples) {
+        out << "population_curve: CHEAP2072 seed " << seed << " year " << year << ' ' << sample
+            << '\n';
+      }
     }
   }
 
@@ -219,7 +231,8 @@ class TrailLegTally {
   struct Year {
     std::array<Group, kGroups> groups{};
     double ratio_sum = 0.0;
-    std::vector<double> over;  ///< straight ÷ route, every placed walker-day
+    std::vector<double> over;          ///< straight ÷ route, every placed walker-day
+    std::vector<std::string> samples;  ///< straight-cheaper pairs, legs and edges
     /// weather (dry-wet/mud/snow/frozen) x line band (<50/<200/<500/>=500 m) x across.
     std::array<Case, 32> cases{};
     double ratio_lo = 1e9;
@@ -235,6 +248,70 @@ class TrailLegTally {
     std::size_t rows_at_year_end = 0;
     std::unordered_map<std::uint64_t, std::unordered_set<std::uint32_t>> edge_houses;
   };
+
+  /// One straight-cheaper pair: its two answers, then every leg - road legs by km, open legs
+  /// by length, the straight door's km, the route's km (WalkRouteKm on the leg), and for each
+  /// door its edges (count / trodden / diagonal / mean strength of the trodden). The straight
+  /// door's edges are its own half-cell sampling replayed here (trail_lattice.cpp).
+  static std::string SampleOf(const core::WorldState& world,
+                              const core::RoadIndex& index,
+                              core::Vec2 home,
+                              core::Vec2 place,
+                              float straight,
+                              float routed) {
+    std::ostringstream text;
+    text << "straight " << straight << " routed " << routed << " legs";
+    const core::Route way = index.Way(core::TravelMode::kWalk, home, place);
+    for (const core::RouteLeg& leg : way.legs) {
+      if (leg.on_road) {
+        text << " | road " << leg.effective_km;
+        continue;
+      }
+      std::vector<std::pair<core::TrailEnd, core::TrailEnd>> steps;
+      const float leg_route = core::WalkRouteKm(world, leg.from, leg.to, &steps);
+      text << " | open " << leg.length_m << "m straight " << leg.effective_km << " route "
+           << leg_route << " route_edges " << EdgesOf(world, steps);
+      std::vector<std::pair<core::TrailEnd, core::TrailEnd>> crossed;
+      core::Vec2 from = leg.from;
+      core::Vec2 to = leg.to;
+      if (std::tie(to.x, to.y) < std::tie(from.x, from.y)) {
+        std::swap(from, to);
+      }
+      const auto pieces =
+          static_cast<std::uint32_t>(std::ceil(leg.length_m / (core::kTrailSnapMetres / 2.0F)));
+      core::TrailEnd here = core::SnapTrailEnd(from);
+      for (std::uint32_t piece = 1; piece <= pieces; ++piece) {
+        const float share = static_cast<float>(piece) / static_cast<float>(pieces);
+        const core::TrailEnd next = core::SnapTrailEnd(
+            {.x = from.x + ((to.x - from.x) * share), .y = from.y + ((to.y - from.y) * share)});
+        if (next.x != here.x || next.y != here.y) {
+          crossed.emplace_back(here, next);
+          here = next;
+        }
+      }
+      text << " line_edges " << EdgesOf(world, crossed);
+    }
+    return text.str();
+  }
+
+  /// count/trodden/diagonal/mean strength of the trodden, of a list of lattice edges.
+  static std::string EdgesOf(const core::WorldState& world,
+                             const std::vector<std::pair<core::TrailEnd, core::TrailEnd>>& edges) {
+    std::size_t trodden = 0;
+    std::size_t diagonal = 0;
+    double strength = 0.0;
+    for (const auto& [a, b] : edges) {
+      diagonal += a.x != b.x && a.y != b.y ? 1U : 0U;
+      if (const core::TrailRow* const row = core::FindTrailEdge(world.trails, a, b)) {
+        ++trodden;
+        strength += static_cast<double>(core::TrailStrength(*row));
+      }
+    }
+    std::ostringstream text;
+    text << edges.size() << '/' << trodden << '/' << diagonal << '/'
+         << (trodden > 0 ? strength / static_cast<double>(trodden) : 0.0);
+    return text.str();
+  }
 
   static std::uint64_t EdgeKey(core::TrailEnd a, core::TrailEnd b) {
     const auto cell = [](core::TrailEnd end) {

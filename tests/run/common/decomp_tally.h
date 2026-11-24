@@ -24,6 +24,8 @@
 #include "core_common/road_route.h"
 #include "core_common/road_rules.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/timber_state.h"
+#include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 
 namespace run {
@@ -90,6 +92,9 @@ class DecompTally {
       row.winter_felling_norm += today(core::WorkKind::kFelling);
       ++row.winter_felling_days;
     }
+    // econ's B3 candidate (boss 24 Nov): the felling and the hauling by month, man-days.
+    row.felling_by_month[month] += today(core::WorkKind::kFelling);
+    row.hauling_by_month[month] += today(core::WorkKind::kHauling);
     // OPTION 1's table answered (save 229): the planner's asks of yesterday's priced walks
     // and the answers, this village's thread since yesterday's look - a table that never
     // answers is a stub.
@@ -122,6 +127,31 @@ class DecompTally {
           const std::uint32_t blocked_before = new_year ? 0U : last_haul_blocked_;
           chain.haul_blocked += blocked > blocked_before ? blocked - blocked_before : 0U;
           last_haul_blocked_ = blocked;
+          // WHAT IS HAULED, ON FOOT OR BY HORSE (boss 24 Nov: the on-foot haulers lost with no
+          // shortfall booked): every placed hauler by the load his assignment names, and the
+          // logs lying on the stands at the look (does winter felling cut what there is to cart?).
+          for (const core::ResidentRow& person : world.residents.rows) {
+            const core::WorkAssignment& work = person.work;
+            if (work.kind == core::WorkKind::kFelling) {
+              // Do the fellers walk (the walker's snow factor) or ride the brigade's cart?
+              ++chain.fellers[core::WorkRidesOut(world, work) ? 1U : 0U];
+              continue;
+            }
+            if (work.kind != core::WorkKind::kHauling) {
+              continue;
+            }
+            const std::size_t load = work.stand.value != core::kInvalidEntityIdValue            ? 0U
+                                     : work.herd.value != core::kInvalidEntityIdValue           ? 1U
+                                     : work.limit_delivery.value != core::kInvalidEntityIdValue ? 2U
+                                     : work.unit.value != core::kInvalidEntityIdValue           ? 3U
+                                     : work.field.value != core::kInvalidEntityIdValue          ? 4U
+                                                                                       : 5U;
+            const bool on_foot = !core::WorkRidesOut(world, work);
+            ++chain.haul_by_load[(load * 2U) + (on_foot ? 0U : 1U)];
+          }
+          for (const core::TimberStandRow& stand : world.stands.rows) {
+            chain.logs_lying_t += static_cast<double>(stand.load_grams) / 1.0e6;
+          }
           for (const core::ResidentRow& person : world.residents.rows) {
             if (person.work.kind == core::WorkKind::kHauling && person.work.travel_hours >= 0.0F) {
               ++chain.haulers;
@@ -198,6 +228,14 @@ class DecompTally {
           << " dry " << per(row.field_norm_dry, row.field_days_dry) << " field_days_mud "
           << row.field_days_mud << " dry " << row.field_days_dry << " winter_felling_norm "
           << row.winter_felling_norm << " winter_felling_days " << row.winter_felling_days;
+      out << " felling_by_month";
+      for (const double value : row.felling_by_month) {
+        out << ' ' << value;
+      }
+      out << " hauling_by_month";
+      for (const double value : row.hauling_by_month) {
+        out << ' ' << value;
+      }
       static constexpr std::array<const char*, 5> kGrounds = {
           "dry", "wet", "mud", "frozen", "snow"};
       for (std::size_t ground = 0; ground < row.chain_by_ground.size(); ++ground) {
@@ -213,6 +251,14 @@ class DecompTally {
             << '/' << chain.haulers_from_yard << '/'
             << (chain.haulers > 0 ? chain.hauler_road_hours / static_cast<double>(chain.haulers)
                                   : 0.0);
+        out << " haulload_" << (ground < kGrounds.size() ? kGrounds[ground] : "other")
+            << "(stand/herd/delivery/unit/field/other x foot:horse;logs_lying_t_days) ";
+        for (std::size_t load = 0; load < 6; ++load) {
+          out << chain.haul_by_load[load * 2U] << ':' << chain.haul_by_load[(load * 2U) + 1U]
+              << '/';
+        }
+        out << chain.logs_lying_t << " fellers_foot:ride " << chain.fellers[0] << ':'
+            << chain.fellers[1];
       }
       out << " placed_walks(asked/found) " << row.placed_asked << '/' << row.placed_found
           << (row.placed_asked > 0 && row.placed_found == 0 ? " PLACED_WALKS_NEVER_FOUND" : "");
@@ -231,6 +277,9 @@ class DecompTally {
     std::uint64_t haulers = 0;
     std::uint64_t haulers_from_yard = 0;
     double hauler_road_hours = 0.0;
+    std::array<std::uint64_t, 12> haul_by_load{};  ///< load x (foot, horse)
+    double logs_lying_t = 0.0;                     ///< tonne-days on the stands
+    std::array<std::uint64_t, 2> fellers{};        ///< heads: on foot, riding
   };
 
   struct Year {
@@ -250,6 +299,8 @@ class DecompTally {
     std::uint64_t field_days_dry = 0;
     double winter_felling_norm = 0.0;
     std::uint64_t winter_felling_days = 0;
+    std::array<double, core::kMonthsPerYear> felling_by_month{};
+    std::array<double, core::kMonthsPerYear> hauling_by_month{};
     std::array<Chain, static_cast<std::size_t>(core::RoadCondition::kRoadConditionCount)>
         chain_by_ground{};
     std::uint64_t placed_asked = 0;
