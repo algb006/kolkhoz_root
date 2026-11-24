@@ -43,6 +43,69 @@ float Distance(Vec2 a, Vec2 b) {
   return std::hypot(a.x - b.x, a.y - b.y);
 }
 
+/// A line's cell transitions from its first cell: one move a byte, x and y each -1, 0 or +1
+/// (a half-cell sample moves at most one cell an axis), encoded (x + 1) * 3 + (y + 1).
+struct LineMoves {
+  std::vector<std::uint8_t> moves;
+};
+
+std::int32_t MoveX(std::uint8_t move) {
+  return static_cast<std::int32_t>(move / 3U) - 1;
+}
+
+std::int32_t MoveY(std::uint8_t move) {
+  return static_cast<std::int32_t>(move % 3U) - 1;
+}
+
+/// The line's key: its canonical ends' and its length's bits.
+using LineKey = std::array<std::uint32_t, 5>;
+
+struct LineKeyHash {
+  std::size_t operator()(const LineKey& key) const {
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (const std::uint32_t word : key) {
+      hash = (hash ^ word) * 1099511628211ULL;
+    }
+    return static_cast<std::size_t>(hash);
+  }
+};
+
+/// Lines kept a thread before the cache starts over (pure geometry: forgetting changes no
+/// answer, it only samples again).
+constexpr std::size_t kLineCacheCap = std::size_t{1} << 17U;
+
+/// The transitions of the canonical line `from` -> `to`, sampled every half cell from `first`
+/// (SnapTrailEnd(from)) - the very samples MeanCrossedCost took before the cache.
+const LineMoves& MovesOf(Vec2 from, Vec2 to, float length, TrailEnd first) {
+  thread_local std::unordered_map<LineKey, LineMoves, LineKeyHash> cache;
+  const LineKey key = {std::bit_cast<std::uint32_t>(from.x),
+                       std::bit_cast<std::uint32_t>(from.y),
+                       std::bit_cast<std::uint32_t>(to.x),
+                       std::bit_cast<std::uint32_t>(to.y),
+                       std::bit_cast<std::uint32_t>(length)};
+  if (const auto found = cache.find(key); found != cache.end()) {
+    return found->second;
+  }
+  if (cache.size() >= kLineCacheCap) {
+    cache.clear();
+  }
+  LineMoves line;
+  const auto pieces =
+      static_cast<std::uint32_t>(std::ceil(length / (kTrailSnapMetres / kSamplesPerCell)));
+  TrailEnd here = first;
+  for (std::uint32_t piece = 1; piece <= pieces; ++piece) {
+    const float share = static_cast<float>(piece) / static_cast<float>(pieces);
+    const TrailEnd next = SnapTrailEnd(
+        {.x = from.x + ((to.x - from.x) * share), .y = from.y + ((to.y - from.y) * share)});
+    if (next.x != here.x || next.y != here.y) {
+      line.moves.push_back(
+          static_cast<std::uint8_t>(((next.x - here.x + 1) * 3) + (next.y - here.y + 1)));
+      here = next;
+    }
+  }
+  return cache.emplace(key, std::move(line)).first->second;
+}
+
 /// The mean cost a km of the lattice edges the line crosses, sampled every half cell from the
 /// lesser end (x, then y) - one canonical direction, so a pair answers the same either way
 /// (static review of 23 Nov 2026). A line inside one cell crosses no edge: open ground.
@@ -70,8 +133,10 @@ float MeanCrossedCost(const TrailLookup& trails,
       return open;
     }
   }
-  const auto pieces =
-      static_cast<std::uint32_t>(std::ceil(length / (kTrailSnapMetres / kSamplesPerCell)));
+  // THE LINE'S CELLS ARE GEOMETRY (#2116, the Fable review's item 1; exact): its transitions,
+  // sampled every half cell, read no trail - cached per thread by the line's bits, and each
+  // day only REPLAYED against the day's trails by the same statements.
+  const LineMoves& moves = MovesOf(from, to, length, first);
   // EACH EDGE BY ITS LENGTH (boss 24 Nov, LEGS2072's cases: counting every transition once
   // left the straight door cheaper than the route in 2.8 % of pairs; the route pays a diagonal
   // edge √2 of a straight one): a straight edge weighs 1, a diagonal √2. The answer is open
@@ -79,22 +144,18 @@ float MeanCrossedCost(const TrailLookup& trails,
   float discount = 0.0F;
   float crossed = 0.0F;
   TrailEnd here = first;
-  for (std::uint32_t piece = 1; piece <= pieces; ++piece) {
-    const float share = static_cast<float>(piece) / static_cast<float>(pieces);
-    const TrailEnd next = SnapTrailEnd(
-        {.x = from.x + ((to.x - from.x) * share), .y = from.y + ((to.y - from.y) * share)});
-    if (next.x != here.x || next.y != here.y) {
-      // STRAIGHT NEVER CHEAPER THAN THE ROUTE (boss 23 Nov, roads.md): the trodden discount the
-      // straight door gives is the route's cut by the lattice's octile bound - a route along the
-      // same trail pays up to that excess for its staircase.
-      const float edge = next.x != here.x && next.y != here.y ? kSqrtTwo : 1.0F;
-      if (trails.Find(here, next) != nullptr) {
-        const float step = StepCost(trails, here, next, open_weight, open_cost, snow_trail_cost);
-        discount += edge * (open - step) * kStraightDiscountShare;
-      }
-      crossed += edge;
-      here = next;
+  for (const std::uint8_t move : moves.moves) {
+    const TrailEnd next{.x = here.x + MoveX(move), .y = here.y + MoveY(move)};
+    // STRAIGHT NEVER CHEAPER THAN THE ROUTE (boss 23 Nov, roads.md): the trodden discount the
+    // straight door gives is the route's cut by the lattice's octile bound - a route along the
+    // same trail pays up to that excess for its staircase.
+    const float edge = next.x != here.x && next.y != here.y ? kSqrtTwo : 1.0F;
+    if (trails.Find(here, next) != nullptr) {
+      const float step = StepCost(trails, here, next, open_weight, open_cost, snow_trail_cost);
+      discount += edge * (open - step) * kStraightDiscountShare;
     }
+    crossed += edge;
+    here = next;
   }
   return crossed > 0.0F ? open - (discount / crossed) : open;
 }
