@@ -22,11 +22,15 @@
 /// reach) is the straight line weighted by the edges it crosses (RoadKm). Untrodden, the two
 /// agree exactly (the walker's km is normalised to the straight line). STRAIGHT IS NEVER THE
 /// CHEAPER (boss 23 Nov, roads.md): the straight door keeps 1 / 1.0824 of a trail's discount (the
-/// octile bound below), so a route along the same trail, paying its staircase, is not dearer
-/// than the straight answer. Measured before that cut (23 Nov, B2): the straight door cheaper
-/// than the route in 2-3 % of pairs, by up to 4.2 % (14 % on B3's mud days). THE LATTICE'S WEAK
-/// CASE: an 8-neighbour path runs up to 8.2 % over the line it follows (the octile bound) - about a
-/// full trail's whole discount (1.2 -> 1.10), so a trail at a slant of ~22° barely beats the line.
+/// octile bound below), meant to keep a route along the same trail no dearer than the straight
+/// answer. Measured before that cut (23 Nov, B2): the straight door cheaper than the route in
+/// 2-3 % of pairs, by up to 4.2 %. MEASURED AFTER IT, AND AFTER THE LENGTH-WEIGHTED MEAN (24 Nov,
+/// 229, B2, 64 villages): STILL 2.83 % - neither cut named the cause; it is OPEN (CHEAP2072
+/// samples the legs). The planner reads the route for yesterday's walks (save 229, option 1).
+/// CPU (boss 24 Nov): the trails may cost up to +22 % of a run (trail_leg_tally.h). THE LATTICE'S
+/// WEAK CASE: an 8-neighbour path runs up to 8.2 % over the line it follows (the octile bound) -
+/// about a full trail's whole discount (1.2 -> 1.10), so a trail at a slant of ~22° barely beats
+/// the line.
 ///
 /// WHO TREADS. The accountant's placed people of the morning, by the world's own predicates
 /// (WorkRidesOut): who walks to his work treads his route home -> work; who rides from the horse

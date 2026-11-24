@@ -8,6 +8,14 @@
 ///        and their mean metres; and the walkers the morning's tread does NOT count today (every
 ///        worker here is counted; the tread counts only the accountant's placements - the
 ///        difference is the STUB's size).
+///
+/// THE CPU GATE (boss, 24 Nov 2026, decision (b)): a trailed run may cost up to +22 % user CPU
+/// over B0 (was +15 %). Reason on record: six exact cuts (edge hash, memos, dense grid, inline
+/// snap, floor-bound router, sorted tread) took the first lattice's 2.9x to +21.1 % (B0
+/// 10 197 s, B2 12 353 s, offset 0, xeon16, ef4dc7a8); the rest is the feature's own cost - the
+/// trails decay every morning, so every leg is priced afresh. PARKED LEVER: the query door's
+/// one sample per cell (about -5 points, answer-changing) - back only if the game's tick budget
+/// is shown to hurt, then as a paired arm with identity printed.
 /// @threading SINGLE_THREADED
 /// Test-side code, driven once a day from the thread that owns the simulation.
 
