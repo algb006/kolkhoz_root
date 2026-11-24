@@ -99,24 +99,14 @@ class ScaleTally {
     PrintFit(out, seed, ground, "simulation", [](const Year& year) { return year.simulation; });
     PrintFit(out, seed, ground, "chairman", [](const Year& year) { return year.chairman; });
     // PROBE #2118: every slot's year lines and fit, and MeasureRoads' pairs.
-    static constexpr std::array<const char*, core::probe::kSlots> kNames = {"prologue",
-                                                                            "time_weather",
-                                                                            "needs",
-                                                                            "decisions",
-                                                                            "production",
-                                                                            "metrics",
-                                                                            "events",
-                                                                            "measure_roads",
-                                                                            "plan_assignments",
-                                                                            "collect",
-                                                                            "make_day",
-                                                                            "with_trails",
-                                                                            "tread",
-                                                                            "decay",
-                                                                            "measure_pairs_loop",
-                                                                            "measure_head",
-                                                                            "access_near",
-                                                                            "access_ring"};
+    static constexpr std::array<const char*, core::probe::kSlots> kNames = {
+        "prologue",     "time_weather",  "needs",
+        "decisions",    "production",    "metrics",
+        "events",       "measure_roads", "plan_assignments",
+        "collect",      "make_day",      "with_trails",
+        "tread",        "decay",         "measure_pairs_loop",
+        "measure_head", "access_near",   "access_ring",
+        "head_homes",   "head_locate",   "head_yard"};
     for (const Year& year : years_) {
       out << "population_curve: SCALE2118P seed " << seed << " year " << year.year << " residents "
           << year.residents << " units " << year.units << " pairs_per_day "

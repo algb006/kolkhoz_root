@@ -37,6 +37,9 @@ enum class Slot : std::uint8_t {
   kMeasureHead,      ///< labor: MeasureRoads before its pairs loop (homes, locates, yard)
   kAccessNear,       ///< roads: Accesses answered by the near table
   kAccessRing,       ///< roads: Accesses by the ring search (the table did not answer)
+  kHeadHomes,        ///< MeasureRoads' head: the homes' hash
+  kHeadLocate,       ///< MeasureRoads' head: the homes' Locate x 4 modes
+  kHeadYard,         ///< MeasureRoads' head: the horse yard's Locate and every home's walk to it
   kCount,
 };
 

@@ -1599,6 +1599,14 @@ class LaborSystem final : public ILaborSystem {
     const auto bits = [](float value) {
       return std::bit_cast<std::uint32_t>(value == 0.0F ? 0.0F : value);
     };
+    std::uint64_t part_started = probe::ThreadNanos();  // PROBE #2118
+    const auto book_part = [&part_started](probe::Slot slot) {
+      const auto at = static_cast<std::size_t>(slot);
+      const std::uint64_t now = probe::ThreadNanos();
+      probe::Thread().ns[at] += now - part_started;
+      ++probe::Thread().calls[at];
+      part_started = now;
+    };
     for (AssignmentCandidate& candidate : candidates) {
       const std::uint64_t key =
           (static_cast<std::uint64_t>(bits(candidate.home.x)) << 32U) | bits(candidate.home.y);
@@ -1609,6 +1617,7 @@ class LaborSystem final : public ILaborSystem {
       }
       candidate.home_slot = found->second;
     }
+    book_part(probe::Slot::kHeadHomes);
     constexpr std::array<TravelMode, 4> kModes = {
         TravelMode::kWalk, TravelMode::kTeam, TravelMode::kCart, TravelMode::kLogCart};
     std::vector<std::array<NetworkPlace, 4>> found_homes(homes.size());
@@ -1617,6 +1626,7 @@ class LaborSystem final : public ILaborSystem {
         found_homes[slot][mode] = index->Locate(kModes[mode], homes[slot]);
       }
     }
+    book_part(probe::Slot::kHeadLocate);
     params.home_slots = static_cast<std::uint32_t>(homes.size());
     params.road_km.assign(jobs.size() * homes.size() * 2U, 0.0F);
     probe::Thread().measure_pairs += jobs.size() * homes.size();  // PROBE #2118
@@ -1642,7 +1652,8 @@ class LaborSystem final : public ILaborSystem {
       }
       params.yard_ride_km.resize(jobs.size());
     }
-    {  // PROBE #2118: the head, before the pairs
+    book_part(probe::Slot::kHeadYard);  // with road_km's assign, the rest of the head
+    {                                   // PROBE #2118: the head, before the pairs
       const auto head = static_cast<std::size_t>(probe::Slot::kMeasureHead);
       probe::Thread().ns[head] += probe::ThreadNanos() - head_started;
       ++probe::Thread().calls[head];
