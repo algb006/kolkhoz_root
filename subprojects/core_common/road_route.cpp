@@ -14,6 +14,7 @@
 
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
+#include "road_access_memo.h"
 #include "road_day.h"
 #include "trail_lattice.h"
 
@@ -507,8 +508,7 @@ class RoadIndexImpl final : public RoadIndex {
           const RoadNodeIndex other = edge.from == node ? edge.to : edge.from;
           const float cost = edge_index < edge_cost.size() ? edge_cost[edge_index] : 1.0F;
           const float next = here_km + (edge.length_m / 1000.0F * cost);
-          // Ties broken by the edge index, so the way is the same on every
-          // compiler.
+          // Ties broken by the edge index, so the way is the same on every compiler.
           if (next < distance[other] || (next == distance[other] && edge_index < arrival[other])) {
             distance[other] = next;
             arrival[other] = edge_index;
@@ -595,14 +595,10 @@ class RoadIndexImpl final : public RoadIndex {
   static inline std::atomic<std::uint64_t> g_day_table_builds{0};
 
  private:
-  /// THE NEAR TABLE (0.36.2): every cell of a dense grid over the network,
-  /// out to kNearReach beyond it, holds the kNearEdges edges nearest its
-  /// centre and, for each, the segment nearest it — per usability class
-  /// (roads only; roads and paths). Built by letting every segment tell the
-  /// cells within reach about itself, so the cost is the segments' count
-  /// times a few dozen cells, once a network. A place then reads one cell and
-  /// walks each listed edge to its own nearest point: a few segments, not
-  /// the hundreds a ring search visits.
+  /// THE NEAR TABLE (0.36.2): every cell of a dense grid over the network, out to kNearReach
+  /// beyond it, holds the kNearEdges edges nearest its centre and each one's nearest segment, per
+  /// usability class (roads only; roads and paths), built once a network by letting each segment
+  /// tell the cells within reach. A place reads one cell: a few segments, not a ring search's.
   void BuildNearTable() {
     if (segments_.empty()) {
       return;
@@ -746,7 +742,11 @@ class RoadIndexImpl final : public RoadIndex {
   }
 
   /// The road pieces a place may reach the network by, nearest first.
-  std::vector<Access> Accesses(TravelMode mode, Vec2 place) const {
+  std::vector<Access> Accesses(TravelMode mode, Vec2 place) const {  // remembered: serial_
+    return road_access::Remembered(serial_, mode, place, [&] { return Search(mode, place); });
+  }
+
+  std::vector<Access> Search(TravelMode mode, Vec2 place) const {
     std::vector<Access> found;
     if (segments_.empty()) {
       return found;
@@ -771,11 +771,9 @@ class RoadIndexImpl final : public RoadIndex {
         nearest = std::min(nearest, access.distance_m);
         found.push_back(access);
       }
-      // THE TABLE ANSWERS ONLY WITHIN ITS REACH: an edge within the slack of
-      // the nearest must be one the cell could have heard of — kNearReach
-      // less the cell's half-diagonal. A place farther out asks the rings
-      // (0.36.2: a unit 250 m from the nearest road took a way 23 % longer,
-      // the better road lying past the table's 300 m).
+      // THE TABLE ANSWERS ONLY WITHIN ITS REACH: an edge within the slack of the nearest must be
+      // one the cell could have heard of - kNearReach less the cell's half-diagonal; a place
+      // farther out asks the rings (0.36.2: 250 m out, the better road lay past the table).
       constexpr float kCellHalfDiagonal = kGridCell * 0.7072F;
       if (!(nearest + kAccessSlack <= kNearReach - kCellHalfDiagonal)) {
         found.clear();
@@ -919,6 +917,8 @@ class RoadIndexImpl final : public RoadIndex {
   static constexpr RoadEdgeIndex kNoEdge = 0xFFFFFFFFU;
 
   RoadTravelRules rules_;
+  // The Accesses memo's key (#2147, exact; road_access_memo.h: the very vector a search gives).
+  std::uint64_t serial_ = road_access::NextNetworkSerial();
   RoadGraph graph_;
   std::vector<EdgeSegment> segments_;
   std::map<std::pair<std::int32_t, std::int32_t>, std::vector<std::uint32_t>> grid_;
