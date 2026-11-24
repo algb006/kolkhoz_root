@@ -26,11 +26,6 @@ constexpr float kMetresPerKm = 1000.0F;
 constexpr float kSqrtTwo = 1.41421356F;
 /// The octile distance's diagonal surcharge (√2 − 1).
 constexpr float kOctileDiagonal = kSqrtTwo - 1.0F;
-/// The octile bound: an 8-neighbour path's most excess over the line it follows (at 22.5°,
-/// (1 + (√2 − 1) tan 22.5°) / sec 22.5° = 1.0824), and the share of the route's discount the
-/// straight door keeps so it is never the cheaper one.
-constexpr float kOctileBound = 1.0824F;
-constexpr float kStraightDiscountShare = 1.0F / kOctileBound;
 /// Cells around the from-to box the walker's search may use (200 m at 25 m).
 constexpr std::int32_t kSearchMarginCells = 8;
 /// The query door samples the line every half cell.
@@ -137,27 +132,30 @@ float MeanCrossedCost(const TrailLookup& trails,
   // sampled every half cell, read no trail - cached per thread by the line's bits, and each
   // day only REPLAYED against the day's trails by the same statements.
   const LineMoves& moves = MovesOf(from, to, length, first);
-  // EACH EDGE BY ITS LENGTH (boss 24 Nov, LEGS2072's cases: counting every transition once
-  // left the straight door cheaper than the route in 2.8 % of pairs; the route pays a diagonal
-  // edge √2 of a straight one): a straight edge weighs 1, a diagonal √2. The answer is open
-  // ground less the mean DISCOUNT, so an untrodden line answers open ground exactly.
-  float discount = 0.0F;
-  float crossed = 0.0F;
+  // STRAIGHT NEVER CHEAPER THAN THE ROUTE, AS A THEOREM (boss 24 Nov, roads.md 5abb1f5a3;
+  // CHEAP2072 named the cause: the line's cells are mostly a 4-connected STAIRCASE, and it
+  // granted the staircase's trodden edges at the line's length): the line's own cell path P
+  // is one lattice path between the route's two cells, so pricing it as the route prices a
+  // path - its cost over the octile length, capped at open ground - is never below the route,
+  // the cheapest such path. Untrodden, P's cost is at least open x octile: open ground exactly.
+  if (moves.moves.empty()) {
+    return open;
+  }
+  float path_cost = 0.0F;  // in cells x cost a km; the cell's km cancels against the octile's
   TrailEnd here = first;
   for (const std::uint8_t move : moves.moves) {
     const TrailEnd next{.x = here.x + MoveX(move), .y = here.y + MoveY(move)};
-    // STRAIGHT NEVER CHEAPER THAN THE ROUTE (boss 23 Nov, roads.md): the trodden discount the
-    // straight door gives is the route's cut by the lattice's octile bound - a route along the
-    // same trail pays up to that excess for its staircase.
     const float edge = next.x != here.x && next.y != here.y ? kSqrtTwo : 1.0F;
-    if (trails.Find(here, next) != nullptr) {
-      const float step = StepCost(trails, here, next, open_weight, open_cost, snow_trail_cost);
-      discount += edge * (open - step) * kStraightDiscountShare;
-    }
-    crossed += edge;
+    const float step = trails.Find(here, next) != nullptr
+                           ? StepCost(trails, here, next, open_weight, open_cost, snow_trail_cost)
+                           : open;
+    path_cost += edge * step;
     here = next;
   }
-  return crossed > 0.0F ? open - (discount / crossed) : open;
+  const auto across = static_cast<float>(std::abs(last.x - first.x));
+  const auto up = static_cast<float>(std::abs(last.y - first.y));
+  const float octile_cells = std::max(across, up) + (kOctileDiagonal * std::min(across, up));
+  return octile_cells > 0.0F ? std::min(open, path_cost / octile_cells) : open;
 }
 
 }  // namespace

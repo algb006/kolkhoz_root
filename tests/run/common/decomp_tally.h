@@ -206,6 +206,8 @@ class DecompTally {
             << short_by[static_cast<std::size_t>(core::JobShortfall::kCrewCap)] << '/'
             << short_by[static_cast<std::size_t>(core::JobShortfall::kNoHands)] << '/'
             << short_by[static_cast<std::size_t>(core::JobShortfall::kRoad)]
+            << " felling_too_far_on_foot "
+            << short_by[static_cast<std::size_t>(core::JobShortfall::kTooFarOnFoot)]
             << " felling_road_blocked " << book.road_blocked_job_days[felling]
             << " felling_man_days " << book.work_days_by_kind[felling];
       }
@@ -250,7 +252,9 @@ class DecompTally {
             << '/' << chain.haul_short[3] << '/' << chain.haul_blocked << '/' << chain.haulers
             << '/' << chain.haulers_from_yard << '/'
             << (chain.haulers > 0 ? chain.hauler_road_hours / static_cast<double>(chain.haulers)
-                                  : 0.0);
+                                  : 0.0)
+            << " haul_too_far_on_foot_" << (ground < kGrounds.size() ? kGrounds[ground] : "other")
+            << ' ' << chain.haul_short[static_cast<std::size_t>(core::JobShortfall::kTooFarOnFoot)];
         out << " haulload_" << (ground < kGrounds.size() ? kGrounds[ground] : "other")
             << "(stand/herd/delivery/unit/field/other x foot:horse;logs_lying_t_days) ";
         for (std::size_t load = 0; load < 6; ++load) {

@@ -24,10 +24,9 @@ int Expect(bool condition, std::string_view what) {
   return 0;
 }
 
-/// The lattice's octile bound (trail_lattice.cpp): the query door keeps 1 / it of a trail's
-/// discount, so a full trail answers 1.2 - 0.1 / 1.0824 to the straight door.
-constexpr float kOctileBound = 1.0824F;
-constexpr float kFullStraight = 1.2F - (0.1F / kOctileBound);
+/// The query door prices the line's own cell path as the route prices a path (save 230; boss
+/// 24 Nov, roads.md 5abb1f5a3): along a full trail on the line's own cells, the trail's 1.10.
+constexpr float kFullStraight = 1.10F;
 
 bool Near(float value, float expected) {
   return std::abs(value - expected) < 0.002F;
@@ -142,10 +141,9 @@ int TestTrails() {
   const float on_full = trailed->EffectiveKm(core::TravelMode::kWalk, west, east);
   const float on_half =
       core::WithTrails(bare, half, dry)->EffectiveKm(core::TravelMode::kWalk, west, east);
-  // THE QUERY DOOR KEEPS 1 / 1.0824 OF THE ROUTE'S DISCOUNT (straight never cheaper than the
-  // route): a full trail 1.2 - 0.1 / 1.0824, a half one 1.2 - 0.05 / 1.0824.
-  failures += Expect(Near(open, 1.2F) && Near(on_full, kFullStraight) &&
-                         Near(on_half, 1.2F - (0.05F / kOctileBound)),
+  // THE QUERY DOOR PRICES THE LINE'S CELL PATH (save 230): along the trail on the line's own
+  // cells, its cost - 1.10 full, 1.15 half; the route can do no worse.
+  failures += Expect(Near(open, 1.2F) && Near(on_full, kFullStraight) && Near(on_half, 1.15F),
                      "trails: a walker's open-ground km weighs 1.2 bare, 1.10 on a full trail, "
                      "1.15 on a half one");
   // Rule 8: a log cart over the same ground is not helped.
@@ -183,8 +181,30 @@ int TestTrails() {
           Near(index->Way(core::TravelMode::kWalk, west, east).effective_km, kFullStraight),
       "trails: RoadKm, the found-place query, Measure and Way all read the trails - one door "
       "(a reader of the bare index would answer 1.2)");
-  // STRAIGHT NEVER CHEAPER THAN THE ROUTE (boss 23 Nov): on a full trail along the line the
-  // walker's route is 1.10, the straight door 1.2 - 0.1 / 1.0824 - not below it.
+  // STRAIGHT NEVER CHEAPER THAN THE ROUTE, A THEOREM (save 230): on a trodden STAIRCASE - a
+  // 22.5° line's own cells, the case CHEAP2072 caught - every pair across it answers the
+  // straight door no lower than the route.
+  {
+    core::WorldState slant;
+    slant.roads = far_road;
+    const core::Vec2 low{.x = 0.0F, .y = 0.0F};
+    const core::Vec2 high{.x = 1000.0F, .y = 414.2F};
+    for (int pass = 0; pass < 30; ++pass) {
+      TreadLine(slant.trails, low, high, false, rules.gain_per_pass);
+    }
+    slant.road_index = core::BuildRoadIndex(slant.roads, slant.trails, dry);
+    bool never_cheaper = true;
+    for (int offset = -60; offset <= 60 && never_cheaper; offset += 20) {
+      const core::Vec2 a{.x = 37.0F, .y = 15.0F + static_cast<float>(offset)};
+      const core::Vec2 b{.x = 911.0F, .y = 377.0F - static_cast<float>(offset)};
+      never_cheaper = core::RoadKm(slant, core::TravelMode::kWalk, a, b) >=
+                      core::WalkRouteKm(slant, a, b, nullptr) - 1e-4F;
+    }
+    failures += Expect(never_cheaper,
+                       "doors: across a trodden staircase the straight door answers no lower "
+                       "than the walker's route for any pair");
+  }
+  // On a full trail along the line the walker's route is 1.10, and the straight door the same.
   const float along_route = core::WalkRouteKm(world, west, east, nullptr);
   failures += Expect(Near(along_route, 1.10F) &&
                          core::RoadKm(world, core::TravelMode::kWalk, west, east) >= along_route,
@@ -216,10 +236,8 @@ int TestTrails() {
           Near(in_snow_bare->EffectiveKm(core::TravelMode::kWalk, west, east), 2.0F) &&
           Near(in_snow_bare->EffectiveKm(core::TravelMode::kWalk, on_road_a, on_road_b),
                0.8F / 0.9F) &&
-          Near(on_snow_trail->EffectiveKm(core::TravelMode::kWalk, west, east),
-               2.0F - ((2.0F - (1.10F / 0.9F)) / kOctileBound)) &&
-          Near(in_snow_trail->EffectiveKm(core::TravelMode::kWalk, west, east),
-               2.0F - ((2.0F - (1.10F / 0.6F)) / kOctileBound)),
+          Near(on_snow_trail->EffectiveKm(core::TravelMode::kWalk, west, east), 1.10F / 0.9F) &&
+          Near(in_snow_trail->EffectiveKm(core::TravelMode::kWalk, west, east), 1.10F / 0.6F),
       "ground: open ground in mud 1.2 ÷ 0.75, a dirt road in mud 0.8 ÷ 0.75; open snow 1.2 ÷ 0.6, "
       "a road in snow as wet; a snow trail as wet ground, an earth trail under snow as snow");
   failures += Expect(Near(in_mud->EffectiveKm(core::TravelMode::kCart, on_road_a, on_road_b),

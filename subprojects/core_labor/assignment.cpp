@@ -1003,6 +1003,10 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
       AssignmentJob on_foot = job;
       on_foot.harnessed = false;
       std::uint32_t road_refused = 0;
+      // THE TRIP MINIMUM'S SKIPS ARE BOOKED (boss 24 Nov): a skip that books nothing is
+      // invisible to every instrument and to the player.
+      std::uint32_t too_far = 0;
+      std::uint32_t carried = 0;
       for (const RankedPick& pick :
            RankCandidates(on_foot, job_index, candidates, result, params, road_refused)) {
         if (covered[job_index] >= job.work_days_remaining) {
@@ -1021,6 +1025,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
         const float trip_day = std::min(params.standard_day_hours, params.window_hours);
         if (params.walker_min_trips_per_day > 0.0F && one_way > 0.0F &&
             trip_day / (2.0F * one_way) < params.walker_min_trips_per_day) {
+          ++too_far;
           continue;
         }
         if (job.walker_log) {
@@ -1032,9 +1037,20 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
           result[first_of_pair] = job_index;
           covered[job_index] += first_norm * share;
           first_of_pair = kNoJobAssigned;
+          ++carried;
         }
         result[pick.candidate_index] = job_index;
         covered[job_index] += pick.daily_norm * share;
+        ++carried;
+      }
+      // Nobody carried it, someone was too far for the day's trips, and the job stood short for
+      // no hands or for nothing booked: «too far to carry on foot today». A horse's or a road's
+      // reason, written first, stands.
+      const bool unreasoned =
+          !shortfall[job_index] || *shortfall[job_index] == JobShortfall::kNoHands;
+      if (carried == 0 && too_far > 0 && covered[job_index] < job.work_days_remaining &&
+          unreasoned) {
+        shortfall[job_index] = JobShortfall::kTooFarOnFoot;
       }
     }
   }

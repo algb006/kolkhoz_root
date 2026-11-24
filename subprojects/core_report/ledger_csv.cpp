@@ -65,7 +65,7 @@ constexpr std::array<const char*, kIdleReasonCount> kIdleReasonNames = {"no_open
                                                                         "rain",
                                                                         "funeral"};
 constexpr std::array<const char*, kJobShortfallCount> kJobShortfallNames = {
-    "no_horse", "crew_cap", "no_hands", "road"};
+    "no_horse", "crew_cap", "no_hands", "road", "too_far_on_foot"};
 
 // EVERY CELL HAS A NAME, which is not the same question as "are there as
 // many cells" (host, 2026-09-04). The array takes its length from the enum

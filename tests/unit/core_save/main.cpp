@@ -2769,7 +2769,10 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // books - predicted 4070 -> 4054 before the build, held; the hash read off ufarm.
     // Save 225: the table's grams (i64) and plain visits (u16), +10 a book, two books -
     // predicted 4054 -> 4074 before the build, held; the hash read off utbl.
-    {"ledger", 4074, 0x5bda623361213a01ULL},
+    // Save 230 (boss 24 Nov): JobShortfall::kTooFarOnFoot widens short_job_days by a column,
+    // thirteen kinds x a u32, two books - predicted 4074 -> 4178 before the build; the hash 0
+    // until read off the first units.
+    {"ledger", 4178, 0x0ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 

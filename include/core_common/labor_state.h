@@ -170,6 +170,9 @@ enum class JobShortfall : std::uint8_t {
   kNoHands,            ///< Nobody free and fit was left for it.
   kRoad,               ///< Nobody placed; every free hand asked was turned away by the way
                        ///< (the road rule, or a horseless carter's walk).
+  kTooFarOnFoot,       ///< Nobody carried it on foot: every hand asked was too far for the
+                       ///< day's two trips (walker_min_trips_per_day in the day's light;
+                       ///< save 230, boss 24 Nov - the skip booked nothing before).
   kJobShortfallCount,  ///< NOT A REASON: the count, for mirrors.
 };
 
