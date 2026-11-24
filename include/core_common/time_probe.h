@@ -24,6 +24,9 @@ enum class Slot : std::uint8_t {
   kDecay,
   kWalkRoute,
   kChoose,
+  kTreadRoutes,  ///< the tread's WalkRouteKm calls (memo hits and their step copies)
+  kTreadRule9,   ///< the tread's standing-crop check and pass gathering
+  kTreadSort,    ///< the tread's sort and merge of the passes
   kCount,
 };
 

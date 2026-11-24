@@ -2336,8 +2336,17 @@ int main(int argc, char** argv) {
   // roads.md §3's recompute cost (econ's S1 note): how many day node tables the run computed,
   // all villages together - a table only on a day the beds changed.
   {
-    static constexpr std::array<const char*, core::probe::kSlots> kSlotNames = {
-        "straight", "route", "make_day", "with_trails", "tread", "decay", "walk_route", "choose"};
+    static constexpr std::array<const char*, core::probe::kSlots> kSlotNames = {"straight",
+                                                                                "route",
+                                                                                "make_day",
+                                                                                "with_trails",
+                                                                                "tread",
+                                                                                "decay",
+                                                                                "walk_route",
+                                                                                "choose",
+                                                                                "tread_routes",
+                                                                                "tread_rule9",
+                                                                                "tread_sort"};
     std::cout << "population_curve: TIME2072 (all villages, summed over threads) s/calls";
     for (std::size_t slot = 0; slot < core::probe::kSlots; ++slot) {
       std::cout << ' ' << kSlotNames[slot] << ' '

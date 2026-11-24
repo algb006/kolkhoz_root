@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <memory>
 #include <numbers>
+#include <optional>
 #include <span>
 #include <tuple>
 #include <utility>
@@ -131,6 +132,7 @@ void TreadPlacedWalkers(const TrailRules& rules,
   }
   const bool over_snow = current.weather.snow_cover_days > 0;
   std::vector<std::pair<TrailEnd, TrailEnd>> steps;
+  std::optional<probe::Timer> routes_timer(std::in_place, probe::Slot::kTreadRoutes);
   for (std::size_t slot = 0; slot < candidates.size() && slot < plan.size(); ++slot) {
     if (plan[slot] == kNoJobAssigned) {
       continue;
@@ -165,6 +167,8 @@ void TreadPlacedWalkers(const TrailRules& rules,
   };
   // The passes gathered, then sorted and counted at once (#2072 CPU: one sorted insert a step
   // was the tread's cost) - the same rows and counts in the same key order.
+  routes_timer.reset();
+  std::optional<probe::Timer> rule9_timer(std::in_place, probe::Slot::kTreadRule9);
   std::vector<TrailPass> passes = std::move(pending);
   const std::vector<StandingCrop> crops = StandingCropsOf(current);
   for (auto [a, b] : steps) {
@@ -178,6 +182,8 @@ void TreadPlacedWalkers(const TrailRules& rules,
     }
     passes.push_back(TrailPass{.a = a, .b = b, .passes = 1});
   }
+  rule9_timer.reset();
+  const probe::Timer sort_timer(probe::Slot::kTreadSort);
   std::sort(passes.begin(), passes.end(), [&key](const TrailPass& left, const TrailPass& right) {
     return key(left) < key(right);
   });
