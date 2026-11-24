@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -1586,16 +1587,24 @@ class LaborSystem final : public ILaborSystem {
                     AssignmentParams& params) const {
     const std::shared_ptr<const RoadIndex> index = RoadIndexOf(current);
     std::vector<Vec2> homes;
+    // THE HOMES BY A HASH, NOT A SCAN (#2118, exact): the first-seen order numbers the slots as
+    // the linear search did, and the key is the position's bits with -0 folded into +0, so it
+    // is the search's float == on every position a house can hold. The scan was candidates x
+    // homes a call, and grew with the village squared.
+    std::unordered_map<std::uint64_t, std::uint32_t> slot_of;
+    slot_of.reserve(candidates.size());
+    const auto bits = [](float value) {
+      return std::bit_cast<std::uint32_t>(value == 0.0F ? 0.0F : value);
+    };
     for (AssignmentCandidate& candidate : candidates) {
-      std::uint32_t slot = 0;
-      while (slot < homes.size() &&
-             (homes[slot].x != candidate.home.x || homes[slot].y != candidate.home.y)) {
-        ++slot;
-      }
-      if (slot == homes.size()) {
+      const std::uint64_t key =
+          (static_cast<std::uint64_t>(bits(candidate.home.x)) << 32U) | bits(candidate.home.y);
+      const auto [found, fresh] =
+          slot_of.try_emplace(key, static_cast<std::uint32_t>(homes.size()));
+      if (fresh) {
         homes.push_back(candidate.home);
       }
-      candidate.home_slot = slot;
+      candidate.home_slot = found->second;
     }
     constexpr std::array<TravelMode, 4> kModes = {
         TravelMode::kWalk, TravelMode::kTeam, TravelMode::kCart, TravelMode::kLogCart};
