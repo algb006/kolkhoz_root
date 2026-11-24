@@ -226,7 +226,11 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // wire -8 a book.
 // Save 225 («Стол для района»): district_table_grams (i64) and district_plain_visits (u16) -
 // read off a probe before the build, 1440 -> 1456 and 169 -> 171 fields; on the wire +10 a book.
-static_assert(sizeof(YearLedger) == 1456 + (48 * kAmountsSize) + kBuiltInRowsSize,
+// Save 230 (JobShortfall::kTooFarOnFoot): short_job_days widens a column, 13 kinds x a u32 -
+// predicted 1456 -> 1508, a MISS: read off a probe, 1512 (the 52 bytes round to the struct's
+// 8-byte alignment); fields unchanged; the guard fired on the first build, as it should; the
+// codec writes the array by its size, so on the wire +52 a book.
+static_assert(sizeof(YearLedger) == 1512 + (48 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<YearLedger>() == 171,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
