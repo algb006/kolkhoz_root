@@ -268,6 +268,49 @@ PlacedWalkCount TakePlacedWalkCount() {
   return taken;
 }
 
+NetworkPlace LocateOnNetwork(const std::shared_ptr<const RoadIndex>& index,
+                             TravelMode mode,
+                             Vec2 position) {
+  using LocateKey = std::array<std::uint32_t, 3>;
+
+  struct LocateKeyHash {
+    std::size_t operator()(const LocateKey& key) const {
+      std::uint64_t hash = 1469598103934665603ULL;  // FNV-1a
+      for (const std::uint32_t word : key) {
+        hash = (hash ^ word) * 1099511628211ULL;
+      }
+      return static_cast<std::size_t>(hash);
+    }
+  };
+
+  struct Kept {
+    const RoadIndex* network = nullptr;
+    std::shared_ptr<const RoadIndex> owner;  // keeps `network` alive while it is the key
+    std::unordered_map<LocateKey, NetworkPlace, LocateKeyHash> places;
+  };
+
+  // A cap far above a village's homes x modes; past it the memo starts over (forgetting only
+  // finds again).
+  constexpr std::size_t kKeptPlaces = std::size_t{1} << 16U;
+  thread_local Kept kept;
+  const RoadIndex* const network = index->Network();
+  if (kept.network != network || kept.places.size() >= kKeptPlaces) {
+    kept.network = network;
+    kept.owner = index;
+    kept.places.clear();
+  }
+  const LocateKey key{static_cast<std::uint32_t>(mode),
+                      std::bit_cast<std::uint32_t>(position.x),
+                      std::bit_cast<std::uint32_t>(position.y)};
+  const auto found = kept.places.find(key);
+  if (found != kept.places.end()) {
+    return found->second;
+  }
+  const NetworkPlace place = index->Locate(mode, position);
+  kept.places.emplace(key, place);
+  return place;
+}
+
 GroundState GroundStateAt(const WorldState& world, Vec2 point) {
   const DayWeights* day = nullptr;
   const std::shared_ptr<const RoadIndex> base = BareOf(RoadIndexOf(world), &day);

@@ -1611,7 +1611,8 @@ class LaborSystem final : public ILaborSystem {
     std::vector<std::array<NetworkPlace, 4>> found_homes(homes.size());
     for (std::size_t slot = 0; slot < homes.size(); ++slot) {
       for (std::size_t mode = 0; mode < kModes.size(); ++mode) {
-        found_homes[slot][mode] = index->Locate(kModes[mode], homes[slot]);
+        // Remembered while the network stands (#2118, exact): the homes are where they were.
+        found_homes[slot][mode] = LocateOnNetwork(index, kModes[mode], homes[slot]);
       }
     }
     params.home_slots = static_cast<std::uint32_t>(homes.size());
@@ -1625,7 +1626,7 @@ class LaborSystem final : public ILaborSystem {
     params.yard_ride_km.clear();
     if (stabled) {
       for (std::size_t mode = 0; mode < kModes.size(); ++mode) {
-        found_yard[mode] = index->Locate(kModes[mode], yard);
+        found_yard[mode] = LocateOnNetwork(index, kModes[mode], yard);
       }
       const float walk_hours_per_km = HoursPerKm(config_, WorkKind::kHarvest);
       params.yard_walk_hours.resize(homes.size());
@@ -1660,8 +1661,8 @@ class LaborSystem final : public ILaborSystem {
       // keeps to the roads: measured so first, the potato field 0.68 km out
       // was 1.40 km by the roads, the ride saved a quarter of an hour of an
       // hour and a half, and a hand's October day stayed at 0.60 of a norm.
-      const NetworkPlace walk_place = index->Locate(TravelMode::kWalk, job.position);
-      const NetworkPlace ride_place = index->Locate(kModes[ride_mode], job.position);
+      const NetworkPlace walk_place = LocateOnNetwork(index, TravelMode::kWalk, job.position);
+      const NetworkPlace ride_place = LocateOnNetwork(index, kModes[ride_mode], job.position);
       for (std::size_t slot = 0; slot < homes.size(); ++slot) {
         const std::size_t at = ((job_index * homes.size()) + slot) * 2U;
         // A WALK PLACED YESTERDAY IS PRICED BY ITS ROUTE (option 1, boss 24 Nov; roads.md's
