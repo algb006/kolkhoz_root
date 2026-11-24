@@ -9,13 +9,15 @@
 ///        worker here is counted; the tread counts only the accountant's placements - the
 ///        difference is the STUB's size).
 ///
-/// THE CPU GATE (boss, 24 Nov 2026, decision (b)): a trailed run may cost up to +22 % user CPU
-/// over B0 (was +15 %). Reason on record: six exact cuts (edge hash, memos, dense grid, inline
-/// snap, floor-bound router, sorted tread) took the first lattice's 2.9x to +21.1 % (B0
-/// 10 197 s, B2 12 353 s, offset 0, xeon16, ef4dc7a8); the rest is the feature's own cost - the
-/// trails decay every morning, so every leg is priced afresh. PARKED LEVER: the query door's
-/// one sample per cell (about -5 points, answer-changing) - back only if the game's tick budget
-/// is shown to hurt, then as a paired arm with identity printed.
+/// THE CPU GATE: a trailed run may cost up to +15 % user CPU over B0. The +22 % of 24 Nov
+/// (boss, decision (b), after six exact cuts took the first lattice's 2.9x to +21.1 %) was
+/// TEMPORARY by Alex's rule - an algorithm that scales with the world is fixed, not gated - and
+/// is withdrawn on the clean pair under it: the second Fable review's five exact cuts (#2390,
+/// identity 0 lines of 20 419) and the revert of the trail-aware A* floor gave B0 11 256 s,
+/// B2 12 703 s user = +12.85 % (offset 0, xeon17, one node and hour, 3fb1a252; the tree with
+/// the floor, 311ed419, +14.20 %). PARKED LEVER: the query door's one sample per cell (about
+/// -5 points, answer-changing) - back only if the game's tick budget is shown to hurt, then as
+/// a paired arm with identity printed.
 /// @threading SINGLE_THREADED
 /// Test-side code, driven once a day from the thread that owns the simulation.
 
