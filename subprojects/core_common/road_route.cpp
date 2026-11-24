@@ -104,11 +104,8 @@ class RoadIndexImpl final : public RoadIndex {
         edge_bed_[edge] = BedOf(roads.rows[row].surface);
       }
     }
-    // A WORLD WITH NO NETWORK AT ALL has no road for open ground to be slower
-    // than: it measures the straight line at the traveller's own pace, as
-    // every trip was measured before 0.36.2. Only a hand-built world is so —
-    // the game's always has the map's roads — and a cart there still says it
-    // had no road.
+    // A WORLD WITH NO NETWORK (a hand-built one only) measures the straight line at the
+    // traveller's own pace, as before 0.36.2; a cart there still says it had no road.
     if (segments_.empty()) {
       rules_.off_road_weight.fill(1.0F);
     }
@@ -524,14 +521,16 @@ class RoadIndexImpl final : public RoadIndex {
 
  public:
   /// THE DAY (road_day.h, MakeDay): own node tables for a mode the ground touches, reused from
-  /// `previous` while its key matches.
-  std::shared_ptr<const DayWeights> MakeDay(const TrailTable* trails,
-                                            const RoadBeds& beds,
-                                            const DayWeights* previous) const {
+  /// `previous` while its key matches; `lookup` shared when built already (#2390).
+  std::shared_ptr<const DayWeights> MakeDay(
+      const TrailTable* trails,
+      const RoadBeds& beds,
+      const DayWeights* previous,
+      std::shared_ptr<const lattice::TrailLookup> lookup) const {
     auto day = std::make_shared<DayWeights>();
     day->trails = trails;
     day->serial = lattice::NextDaySerial();
-    day->lookup = lattice::LookupOf(trails);
+    day->lookup = lookup != nullptr ? std::move(lookup) : lattice::LookupOf(trails);
     const GroundFactors& factors = trails != nullptr ? trails->ground : GroundFactors{};
     // The key: the three beds' conditions and both modes' factors.
     std::uint64_t key = kFnvOffsetBasis;
@@ -954,8 +953,9 @@ bool IsBare(const RoadIndex& index) {
 std::shared_ptr<const DayWeights> MakeDay(const RoadIndex& bare,
                                           const TrailTable* trails,
                                           const RoadBeds& beds,
-                                          const DayWeights* previous) {
-  return Impl(bare).MakeDay(trails, beds, previous);
+                                          const DayWeights* previous,
+                                          std::shared_ptr<const lattice::TrailLookup> lookup) {
+  return Impl(bare).MakeDay(trails, beds, previous, std::move(lookup));
 }
 
 float EffectiveKm(

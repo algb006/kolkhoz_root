@@ -283,13 +283,16 @@ const TrailRow* TrailLookup::Find(TrailEnd a, TrailEnd b) const {
 TrailLookup MakeLookup(const TrailTable& table) {
   TrailLookup lookup;
   lookup.table = &table;
-  lookup.rows.reserve(table.rows.size());
   std::int32_t left = 0;
   std::int32_t bottom = 0;
   std::int32_t right = -1;
   std::int32_t top = -1;
   for (const TrailRow& row : table.rows) {
-    lookup.rows.emplace(EdgeKey(row.a, row.b), &row);
+    // ONLY THE ROWS THE GRID CANNOT HOLD go to the hash (#2390, exact): a neighbour edge is
+    // read off the grid, and a node a row was the morning's largest allocation.
+    if (GridDirection(row.a, row.b) < 0) {
+      lookup.rows.emplace(EdgeKey(row.a, row.b), &row);
+    }
     for (const TrailEnd end : {row.a, row.b}) {
       const bool first = right < left;
       left = first ? end.x : std::min(left, end.x);

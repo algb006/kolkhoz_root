@@ -53,10 +53,14 @@ bool IsBare(const RoadIndex& index);
 
 /// @brief The day's weights on `bare`: the trails and today's beds; a mode the ground touches
 ///        gets its own node tables, taken from `previous` while its key matches.
-std::shared_ptr<const DayWeights> MakeDay(const RoadIndex& bare,
-                                          const TrailTable* trails,
-                                          const RoadBeds& beds,
-                                          const DayWeights* previous);
+/// @param lookup The trails' lookup already built over the same `trails` this morning (the
+///        distance day shares the time day's: #2390, one build a morning), or null to build.
+std::shared_ptr<const DayWeights> MakeDay(
+    const RoadIndex& bare,
+    const TrailTable* trails,
+    const RoadBeds& beds,
+    const DayWeights* previous,
+    std::shared_ptr<const lattice::TrailLookup> lookup = nullptr);
 
 /// @brief RoadIndex's queries on `bare` under `day` (nullptr: the bare network's own).
 float EffectiveKm(

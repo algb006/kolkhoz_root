@@ -39,7 +39,7 @@ class DayRoadIndex final : public RoadIndex {
     // THE DISTANCE, NOT THE TIME (boss 23 Nov; leisure.md §4: reach is metres of the way):
     // the same trails on dry ground - the ground's factors slow a walk, they do not move a
     // place farther. Neutral, so it computes no node table.
-    distance_day_ = road_day::MakeDay(*base_, &trails_, RoadBeds{}, nullptr);
+    distance_day_ = road_day::MakeDay(*base_, &trails_, RoadBeds{}, nullptr, day_->lookup);
   }
 
   float EffectiveKm(TravelMode mode, Vec2 from, Vec2 to) const override {
