@@ -25,6 +25,7 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -46,6 +47,7 @@
 #include "demography.h"
 #include "family_exchange.h"
 #include "family_meal.h"
+#include "family_members.h"
 #include "food_config.h"
 #include "household_plot.h"
 #include "housing.h"
@@ -91,12 +93,19 @@ class FamilyNeedsPhase final : public IParallelPhase {
     return static_cast<std::uint32_t>(current.families.rows.size());
   }
 
+  void PrepareStep(const WorldState& current) override { members_.Prepare(current); }
+
   void RunItemRange(const WorldState& previous,
                     WorldState& current,
                     std::uint32_t begin_item,
                     std::uint32_t end_item) override {
+    const bool indexed = members_.Fits(current);
     for (std::uint32_t item = begin_item; item < end_item; ++item) {
-      RunFamilyMeal(*food_, life_speedup_, previous, current, item);
+      if (indexed) {
+        RunFamilyMeal(*food_, life_speedup_, previous, current, item, members_.Of(item));
+      } else {
+        RunFamilyMeal(*food_, life_speedup_, previous, current, item);
+      }
     }
   }
 
@@ -104,6 +113,8 @@ class FamilyNeedsPhase final : public IParallelPhase {
   const FoodConfig* food_;
 
   float life_speedup_;
+
+  StepFamilyMembers members_;
 };
 
 /// The metrics slot (phase 5): family satisfaction from its four components
@@ -118,6 +129,8 @@ class FamilyMetricsPhase final : public IParallelPhase {
     return static_cast<std::uint32_t>(current.families.rows.size());
   }
 
+  void PrepareStep(const WorldState& current) override { members_.Prepare(current); }
+
   void RunItemRange(const WorldState& previous,
                     WorldState& current,
                     std::uint32_t begin_item,
@@ -125,15 +138,24 @@ class FamilyMetricsPhase final : public IParallelPhase {
     // current.epoch is finalized by the decisions slot (buffer-law rule 4).
     const SatisfactionWeights& weights = config_->weights[EpochIndex(current.epoch)];
     const bool new_day = current.calendar.day != previous.calendar.day;
+    const bool indexed = members_.Fits(current);
     for (std::uint32_t item = begin_item; item < end_item; ++item) {
+      // The family's rows, once a step (#2118): the index, or the plain scan for a caller
+      // that did not prepare the step (a unit's direct range).
+      std::vector<std::uint32_t> scanned;
+      if (!indexed) {
+        scanned = MemberRowsOf(current, current.families.row_ids[item]);
+      }
+      const std::span<const std::uint32_t> members =
+          indexed ? members_.Of(item) : std::span<const std::uint32_t>(scanned);
       // The plot goes first: the day's hours are an input to nothing here
       // yet, but the garden it pays out feeds tomorrow's meal, and both
       // belong to the same owned row.
-      RunHouseholdPlot(*food_, config_->life_speedup, current, item);
-      SettleFamily(weights, current, item);
+      RunHouseholdPlot(*food_, config_->life_speedup, current, item, members);
+      SettleFamily(weights, current, item, members);
       // THE LOOK'S MEMORY, off the satisfaction just set and the members'
       // satiety the needs phase set this step (appearance_memory.h; 0.37.17).
-      RememberWellbeing(*config_, current, item, new_day);
+      RememberWellbeing(*config_, current, item, new_day, members);
     }
   }
 
@@ -144,10 +166,19 @@ class FamilyMetricsPhase final : public IParallelPhase {
   void SettleFamily(const SatisfactionWeights& weights,
                     WorldState& current,
                     std::uint32_t item) const {
+    const std::vector<std::uint32_t> members =
+        MemberRowsOf(current, current.families.row_ids[item]);
+    SettleFamily(weights, current, item, members);
+  }
+
+  void SettleFamily(const SatisfactionWeights& weights,
+                    WorldState& current,
+                    std::uint32_t item,
+                    std::span<const std::uint32_t> members) const {
     {
       FamilyRow& family = current.families.rows[item];
-      family.component_satiety = SatietyComponent(*food_, current, item);
-      UpdateRestComponent(current, item, family);
+      family.component_satiety = SatietyComponent(*food_, current, item, members);
+      UpdateRestComponent(current, members, family);
       const float weighted =
           (family.component_satiety * weights.satiety +
            family.component_common_cause * weights.common_cause +
@@ -185,16 +216,13 @@ class FamilyMetricsPhase final : public IParallelPhase {
   /// is finalized before the metrics phase runs (buffer-law rule 4).
   /// A household with nobody of working age keeps its previous value.
   static void UpdateRestComponent(const WorldState& current,
-                                  std::uint32_t family_item,
+                                  std::span<const std::uint32_t> members,
                                   FamilyRow& family) {
-    const FamilyId id = current.families.row_ids[family_item];
     float total = 0.0F;
     std::uint32_t counted = 0;
-    for (const ResidentRow& resident : current.residents.rows) {
-      if (resident.family.value == id.value) {
-        total += resident.rest;
-        ++counted;
-      }
+    for (const std::uint32_t row : members) {
+      total += current.residents.rows[row].rest;
+      ++counted;
     }
     if (counted > 0) {
       family.component_rest = total / static_cast<float>(counted);
@@ -204,6 +232,8 @@ class FamilyMetricsPhase final : public IParallelPhase {
   const LifeConfig* config_;
 
   const FoodConfig* food_;
+
+  StepFamilyMembers members_;
 };
 
 class ResidentsSystem final : public IResidentsSystem {

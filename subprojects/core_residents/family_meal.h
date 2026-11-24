@@ -23,6 +23,7 @@
 #define CORE_RESIDENTS_FAMILY_MEAL_H_
 
 #include <cstdint>
+#include <span>
 
 #include "core_common/quantities.h"
 #include "core_common/world_state.h"
@@ -42,6 +43,17 @@ void RunFamilyMeal(const FoodConfig& config,
                    const WorldState& previous,
                    WorldState& current,
                    std::uint32_t family_item);
+
+/// @brief The same meal with the family's member rows given (family_members.h; #2118: the
+///        needs phase indexes them once a step instead of every family scanning every
+///        resident).
+/// @param members The resident rows whose family is row `family_item`, ascending.
+void RunFamilyMeal(const FoodConfig& config,
+                   float life_speedup,
+                   const WorldState& previous,
+                   WorldState& current,
+                   std::uint32_t family_item,
+                   std::span<const std::uint32_t> members);
 
 /// @brief What one person needs in a day, in the GRAIN EQUIVALENT the food
 /// norms are stated in.
@@ -68,6 +80,13 @@ float SettlementDailyNeedKilograms(const FoodConfig& config,
 Metric SatietyComponent(const FoodConfig& config,
                         const WorldState& current,
                         std::uint32_t family_item);
+
+/// @brief The same component with the family's member rows given (family_members.h).
+/// @param members The resident rows whose family is row `family_item`, ascending.
+Metric SatietyComponent(const FoodConfig& config,
+                        const WorldState& current,
+                        std::uint32_t family_item,
+                        std::span<const std::uint32_t> members);
 
 }  // namespace core
 
