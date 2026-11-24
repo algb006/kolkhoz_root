@@ -35,6 +35,9 @@ constexpr float kStaleSlack = 1e-6F;
 /// The off-trail floor's share kept in the heuristic: a hair under, so float sums of the
 /// chamfer distances never lift it above a true way's cost.
 constexpr float kHeuristicUnder = 0.999F;
+/// The geometry test's margin: the path at the cheapest price must beat the octile at the open
+/// price by this much before the replay is skipped (a float sum's error is far smaller).
+constexpr float kOpenByGeometryUnder = 0.999F;
 constexpr std::uint32_t kNoCell = 0xFFFFFFFFU;
 
 float Distance(Vec2 a, Vec2 b) {
@@ -45,6 +48,7 @@ float Distance(Vec2 a, Vec2 b) {
 /// (a half-cell sample moves at most one cell an axis), encoded (x + 1) * 3 + (y + 1).
 struct LineMoves {
   std::vector<std::uint8_t> moves;
+  float length_cells = 0.0F;  ///< the path's length: straight moves 1, diagonal √2
 };
 
 std::int32_t MoveX(std::uint8_t move) {
@@ -98,6 +102,7 @@ const LineMoves& MovesOf(Vec2 from, Vec2 to, float length, TrailEnd first) {
     if (next.x != here.x || next.y != here.y) {
       line.moves.push_back(
           static_cast<std::uint8_t>(((next.x - here.x + 1) * 3) + (next.y - here.y + 1)));
+      line.length_cells += next.x != here.x && next.y != here.y ? kSqrtTwo : 1.0F;
       here = next;
     }
   }
@@ -144,6 +149,19 @@ float MeanCrossedCost(const TrailLookup& trails,
   if (moves.moves.empty()) {
     return open;
   }
+  const auto across = static_cast<float>(std::abs(last.x - first.x));
+  const auto up = static_cast<float>(std::abs(last.y - first.y));
+  const float octile_cells = std::max(across, up) + (kOctileDiagonal * std::min(across, up));
+  // OPEN GROUND BY GEOMETRY ALONE (#2390, the second Fable review; exact): no step costs less
+  // than the cheapest (a full trail on the cheaper ground), so when even the path at that
+  // price is no shorter than the octile at the open price, the answer is open ground whatever
+  // is trodden - a staircase off an axis by more than ~9-19°. A hair of margin covers the
+  // float sum the replay would take.
+  const float cheapest =
+      std::min(open_weight, trails.WeightFull()) * std::min(open_cost, snow_trail_cost);
+  if (cheapest * moves.length_cells * kOpenByGeometryUnder >= open * octile_cells) {
+    return open;
+  }
   float path_cost = 0.0F;  // in cells x cost a km; the cell's km cancels against the octile's
   TrailEnd here = first;
   for (const std::uint8_t move : moves.moves) {
@@ -155,9 +173,6 @@ float MeanCrossedCost(const TrailLookup& trails,
     path_cost += edge * step;
     here = next;
   }
-  const auto across = static_cast<float>(std::abs(last.x - first.x));
-  const auto up = static_cast<float>(std::abs(last.y - first.y));
-  const float octile_cells = std::max(across, up) + (kOctileDiagonal * std::min(across, up));
   return octile_cells > 0.0F ? std::min(open, path_cost / octile_cells) : open;
 }
 
