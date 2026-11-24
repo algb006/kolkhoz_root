@@ -28,6 +28,12 @@ using road_day::DayWeights;
 /// THE NETWORK ON THIS DAY: the bare index shared, a copy of the trails and the day's weights
 /// held - immutable like the index, so the double buffer still copies a pointer. Every query
 /// is the bare index's own under the day's costs.
+float WalkOnTheDay(const RoadIndex& base,
+                   Vec2 from,
+                   Vec2 to,
+                   const DayWeights* day,
+                   std::vector<std::pair<TrailEnd, TrailEnd>>* edges);
+
 class DayRoadIndex final : public RoadIndex {
  public:
   DayRoadIndex(std::shared_ptr<const RoadIndex> base,
@@ -80,8 +86,7 @@ class DayRoadIndex final : public RoadIndex {
     for (const WalkPair& pair : walked) {
       const PairKey key = KeyOf(pair.from, pair.to);
       if (!placed_.contains(key)) {
-        placed_.emplace(key,
-                        road_day::WalkRouteKm(*base_, pair.from, pair.to, day_.get(), nullptr));
+        placed_.emplace(key, WalkOnTheDay(*base_, pair.from, pair.to, day_.get(), nullptr));
       }
     }
   }
@@ -122,6 +127,61 @@ class DayRoadIndex final : public RoadIndex {
 
 /// This thread's asks of PlacedWalkKm (the run's print; per thread, so no shared counter).
 thread_local PlacedWalkCount g_placed_walk_count;
+
+/// A whole walk's answer: its km and its lattice steps, in order.
+struct WalkAnswer {
+  float km = 0.0F;
+  std::vector<std::pair<TrailEnd, TrailEnd>> steps;
+};
+
+/// Walks kept a thread before the memo starts over (forgetting only re-prices).
+constexpr std::size_t kWalkMemoCap = std::size_t{1} << 16U;
+
+/// THE WHOLE WALK, ONCE A DAY A THREAD (#2390 item 2, the second Fable review; exact): the
+/// walker's door ran the way's choice (accesses, Choose, legs) before any leg's memo, for every
+/// asker of the same pair - the morning's pricing, the timing door, the tread. Keyed by the
+/// day's process-unique serial and the ends' bits; a neutral day's (serial 0) is not kept.
+float WalkOnTheDay(const RoadIndex& base,
+                   Vec2 from,
+                   Vec2 to,
+                   const DayWeights* day,
+                   std::vector<std::pair<TrailEnd, TrailEnd>>* edges) {
+  if (day == nullptr || day->serial == 0) {
+    return road_day::WalkRouteKm(base, from, to, day, edges);
+  }
+  using WalkKey = std::array<std::uint32_t, 4>;
+
+  struct WalkKeyHash {
+    std::size_t operator()(const WalkKey& key) const {
+      std::uint64_t hash = 1469598103934665603ULL;
+      for (const std::uint32_t word : key) {
+        hash = (hash ^ word) * 1099511628211ULL;
+      }
+      return static_cast<std::size_t>(hash);
+    }
+  };
+
+  thread_local std::uint64_t memo_serial = 0;
+  thread_local std::unordered_map<WalkKey, WalkAnswer, WalkKeyHash> memo;
+  if (memo_serial != day->serial || memo.size() >= kWalkMemoCap) {
+    memo.clear();
+    memo_serial = day->serial;
+  }
+  const WalkKey key = {std::bit_cast<std::uint32_t>(from.x),
+                       std::bit_cast<std::uint32_t>(from.y),
+                       std::bit_cast<std::uint32_t>(to.x),
+                       std::bit_cast<std::uint32_t>(to.y)};
+  auto found = memo.find(key);
+  if (found == memo.end()) {
+    WalkAnswer answer;
+    answer.km = road_day::WalkRouteKm(base, from, to, day, &answer.steps);
+    found = memo.emplace(key, std::move(answer)).first;
+  }
+  if (edges != nullptr) {
+    edges->insert(edges->end(), found->second.steps.begin(), found->second.steps.end());
+  }
+  return found->second.km;
+}
 
 /// The bare network under any index of ours, and the day it carried (or nullptr).
 std::shared_ptr<const RoadIndex> BareOf(const std::shared_ptr<const RoadIndex>& index,
@@ -227,7 +287,7 @@ float WalkRouteKm(const WorldState& world,
     return RoadKm(world, TravelMode::kWalk, from, to);
   }
   if (day != nullptr) {
-    return road_day::WalkRouteKm(*base, from, to, day, edges);
+    return WalkOnTheDay(*base, from, to, day, edges);
   }
   // A bare index (no trail in effect this morning, a neutral ground): the lattice still gives
   // the walker his steps, so the first trail can begin; its km is the straight line's by the
