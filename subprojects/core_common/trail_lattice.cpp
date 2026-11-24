@@ -56,14 +56,29 @@ float MeanCrossedCost(const TrailLookup& trails,
   if (std::tie(to.x, to.y) < std::tie(from.x, from.y)) {
     std::swap(from, to);
   }
+  const float open = open_weight * open_cost;
+  // THE LINE MISSES EVERY TRAIL (#2072 CPU, boss's (i) of 24 Nov): the box of its two end cells
+  // holds the whole line, so a box clear of the trails' crosses no trodden edge - open ground,
+  // the very answer the sampling below gives (its discount sums only trodden edges).
+  const TrailEnd first = SnapTrailEnd(from);
+  const TrailEnd last = SnapTrailEnd(to);
+  if (!trails.grid.empty()) {
+    const std::int32_t right = trails.origin.x + trails.columns - 1;
+    const std::int32_t top = trails.origin.y + trails.rows_of_cells - 1;
+    if (std::max(first.x, last.x) < trails.origin.x || std::min(first.x, last.x) > right ||
+        std::max(first.y, last.y) < trails.origin.y || std::min(first.y, last.y) > top) {
+      return open;
+    }
+  }
   const auto pieces =
       static_cast<std::uint32_t>(std::ceil(length / (kTrailSnapMetres / kSamplesPerCell)));
-  float sum = 0.0F;
   // EACH EDGE BY ITS LENGTH (boss 24 Nov, LEGS2072's cases: counting every transition once
   // left the straight door cheaper than the route in 2.8 % of pairs; the route pays a diagonal
-  // edge √2 of a straight one): a straight edge weighs 1, a diagonal √2.
+  // edge √2 of a straight one): a straight edge weighs 1, a diagonal √2. The answer is open
+  // ground less the mean DISCOUNT, so an untrodden line answers open ground exactly.
+  float discount = 0.0F;
   float crossed = 0.0F;
-  TrailEnd here = SnapTrailEnd(from);
+  TrailEnd here = first;
   for (std::uint32_t piece = 1; piece <= pieces; ++piece) {
     const float share = static_cast<float>(piece) / static_cast<float>(pieces);
     const TrailEnd next = SnapTrailEnd(
@@ -72,15 +87,16 @@ float MeanCrossedCost(const TrailLookup& trails,
       // STRAIGHT NEVER CHEAPER THAN THE ROUTE (boss 23 Nov, roads.md): the trodden discount the
       // straight door gives is the route's cut by the lattice's octile bound - a route along the
       // same trail pays up to that excess for its staircase.
-      const float open = open_weight * open_cost;
-      const float step = StepCost(trails, here, next, open_weight, open_cost, snow_trail_cost);
       const float edge = next.x != here.x && next.y != here.y ? kSqrtTwo : 1.0F;
-      sum += edge * (open - ((open - step) * kStraightDiscountShare));
+      if (trails.Find(here, next) != nullptr) {
+        const float step = StepCost(trails, here, next, open_weight, open_cost, snow_trail_cost);
+        discount += edge * (open - step) * kStraightDiscountShare;
+      }
       crossed += edge;
       here = next;
     }
   }
-  return crossed > 0.0F ? sum / crossed : open_weight * open_cost;
+  return crossed > 0.0F ? open - (discount / crossed) : open;
 }
 
 }  // namespace
