@@ -183,6 +183,14 @@ class IParallelPhase {
   /// mis-size any phase that runs after a structural one.
   virtual std::uint32_t ParallelItemCount(const WorldState& current) const = 0;
 
+  /// @brief Once a step, after ParallelItemCount (and only when it is not 0), on the stepping
+  /// thread, before any RunItemRange: the phase builds what its ranges will only READ - an
+  /// index over `current`'s final shapes (#2118: the families' members, so a family's work
+  /// reads its own rows instead of scanning every resident). The default builds nothing.
+  /// @note The ranges must not write what was built here, and the result must equal a
+  ///       per-range computation: correctness still cannot depend on chunking.
+  virtual void PrepareStep(const WorldState& current) { static_cast<void>(current); }
+
   /// @brief Processes rows [begin_item, end_item) of the phase's table.
   /// @param previous The completed last step; immutable, read anything.
   /// @param current  The step being built. Write only the owned rows; read

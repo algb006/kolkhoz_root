@@ -1,11 +1,14 @@
 #include "appearance_memory.h"
 
 #include <cstdint>
+#include <span>
+#include <vector>
 
 #include "core_common/calendar.h"
 #include "core_common/family_state.h"
 #include "core_common/quantities.h"
 #include "core_common/resident_state.h"
+#include "family_members.h"
 
 namespace core {
 namespace {
@@ -37,14 +40,22 @@ void RememberWellbeing(const LifeConfig& life,
                        WorldState& current,
                        std::uint32_t family_item,
                        bool new_day) {
+  const std::vector<std::uint32_t> members =
+      MemberRowsOf(current, current.families.row_ids[family_item]);
+  RememberWellbeing(life, current, family_item, new_day, members);
+}
+
+void RememberWellbeing(const LifeConfig& life,
+                       WorldState& current,
+                       std::uint32_t family_item,
+                       bool new_day,
+                       std::span<const std::uint32_t> members) {
   FamilyRow& family = current.families.rows[family_item];
   RememberTheYear(family.satisfaction, new_day, family.satisfaction_year);
-  const FamilyId id = current.families.row_ids[family_item];
   const SimDay today = current.calendar.day;
-  for (ResidentRow& resident : current.residents.rows) {
-    if (resident.family.value != id.value) {
-      continue;
-    }
+  // The family's own rows, ascending (family_members.h, #2118).
+  for (const std::uint32_t row : members) {
+    ResidentRow& resident = current.residents.rows[row];
     RememberTheYear(resident.satiety, new_day, resident.satiety_year);
     // THE CHILDHOOD, the mean of its days, frozen at growing up. Seeded with
     // today's satiety as if every day before had been today — for the start's

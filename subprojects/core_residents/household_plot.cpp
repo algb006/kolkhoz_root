@@ -11,11 +11,14 @@
 #include "household_plot.h"
 
 #include <cstdint>
+#include <span>
+#include <vector>
 
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
 #include "core_common/yard_hay_year.h"
+#include "family_members.h"
 
 namespace core {
 namespace {
@@ -35,13 +38,12 @@ struct YardToday {
 YardToday SurveyYard(const PlotConfig& plot,
                      float life_speedup,
                      const WorldState& current,
-                     FamilyId id,
+                     std::span<const std::uint32_t> members,
                      SimDay day) {
   YardToday yard;
-  for (const ResidentRow& resident : current.residents.rows) {
-    if (resident.family.value != id.value) {
-      continue;
-    }
+  // The family's own rows, ascending (family_members.h, #2118).
+  for (const std::uint32_t row : members) {
+    const ResidentRow& resident = current.residents.rows[row];
     ++yard.members;
     const float age = BiologicalAgeYears(life_speedup, resident.birth_day, day);
     if (resident.work.hours_away_today > 0.0F) {
@@ -200,6 +202,19 @@ void RunHouseholdPlot(const FoodConfig& config,
   if (HourFromTick(current.calendar.tick) != kTicksPerDay - 2U) {
     return;  // once a day, at the last hour the day's orders are still alive
   }
+  const std::vector<std::uint32_t> members =
+      MemberRowsOf(current, current.families.row_ids[family_item]);
+  RunHouseholdPlot(config, life_speedup, current, family_item, members);
+}
+
+void RunHouseholdPlot(const FoodConfig& config,
+                      float life_speedup,
+                      WorldState& current,
+                      std::uint32_t family_item,
+                      std::span<const std::uint32_t> members) {
+  if (HourFromTick(current.calendar.tick) != kTicksPerDay - 2U) {
+    return;  // once a day, at the last hour the day's orders are still alive
+  }
   if (EpochIndex(current.epoch) >= config.satiety.categories_norm_by_epoch.size()) {
     return;  // an epoch this config does not know
   }
@@ -215,7 +230,7 @@ void RunHouseholdPlot(const FoodConfig& config,
     return;
   }
 
-  const YardToday yard = SurveyYard(plot, life_speedup, current, id, day);
+  const YardToday yard = SurveyYard(plot, life_speedup, current, members, day);
   family.household_hours = PlotHours(plot, yard, month);
 
   // The garden's yield scales by the season's average attention: the daily

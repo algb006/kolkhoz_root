@@ -25,6 +25,7 @@
 #define CORE_RESIDENTS_HOUSEHOLD_PLOT_H_
 
 #include <cstdint>
+#include <span>
 
 #include "core_common/world_state.h"
 #include "food_config.h"
@@ -41,6 +42,14 @@ void RunHouseholdPlot(const FoodConfig& config,
                       float life_speedup,
                       WorldState& current,
                       std::uint32_t family_item);
+
+/// @brief The same day with the family's member rows given (family_members.h; #2118).
+/// @param members The resident rows whose family is row `family_item`, ascending.
+void RunHouseholdPlot(const FoodConfig& config,
+                      float life_speedup,
+                      WorldState& current,
+                      std::uint32_t family_item,
+                      std::span<const std::uint32_t> members);
 
 /// @brief The family's garden harvest ahead (#1046 (c); boss, the #1046
 /// thread [17], arm C): whole days from today to the last day of the garden's

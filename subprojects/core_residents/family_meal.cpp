@@ -13,11 +13,13 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <vector>
 
 #include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
+#include "family_members.h"
 #include "life_config.h"
 
 namespace core {
@@ -57,13 +59,15 @@ float FamilyNeedKcal(const FoodConfig& config,
                      float life_speedup,
                      const WorldState& previous,
                      const WorldState& current,
-                     FamilyId id,
+                     std::span<const std::uint32_t> members,
                      SimDay day) {
   float kilograms = 0.0F;
-  for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
+  // The family's own rows, ascending (family_members.h, #2118): the scan of every resident
+  // visited them in this order.
+  for (const std::uint32_t row : members) {
     const ResidentRow& resident = current.residents.rows[row];
     // Away in the district eats nothing from the larder (district_car.h).
-    if (resident.family.value != id.value || AwayInDistrict(resident, current.calendar.tick)) {
+    if (AwayInDistrict(resident, current.calendar.tick)) {
       continue;
     }
     // THE INVARIANT, CHECKED (#1347, boss [2]): a survey read this line as
@@ -355,16 +359,17 @@ float EatFromPantry(const FoodConfig& config,
 /// weekly loss; recovery is the slower of the two, as health design §2 asks.
 void MoveSatietyAndHealth(const FoodConfig& config,
                           WorldState& current,
-                          FamilyId id,
+                          std::span<const std::uint32_t> members,
                           float target) {
   const SatietyConfig& satiety = config.satiety;
   const float drift = satiety.drift_per_day;
   const float loss_per_day = satiety.health_loss_per_week / static_cast<float>(kDaysPerWeek);
   const float gain_per_day = satiety.health_recovery_per_week / static_cast<float>(kDaysPerWeek);
-  for (ResidentRow& resident : current.residents.rows) {
+  for (const std::uint32_t row : members) {
+    ResidentRow& resident = current.residents.rows[row];
     // Away in the district: the village's table neither feeds nor starves
     // him, and his health is the hospital's until he is back.
-    if (resident.family.value != id.value || AwayInDistrict(resident, current.calendar.tick)) {
+    if (AwayInDistrict(resident, current.calendar.tick)) {
       continue;
     }
     const float delta = target - resident.satiety;
@@ -427,15 +432,28 @@ void RunFamilyMeal(const FoodConfig& config,
   if (HourFromTick(current.calendar.tick) != kTicksPerDay - 1U || config.resources.empty()) {
     return;  // one meal a day, and none at all without a food roster
   }
+  const std::vector<std::uint32_t> members =
+      MemberRowsOf(current, current.families.row_ids[family_item]);
+  RunFamilyMeal(config, life_speedup, previous, current, family_item, members);
+}
+
+void RunFamilyMeal(const FoodConfig& config,
+                   float life_speedup,
+                   const WorldState& previous,
+                   WorldState& current,
+                   std::uint32_t family_item,
+                   std::span<const std::uint32_t> members) {
+  if (HourFromTick(current.calendar.tick) != kTicksPerDay - 1U || config.resources.empty()) {
+    return;  // one meal a day, and none at all without a food roster
+  }
   const SimDay day = current.calendar.day;
-  const FamilyId id = current.families.row_ids[family_item];
   FamilyRow& family = current.families.rows[family_item];
   if (IsFirstDayOfSeason(day)) {
     // A new season sets a new table: the count by category and the need.
     family.season_category_kcal = {};
     family.season_need_kcal = 0.0F;
   }
-  const float need_kcal = FamilyNeedKcal(config, life_speedup, previous, current, id, day);
+  const float need_kcal = FamilyNeedKcal(config, life_speedup, previous, current, members, day);
   const float eaten_kcal = EatFromPantry(config, family, need_kcal, current.calendar.date);
   family.season_need_kcal += need_kcal;
   family.food_variety_mask = VarietyMaskOf(config, family);
@@ -443,13 +461,14 @@ void RunFamilyMeal(const FoodConfig& config,
   // A household that owes nobody anything — nobody in it old enough to eat
   // from the pantry — is fed by definition rather than starving on zero.
   const float target = need_kcal > 0.0F ? kMetricMax * (eaten_kcal / need_kcal) : kMetricMax;
-  MoveSatietyAndHealth(config, current, id, target);
+  MoveSatietyAndHealth(config, current, members, target);
   // And the slow reading of it, for the mechanics that must not mistake a
   // season for a hardship (family_state.h, FamilyRow::satiety_year_mean).
   float total = 0.0F;
   std::uint32_t counted = 0;
-  for (const ResidentRow& resident : current.residents.rows) {
-    if (resident.family.value == id.value && !AwayInDistrict(resident, current.calendar.tick)) {
+  for (const std::uint32_t row : members) {
+    const ResidentRow& resident = current.residents.rows[row];
+    if (!AwayInDistrict(resident, current.calendar.tick)) {
       total += resident.satiety;
       ++counted;
     }
@@ -464,13 +483,22 @@ void RunFamilyMeal(const FoodConfig& config,
 Metric SatietyComponent(const FoodConfig& config,
                         const WorldState& current,
                         std::uint32_t family_item) {
-  const FamilyId id = current.families.row_ids[family_item];
+  const std::vector<std::uint32_t> members =
+      MemberRowsOf(current, current.families.row_ids[family_item]);
+  return SatietyComponent(config, current, family_item, members);
+}
+
+Metric SatietyComponent(const FoodConfig& config,
+                        const WorldState& current,
+                        std::uint32_t family_item,
+                        std::span<const std::uint32_t> members) {
   const FamilyRow& family = current.families.rows[family_item];
   float total = 0.0F;
   std::uint32_t counted = 0;
-  for (const ResidentRow& resident : current.residents.rows) {
+  for (const std::uint32_t row : members) {
+    const ResidentRow& resident = current.residents.rows[row];
     // Away in the district: not judged by the village's metrics.
-    if (resident.family.value == id.value && !AwayInDistrict(resident, current.calendar.tick)) {
+    if (!AwayInDistrict(resident, current.calendar.tick)) {
       total += resident.satiety;
       ++counted;
     }

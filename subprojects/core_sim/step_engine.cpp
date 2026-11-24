@@ -422,6 +422,8 @@ class StepEngine final : public ISimulation {
     if (item_count == 0) {
       return;
     }
+    // Once a step, on this thread, before any range (step.h; #2118's per-step indexes).
+    phase.PrepareStep(current_);
     if (worker_count_ == 1) {
       // The verification mode: everything on the sim thread, one range.
       phase.RunItemRange(previous_, current_, 0, item_count);

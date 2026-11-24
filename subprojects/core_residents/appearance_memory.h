@@ -29,6 +29,7 @@
 #define CORE_RESIDENTS_APPEARANCE_MEMORY_H_
 
 #include <cstdint>
+#include <span>
 
 #include "core_common/world_state.h"
 #include "life_config.h"
@@ -46,6 +47,16 @@ void RememberWellbeing(const LifeConfig& life,
                        WorldState& current,
                        std::uint32_t family_item,
                        bool new_day);
+
+/// @brief The same with the family's member rows given (family_members.h; #2118: the
+///        metrics phase indexes them once a step instead of every family scanning every
+///        resident every step).
+/// @param members The resident rows whose family is row `family_item`, ascending.
+void RememberWellbeing(const LifeConfig& life,
+                       WorldState& current,
+                       std::uint32_t family_item,
+                       bool new_day,
+                       std::span<const std::uint32_t> members);
 
 }  // namespace core
 
