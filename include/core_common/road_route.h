@@ -261,6 +261,16 @@ struct PlacedWalkCount {
 /// @brief Returns this thread's PlacedWalkCount and zeroes it (the run's print).
 PlacedWalkCount TakePlacedWalkCount();
 
+/// @brief `index->Locate(mode, position)`, remembered per thread while the bare network is the
+///        same (RoadIndex::Network; #2118: MeasureRoads located every home four times a call,
+///        and a grown village's newer houses, far from a road, each took the ring search - the
+///        call's cost grew with the village squared). A found place is the network's alone, so
+///        the remembered one is the very answer, bit for bit; the thread holds `index` so the
+///        network it keys on cannot be freed and its address reused.
+NetworkPlace LocateOnNetwork(const std::shared_ptr<const RoadIndex>& index,
+                             TravelMode mode,
+                             Vec2 position);
+
 /// @brief The ground's state at `point` (ISession::GroundStateAt; roads.md §3): a road or path
 ///        within 4 m takes its bed's condition (gravel in mud and snow on a road as wet), open
 ///        ground the dirt bed's. Never GroundState::kIce (STUB, гололёд).
