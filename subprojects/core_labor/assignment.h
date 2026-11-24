@@ -91,6 +91,9 @@ struct AssignmentJob {
   /// it, and was withdrawn the same evening. On a dry working day of June the
   /// cut rides 0.0 horses and stands 18.7 mowers a village.)
   bool harnessed = false;
+  /// The job as the carriers' pass offers it: on foot, no horse (OneWayHours reads
+  /// AssignmentParams::carrier_km for it on a snow day).
+  bool carried_on_foot = false;
 
   /// THE BRIGADE GOES OUT ON ONE CART (farming design §6, «Дорога пешком
   /// съедает световой день»; the human's word of 2026-10-01 on econ's third
@@ -498,6 +501,10 @@ struct AssignmentParams {
   /// differ. Empty: the straight line at the pace (a test with no world).
   std::vector<float> road_km;
   std::uint32_t home_slots = 0;
+  /// A CARRIER ON FOOT IN SNOW (roads.md §3, 24 Nov; CarrierSnowKm): on a snow day, per
+  /// (job, home slot) of a hauling job, the km a carrier on foot pays - read before road_km
+  /// when the job is carried on foot (AssignmentJob::carried_on_foot). Empty on other days.
+  std::vector<float> carrier_km;
 
   /// THE DAY WITH A HORSE BEGINS AT THE HORSE YARD (horse_yard_road.h;
   /// 0.37.158): game hours on foot from each home slot to the yard, and

@@ -251,6 +251,17 @@ float ReachKm(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to) {
   return ReachMeasure(world, mode, from, to).effective_km;
 }
 
+float CarrierSnowKm(const WorldState& world, Vec2 from, Vec2 to) {
+  const RoadCondition dirt =
+      world.weather.road_beds.condition[static_cast<std::size_t>(RoadBed::kDirt)];
+  if (dirt != RoadCondition::kSnow) {
+    return -1.0F;
+  }
+  const float wet =
+      lattice::GroundFactorOf(world.trails.ground, TravelMode::kWalk, GroundState::kWet);
+  return ReachKm(world, TravelMode::kWalk, from, to) * lattice::CostOf(wet);
+}
+
 std::uint64_t DayTableBuilds() {
   return road_day::TableBuilds();
 }

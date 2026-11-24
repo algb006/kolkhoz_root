@@ -410,6 +410,14 @@ float OneWayHours(const AssignmentJob& job,
            (params.yard_ride_km[job_index] * ride_rate);
   }
   const float hours_per_km = rides ? ride_rate : params.walk_hours_per_km;
+  // A carrier on foot in snow pulls a hand sledge: the carry's own km (CarrierSnowKm).
+  if (job.carried_on_foot && !rides && candidate.home_slot < params.home_slots) {
+    const std::size_t at =
+        (static_cast<std::size_t>(job_index) * params.home_slots) + candidate.home_slot;
+    if (at < params.carrier_km.size() && params.carrier_km[at] >= 0.0F) {
+      return params.carrier_km[at] * hours_per_km;
+    }
+  }
   if (!params.road_km.empty() && candidate.home_slot < params.home_slots) {
     const std::size_t at =
         ((((static_cast<std::size_t>(job_index) * params.home_slots) + candidate.home_slot) * 2U) +
@@ -815,6 +823,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
               // is worth; too far to walk, and the next in the queue is asked.
               AssignmentJob on_foot = job;
               on_foot.harnessed = false;
+              on_foot.carried_on_foot = job.kind == WorkKind::kHauling;  // CarrierSnowKm
               RankedPick walking;
               bool walk_refused_by_road = false;  // he was ranked: the job is not the road's
               if (!ConsiderCandidate(on_foot,
@@ -1002,6 +1011,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
       }
       AssignmentJob on_foot = job;
       on_foot.harnessed = false;
+      on_foot.carried_on_foot = job.kind == WorkKind::kHauling;  // CarrierSnowKm on snow
       std::uint32_t road_refused = 0;
       // THE TRIP MINIMUM'S SKIPS ARE BOOKED (boss 24 Nov): a skip that books nothing is
       // invisible to every instrument and to the player.
