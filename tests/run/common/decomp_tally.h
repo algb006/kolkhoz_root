@@ -18,6 +18,7 @@
 #include <ostream>
 
 #include "core_common/calendar.h"
+#include "core_common/horse_yard_road.h"
 #include "core_common/labor_state.h"
 #include "core_common/ledger_state.h"
 #include "core_common/road_route.h"
@@ -105,6 +106,30 @@ class DecompTally {
           world.weather.road_beds.condition[static_cast<std::size_t>(core::RoadBed::kDirt)]);
       if (ground < row.chain_by_ground.size()) {
         Chain& chain = row.chain_by_ground[ground];
+        // boss 24 Nov: the hauling refused by reason and by ground (the current book's daily
+        // rise), the haulers placed and their hours on the road (WorkRoadHours: for a carter
+        // who starts at the horse yard, ONLY his walk to it - horse_yard_road.cpp).
+        {
+          const auto haul = static_cast<std::size_t>(core::WorkKind::kHauling);
+          const core::YearLedger& now = world.ledger.current;
+          for (std::size_t reason = 0; reason < core::kJobShortfallCount; ++reason) {
+            const std::uint32_t value = now.short_job_days[haul][reason];
+            const std::uint32_t before = new_year ? 0U : last_haul_short_[reason];
+            chain.haul_short[reason] += value > before ? value - before : 0U;
+            last_haul_short_[reason] = value;
+          }
+          const std::uint32_t blocked = now.road_blocked_job_days[haul];
+          const std::uint32_t blocked_before = new_year ? 0U : last_haul_blocked_;
+          chain.haul_blocked += blocked > blocked_before ? blocked - blocked_before : 0U;
+          last_haul_blocked_ = blocked;
+          for (const core::ResidentRow& person : world.residents.rows) {
+            if (person.work.kind == core::WorkKind::kHauling && person.work.travel_hours >= 0.0F) {
+              ++chain.haulers;
+              chain.hauler_road_hours += static_cast<double>(person.work.travel_hours);
+              chain.haulers_from_yard += core::DayStartsAtHorseYard(world, person.work) ? 1U : 0U;
+            }
+          }
+        }
         chain.build += today(core::WorkKind::kConstruction);
         chain.haul += today(core::WorkKind::kHauling);
         chain.fell += today(core::WorkKind::kFelling);
@@ -180,6 +205,14 @@ class DecompTally {
         out << " chain_" << (ground < kGrounds.size() ? kGrounds[ground] : "other")
             << "(days/build/haul/fell/sawyer_heads) " << row.days_by_ground[ground] << '/'
             << chain.build << '/' << chain.haul << '/' << chain.fell << '/' << chain.sawyers;
+        out << " haul_" << (ground < kGrounds.size() ? kGrounds[ground] : "other")
+            << "(short_no_horse/crew_cap/no_hands/road/road_blocked/haulers/from_yard/"
+               "road_h_per_hauler) "
+            << chain.haul_short[0] << '/' << chain.haul_short[1] << '/' << chain.haul_short[2]
+            << '/' << chain.haul_short[3] << '/' << chain.haul_blocked << '/' << chain.haulers
+            << '/' << chain.haulers_from_yard << '/'
+            << (chain.haulers > 0 ? chain.hauler_road_hours / static_cast<double>(chain.haulers)
+                                  : 0.0);
       }
       out << " placed_walks(asked/found) " << row.placed_asked << '/' << row.placed_found
           << (row.placed_asked > 0 && row.placed_found == 0 ? " PLACED_WALKS_NEVER_FOUND" : "");
@@ -193,6 +226,11 @@ class DecompTally {
     double haul = 0.0;
     double fell = 0.0;
     std::uint64_t sawyers = 0;
+    std::array<std::uint64_t, core::kJobShortfallCount> haul_short{};
+    std::uint64_t haul_blocked = 0;
+    std::uint64_t haulers = 0;
+    std::uint64_t haulers_from_yard = 0;
+    double hauler_road_hours = 0.0;
   };
 
   struct Year {
@@ -221,6 +259,8 @@ class DecompTally {
   std::map<std::uint32_t, Year> by_year_;
   std::array<float, core::kWorkKindCount> last_booked_{};
   std::uint32_t last_leisure_ = 0;
+  std::array<std::uint32_t, core::kJobShortfallCount> last_haul_short_{};
+  std::uint32_t last_haul_blocked_ = 0;
   std::uint32_t sawmill_ = 0xFFFFFFFFU;  ///< no sawmill known: no sawyer counted
 };
 
