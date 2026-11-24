@@ -563,18 +563,42 @@ MemoKey KeyOf(std::uint64_t serial,
           std::bit_cast<std::uint32_t>(snow_trail_cost)};
 }
 
-/// A memo bounded in size: cleared when the day changes or it grows past kMemoCap.
-template <typename Value>
+/// A FLAT, LOSSY MEMO (#2390 item 4, the second Fable review; exact): a direct-mapped table
+/// of slots, a full-key compare on a hit; a new key overwrites its slot (an eviction only
+/// prices again). The day's serial is in the key, so nothing is cleared at the day's change,
+/// and no node is allocated per entry (the unordered_map allocated one per fresh leg).
+template <typename Value, typename Key = MemoKey, typename Hash = MemoKeyHash>
 struct DayMemo {
-  static constexpr std::size_t kMemoCap = 1U << 18U;
-  std::uint64_t serial = 0;
-  std::unordered_map<MemoKey, Value, MemoKeyHash> answers;
+  static constexpr std::size_t kSlots = std::size_t{1} << 17U;
 
-  void Enter(std::uint64_t day) {
-    if (day != serial || answers.size() > kMemoCap) {
-      answers.clear();
-      serial = day;
+  struct Slot {
+    Key key{};
+    bool used = false;
+    Value value{};
+  };
+
+  std::vector<Slot> slots;
+
+  Slot& SlotOf(const Key& key) {
+    if (slots.empty()) {
+      slots.resize(kSlots);
     }
+    return slots[Hash{}(key) & (kSlots - 1U)];
+  }
+
+  /// @brief The value kept for `key`, or nullptr.
+  Value* Find(const Key& key) {
+    Slot& slot = SlotOf(key);
+    return slot.used && slot.key == key ? &slot.value : nullptr;
+  }
+
+  /// @brief Keeps `value` for `key`, over whatever the slot held.
+  Value& Keep(const Key& key, Value value) {
+    Slot& slot = SlotOf(key);
+    slot.key = key;
+    slot.used = true;
+    slot.value = std::move(value);
+    return slot.value;
   }
 };
 
@@ -599,15 +623,11 @@ float StraightKmMemo(std::uint64_t serial,
                      float open_cost,
                      float snow_trail_cost) {
   thread_local DayMemo<float> memo;
-  memo.Enter(serial);
   const MemoKey key = KeyOf(serial, from, to, open_weight, open_cost, snow_trail_cost);
-  const auto found = memo.answers.find(key);
-  if (found != memo.answers.end()) {
-    return found->second;
+  if (const float* const kept = memo.Find(key)) {
+    return *kept;
   }
-  const float km = StraightKm(trails, from, to, open_weight, open_cost, snow_trail_cost);
-  memo.answers.emplace(key, km);
-  return km;
+  return memo.Keep(key, StraightKm(trails, from, to, open_weight, open_cost, snow_trail_cost));
 }
 
 float RouteKmMemo(std::uint64_t serial,
@@ -619,18 +639,17 @@ float RouteKmMemo(std::uint64_t serial,
                   float snow_trail_cost,
                   std::vector<std::pair<TrailEnd, TrailEnd>>* edges) {
   thread_local DayMemo<RouteAnswer> memo;
-  memo.Enter(serial);
   const MemoKey key = KeyOf(serial, from, to, open_weight, open_cost, snow_trail_cost);
-  auto found = memo.answers.find(key);
-  if (found == memo.answers.end()) {
+  RouteAnswer* found = memo.Find(key);
+  if (found == nullptr) {
     RouteAnswer answer;
     answer.km = RouteKm(trails, from, to, open_weight, open_cost, snow_trail_cost, &answer.edges);
-    found = memo.answers.emplace(key, std::move(answer)).first;
+    found = &memo.Keep(key, std::move(answer));
   }
   if (edges != nullptr) {
-    edges->insert(edges->end(), found->second.edges.begin(), found->second.edges.end());
+    edges->insert(edges->end(), found->edges.begin(), found->edges.end());
   }
-  return found->second.km;
+  return found->km;
 }
 
 }  // namespace core::lattice
