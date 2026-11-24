@@ -638,6 +638,10 @@ bool g_smokehouse = true;
 /// `--winter-log-stock` (econ's lever for B3, boss 24 Nov): the chairman fells and carts a
 /// whole season's logs from November to February (FellingPolicy::StockForTheSeason).
 bool g_winter_log_stock = false;
+/// `--season-stand-order` (econ's #2072 lever, boss 24 Nov): the chairman marks the farthest
+/// mannable stand in March-October and the nearest in November-February
+/// (FellingPolicy::SeasonStandOrder); off: the nearest all year.
+bool g_season_stand_order = false;
 /// #1677 shape (2): the smokehouse family starts only when the houses' materials
 /// are covered - the canon's since 0.37.379; `--no-smokehouse-houses-first` off.
 bool g_smokehouse_houses_first = true;
@@ -950,7 +954,8 @@ bool Walk(std::uint64_t seed,
   }
   builder.limit.BuySeedLotFirst(!g_empty_seed_key.empty());  // #1377 P0; off in the canon
   builder.smokehouse.Enable(g_smokehouse);  // #1644: the arm --smokehouse; off in the canon
-  builder.felling.StockForTheSeason(g_winter_log_stock);  // econ's B3 lever, --winter-log-stock
+  builder.felling.StockForTheSeason(g_winter_log_stock);   // econ's B3 lever, --winter-log-stock
+  builder.felling.SeasonStandOrder(g_season_stand_order);  // econ's #2072 lever
   builder.smokehouse.WaitForHouses(g_smokehouse_houses_first);  // #1677 shape (2)
   builder.smokehouse.SetWindow(g_smokehouse_window);            // #1761 window (c)
   builder.fallow.SetHousesDeadline(g_fallow_houses_deadline);   // #1726 option 2
@@ -1702,7 +1707,7 @@ bool Walk(std::uint64_t seed,
       builder.trail_legs.Print(std::cout, seed);            // #2072's LEGS2072
       builder.decomp.Print(std::cout, seed);                // #2072's DECOMP2072
       builder.winter_felling.Print(std::cout, seed);        // WFELL2072
-      if (g_winter_log_stock) {  // the lever's own ground: did it ever aim?
+      if (g_winter_log_stock || g_season_stand_order) {     // the levers' own ground
         builder.felling.Report(("population_curve (seed " + std::to_string(seed) + ")").c_str(),
                                simulation->CompletedState());
       }
@@ -1950,6 +1955,8 @@ int main(int argc, char** argv) {
           10);
     } else if (argument == "--winter-log-stock") {
       g_winter_log_stock = true;  // econ's B3 lever (FellingPolicy::StockForTheSeason)
+    } else if (argument == "--season-stand-order") {
+      g_season_stand_order = true;  // econ's #2072 lever (FellingPolicy::SeasonStandOrder)
     } else if (argument.starts_with("--years=")) {
       const auto years = std::strtoul(
           std::string(argument.substr(std::string_view("--years=").size())).c_str(), nullptr, 10);

@@ -34,6 +34,8 @@
 
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
+#include "core_common/geometry.h"
+#include "core_common/home_reach.h"
 #include "core_common/order_state.h"
 #include "core_common/road_route.h"
 #include "core_common/state_table_ops.h"
@@ -59,6 +61,7 @@ class FellingPolicy {
     if (const core::ITable* const types = tables.FindTable("unit_types")) {
       house_type_ = types->FindRowByKey("wooden_house");
     }
+    ReadReachRule(tables);
   }
 
   /// @brief The fixture difference, in words, for the run to print BEFORE it
@@ -90,6 +93,13 @@ class FellingPolicy {
   ///        carting. Off: the felling follows today's sites, as before.
   void StockForTheSeason(bool on) { season_stock_ = on; }
 
+  /// @brief THE SEASON'S STAND ORDER (econ's #2072 lever, boss 24 Nov; econ/manual/proposals/
+  ///        winter-near-band-2072-2026-11-24.md): in March-October the mark goes to the
+  ///        FARTHEST stand a feller can be sent to today, keeping the near band - the only one
+  ///        a winter day's light reaches on foot - for November-February, when the nearest is
+  ///        marked as before. Off: the nearest all year.
+  void SeasonStandOrder(bool on) { season_order_ = on; }
+
   /// @brief One day of the chairman's attention. Call once a day.
   /// @param saw_log_grams The logs the saw needs for the boards the sites still
   ///        lack (SawmillPolicy::LogsForMissingBoards); 0 in a run with no saw.
@@ -98,6 +108,7 @@ class FellingPolicy {
       return;
     }
     const core::WorldState& world = simulation.CompletedState();
+    WatchTheSeason(world);  // econ's P and M2 (#2072 season order), before any early return
     // ONE STAND AT A TIME — WHILE ITS FELLING MOVES (boss, the resume thread,
     // 9 October 2026). A mark nobody has felled at for kStalledDays days is no
     // reason to fell nothing: the next stand is marked. Until 0.37.208 any
@@ -119,27 +130,7 @@ class FellingPolicy {
       return;
     }
     stock_free_days_ += stock_winter ? 1U : 0U;
-    // LOGS IN HAND, and the logs already felled and lying count as in hand: a
-    // chairman who has a heap in the grove does not fell another for want of
-    // carts.
-    //
-    // A SITE'S LOGS ARE NOT IN HAND. They were delivered to their own building
-    // and nothing else can take them (construction_system.cpp). Counting them
-    // stopped the village for twenty years on 2026-09-13: a granary site held
-    // its sixty logs and waited for boards, the stores had none, this policy
-    // saw sixty in hand and never felled, and the sawmill had nothing to saw.
-    core::Grams logs = 0;
-    for (const core::UnitRow& unit : world.units.rows) {
-      if (unit.level == 0) {
-        continue;
-      }
-      logs += catalog_.log_resource.value < unit.stock.size()
-                  ? unit.stock[catalog_.log_resource.value]
-                  : 0;
-    }
-    for (const core::TimberStandRow& stand : world.stands.rows) {
-      logs += stand.load_grams;
-    }
+    const core::Grams logs = LogsInHand(world);
     // AND THE LOGS THE SITES STILL WAIT FOR (2026-09-14). One granary's worth
     // was the whole signal while granaries were the only sites; since the
     // houses came off the stub, three house sites at 35 logs each waited on a
@@ -190,7 +181,9 @@ class FellingPolicy {
       const core::Grams season =
           at(world.ledger.closed.built_in) + at(world.ledger.closed.processed);
       season_target_max_ = std::max(season_target_max_, season);
+      season_want_ = std::max(season_want_, season);
       lifted = season > wanted;
+      season_aimed_ = season_aimed_ || lifted;
       wanted = std::max(wanted, season);
     }
     stock_lifted_days_ += lifted ? 1U : 0U;
@@ -244,6 +237,17 @@ class FellingPolicy {
                 << stock_marked_
                 << (stock_lifted_days_ > 0 && stock_marked_ == 0 ? " STOCK_NEVER_MARKED" : "")
                 << (stock_held_days_ + stock_free_days_ == 0 ? " STOCK_DAYS_NOT_COUNTED" : "");
+      // econ's M2: the stock seasons aimed, and met by 1 March.
+      std::cout << "; seasons aimed " << seasons_aimed_ << " met_by_1_march " << seasons_met_;
+    }
+    std::cout << "; season stand order " << (season_order_ ? "ON" : "off");
+    // econ's P: the logs a hand reaches on foot in the first November day's light, by year.
+    std::cout << "; P winter_foot_logs(year:logs@daylight_h)";
+    if (!rule_read_) {
+      std::cout << " NOT MEASURED (reach rule tables not read)";
+    }
+    for (const WinterFoot& foot : winter_foot_) {
+      std::cout << ' ' << foot.year << ':' << std::lround(foot.logs) << '@' << foot.daylight;
     }
     std::cout << '\n';
   }
@@ -334,6 +338,8 @@ class FellingPolicy {
                    core::OrderRow& order) const {
     const core::WorldState& world = simulation.CompletedState();
     const core::Vec2 centre = Centre(world);
+    // The season's order (SeasonStandOrder): the farthest in the light season, else the nearest.
+    const bool farthest = season_order_ && !InStockMonths(world);
     std::uint32_t best = core::kNoRow;
     float best_distance = 0.0F;
     float best_volume = 0.0F;
@@ -343,17 +349,7 @@ class FellingPolicy {
       // (timber_planting.h, PlantedStandDef). It has no row of the stands
       // table, and until the planting policy this loop skipped every stand
       // without one — a zone grown in the run would have stood uncut for ever.
-      float share = 0.0F;
-      if (stand.kind == core::TimberStandKind::kPlanted) {
-        share = stand.species.value < catalog_.species.size()
-                    ? catalog_.species[stand.species.value].log_share
-                    : 0.0F;
-      } else if (stand.table_row < catalog_.stands.size()) {
-        const core::TimberStandDef& def = catalog_.stands[stand.table_row];
-        share = stand.kind == core::TimberStandKind::kForestOld
-                    ? def.log_share * catalog_.old_log_share_factor
-                    : def.log_share;
-      }
+      const float share = LogShareOf(stand);
       // A stand still marked takes no second mark (timber_felling.cpp,
       // MarkFelling: kConflictsWithActive) — a stalled one among them.
       if (!(share > 0.0F) || !(stand.stock_m3 > 0.0F) || stand.marked_m3 > 0.0F) {
@@ -381,7 +377,8 @@ class FellingPolicy {
       const float dx = stand.position.x - centre.x;
       const float dy = stand.position.y - centre.y;
       const float distance = std::sqrt((dx * dx) + (dy * dy));
-      if (best == core::kNoRow || distance < best_distance) {
+      if (best == core::kNoRow ||
+          (farthest ? distance > best_distance : distance < best_distance)) {
         best = row;
         best_distance = distance;
         best_volume = volume;
@@ -433,6 +430,140 @@ class FellingPolicy {
     const std::uint32_t month = (world.calendar.day % core::kDaysPerYear) / core::kDaysPerMonth;
     return month >= 10U || month <= 1U;
   }
+
+  /// The log share of a stand's volume: a grown planting at its species', a table stand at its
+  /// row's, the old forest's trunks at the old share.
+  float LogShareOf(const core::TimberStandRow& stand) const {
+    if (stand.kind == core::TimberStandKind::kPlanted) {
+      return stand.species.value < catalog_.species.size()
+                 ? catalog_.species[stand.species.value].log_share
+                 : 0.0F;
+    }
+    if (stand.table_row < catalog_.stands.size()) {
+      const core::TimberStandDef& def = catalog_.stands[stand.table_row];
+      return stand.kind == core::TimberStandKind::kForestOld
+                 ? def.log_share * catalog_.old_log_share_factor
+                 : def.log_share;
+    }
+    return 0.0F;
+  }
+
+  /// LOGS IN HAND, and the logs already felled and lying count as in hand: a
+  /// chairman who has a heap in the grove does not fell another for want of
+  /// carts.
+  ///
+  /// A SITE'S LOGS ARE NOT IN HAND. They were delivered to their own building
+  /// and nothing else can take them (construction_system.cpp). Counting them
+  /// stopped the village for twenty years on 2026-09-13: a granary site held
+  /// its sixty logs and waited for boards, the stores had none, this policy
+  /// saw sixty in hand and never felled, and the sawmill had nothing to saw.
+  core::Grams LogsInHand(const core::WorldState& world) const {
+    core::Grams logs = 0;
+    for (const core::UnitRow& unit : world.units.rows) {
+      if (unit.level == 0) {
+        continue;
+      }
+      logs += catalog_.log_resource.value < unit.stock.size()
+                  ? unit.stock[catalog_.log_resource.value]
+                  : 0;
+    }
+    for (const core::TimberStandRow& stand : world.stands.rows) {
+      logs += stand.load_grams;
+    }
+    return logs;
+  }
+
+  /// econ's P (#2072 season order): the logs standing where a hand reaches ON FOOT in today's
+  /// light and the log cart within the road limit (home_reach.h's questions, the rule read off
+  /// transport.csv and labor.csv). Negative when the rule's tables were not read.
+  double WinterFootLogs(const core::WorldState& world) const {
+    if (!rule_read_) {
+      return -1.0;
+    }
+    double logs = 0.0;
+    for (const core::TimberStandRow& stand : world.stands.rows) {
+      const float share = LogShareOf(stand);
+      if (!(share > 0.0F) || !(stand.stock_m3 > 0.0F)) {
+        continue;
+      }
+      const float walk = core::NearestHomeTravelHours(
+          world, stand.position, rule_.walk_speed_kmh, core::TravelMode::kWalk);
+      const float cart = core::NearestHomeTravelHours(
+          world, stand.position, rule_.ride_speed_kmh, core::TravelMode::kLogCart);
+      if (walk < 0.0F || cart < 0.0F || cart > rule_.travel_limit_hours ||
+          !core::RoadLeavesAWorkingDay(walk,
+                                       world.weather.daylight_hours,
+                                       rule_.travel_limit_hours,
+                                       rule_.min_usable_hours)) {
+        continue;
+      }
+      logs += static_cast<double>(stand.stock_m3 * share / catalog_.log_m3);
+    }
+    return logs;
+  }
+
+  /// The season's ledger, every day before anything returns: P on each year's first
+  /// November day; on the first March day a stock season closes - aimed (the season ever
+  /// raised the want), and met (the logs in hand cover the season's want by 1 March).
+  void WatchTheSeason(const core::WorldState& world) {
+    const std::uint32_t day_of_year = world.calendar.day % core::kDaysPerYear;
+    if (day_of_year % core::kDaysPerMonth != 0) {
+      return;
+    }
+    const std::uint32_t month = day_of_year / core::kDaysPerMonth;
+    constexpr std::uint32_t kNovember = 10;
+    constexpr std::uint32_t kMarch = 2;
+    if (month == kNovember) {
+      winter_foot_.push_back(WinterFoot{.year = (world.calendar.day / core::kDaysPerYear) + 1U,
+                                        .logs = WinterFootLogs(world),
+                                        .daylight = world.weather.daylight_hours});
+    }
+    if (month == kMarch && season_stock_) {
+      if (season_aimed_) {
+        ++seasons_aimed_;
+        seasons_met_ += LogsInHand(world) >= season_want_ ? 1U : 0U;
+      }
+      season_aimed_ = false;
+      season_want_ = 0;
+    }
+  }
+
+  /// Reads the reach rule P asks with (transport.csv, labor.csv - the labour model's own).
+  void ReadReachRule(const core::ITableSet& tables) {
+    const auto real = [&tables](const char* table, const char* key, const char* column) {
+      std::optional<float> value;
+      if (const core::ITable* const found = tables.FindTable(table)) {
+        value = found->CellReal(found->FindRowByKey(key), found->FindColumn(column));
+      }
+      return value;
+    };
+    const std::optional<float> walk = real("transport", "pedestrian", "speed_kmh");
+    const std::optional<float> ride = real("transport", "horse_trot", "speed_kmh");
+    const std::optional<float> limit = real("labor", "travel_limit_hours", "value");
+    const std::optional<float> usable = real("labor", "min_usable_hours", "value");
+    rule_read_ = walk && ride && limit && usable;
+    if (rule_read_) {
+      rule_ = core::ReachRule{.walk_speed_kmh = *walk,
+                              .ride_speed_kmh = *ride,
+                              .travel_limit_hours = *limit,
+                              .min_usable_hours = *usable};
+    }
+  }
+
+  struct WinterFoot {
+    std::uint32_t year = 0;
+    double logs = 0.0;
+    float daylight = 0.0F;
+  };
+
+  bool season_order_ = false;
+  bool rule_read_ = false;
+  core::ReachRule rule_;
+  std::vector<WinterFoot> winter_foot_;
+  bool season_aimed_ = false;
+  core::Grams season_want_ = 0;
+  std::uint32_t seasons_aimed_ = 0;
+  std::uint32_t seasons_met_ = 0;
 
   /// unit_types.csv row of the wooden house; past logs_by_type_ when absent.
   std::uint32_t house_type_ = core::kNoTableRow;
