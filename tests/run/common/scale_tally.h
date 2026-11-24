@@ -111,7 +111,8 @@ class ScaleTally {
                                                                             "make_day",
                                                                             "with_trails",
                                                                             "tread",
-                                                                            "decay"};
+                                                                            "decay",
+                                                                            "measure_pairs_loop"};
     for (const Year& year : years_) {
       out << "population_curve: SCALE2118P seed " << seed << " year " << year.year << " residents "
           << year.residents << " units " << year.units << " pairs_per_day "

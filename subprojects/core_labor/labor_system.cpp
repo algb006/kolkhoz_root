@@ -1641,6 +1641,7 @@ class LaborSystem final : public ILaborSystem {
       }
       params.yard_ride_km.resize(jobs.size());
     }
+    const probe::Timer pairs_timer(probe::Slot::kMeasurePairs);  // PROBE #2118
     for (std::size_t job_index = 0; job_index < jobs.size(); ++job_index) {
       const AssignmentJob& job = jobs[job_index];
       // The job's riding mode: a cart with produce on the roads, a cart with

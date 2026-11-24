@@ -33,6 +33,7 @@ enum class Slot : std::uint8_t {
   kWithTrails,       ///< trails: the morning's re-dating
   kTread,            ///< trails: the placed walkers' tread
   kDecay,            ///< trails: the morning's decay
+  kMeasurePairs,     ///< labor: MeasureRoads' (job, home) loop alone
   kCount,
 };
 
