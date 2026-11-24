@@ -1707,6 +1707,7 @@ bool Walk(std::uint64_t seed,
       builder.trail_legs.Print(std::cout, seed);            // #2072's LEGS2072
       builder.decomp.Print(std::cout, seed);                // #2072's DECOMP2072
       builder.winter_felling.Print(std::cout, seed);        // WFELL2072
+      builder.winter_horses.Print(std::cout, seed);         // WHORSE2072
       if (g_winter_log_stock || g_season_stand_order) {     // the levers' own ground
         builder.felling.Report(("population_curve (seed " + std::to_string(seed) + ")").c_str(),
                                simulation->CompletedState());

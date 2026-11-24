@@ -69,6 +69,7 @@
 #include "warm_hold.h"
 #include "watchman_policy.h"
 #include "winter_felling_tally.h"
+#include "winter_horse_tally.h"
 #include "write_off_policy.h"
 #include "yard_policy.h"
 
@@ -111,6 +112,7 @@ class BuildingChairman {
         family_food(tables),
         low_earners(tables),
         winter_felling(tables),
+        winter_horses(tables),
         field_work(tables),
         plan_over(tables),
         sport_talk(tables),
@@ -410,6 +412,7 @@ class BuildingChairman {
     }
     decomp.CountDay(simulation.CompletedState());      // #2072's DECOMP2072
     winter_felling.CountDay(simulation);               // WFELL2072
+    winter_horses.CountDay(simulation);                // WHORSE2072
     clerk.CountDay(simulation);                        // #589's print
     reputation.CountDay(simulation.CompletedState());  // #1897's REP1897
     plan_over.CountDay(simulation.CompletedState());   // #1946's OVER1946
@@ -620,6 +623,9 @@ class BuildingChairman {
   /// WFELL2072 (boss 24 Nov, the null winter stock): a marked stand's days - offered or
   /// refused, and by which of the offer's questions (winter_felling_tally.h).
   WinterFellingTally winter_felling;
+  /// WHORSE2072 (econ's winter-horses page, boss 25 Nov): H, the mark slot and the logs built
+  /// in by type (winter_horse_tally.h).
+  WinterHorseTally winter_horses;
   /// #2264's print: M1-M4 of the field-work coordinator, y1-y3 (field_work_tally.h).
   FieldWorkTally field_work;
   /// #589's print: the clerk's post and his family's satiety (clerk_tally.h).
