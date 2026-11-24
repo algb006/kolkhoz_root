@@ -422,8 +422,9 @@ int CheckCarterOnFoot() {
                                      std::uint32_t& walkers,
                                      float light_hours = 12.0F,
                                      float health = 70.0F,
-                                     std::uint32_t* too_far = nullptr) {
-      core::WorldState world = Village(2, 1);
+                                     std::uint32_t* too_far = nullptr,
+                                     std::uint16_t horses = 1) {
+      core::WorldState world = Village(2, horses);
       world.weather.daylight_hours = light_hours;
       for (core::ResidentRow& person : world.residents.rows) {
         person.health = health;
@@ -432,8 +433,13 @@ int CheckCarterOnFoot() {
       RunHours(*labor, world, 0);
       walkers = CartersOfField(world, heap).walkers;
       if (too_far != nullptr) {
-        *too_far = world.ledger.current.short_job_days[static_cast<std::size_t>(
-            core::WorkKind::kHauling)][static_cast<std::size_t>(core::JobShortfall::kTooFarOnFoot)];
+        const auto& short_by =
+            world.ledger.current.short_job_days[static_cast<std::size_t>(core::WorkKind::kHauling)];
+        *too_far = short_by[static_cast<std::size_t>(core::JobShortfall::kTooFarOnFoot)];
+        std::cout << "  carter on foot, the reason at " << metres_out
+                  << " m: hauling short no_horse/crew_cap/no_hands/road/too_far " << short_by[0]
+                  << '/' << short_by[1] << '/' << short_by[2] << '/' << short_by[3] << '/'
+                  << short_by[4] << ", horses " << world.herds.rows.size() << '\n';
       }
       RunHours(*labor, world, core::kTicksPerDay - 3U);  // to hour 21: worked, not yet paid off
       float paid = 0.0F;
@@ -460,14 +466,16 @@ int CheckCarterOnFoot() {
     failures += Expect(near_paid > 0.60F && near_paid < 0.65F,
                        "carter on foot, the pay: two and a half trips of 20 kg against a norm of "
                        "80 are 0.625 of a norm-day");
-    // AND THE SKIP IS BOOKED (save 230, boss 24 Nov): the heap nobody may carry for want of two
-    // trips stands short for «too far to carry on foot», the heap he carries for nothing.
+    // AND THE SKIP IS BOOKED (save 230, boss 24 Nov): with no horse (the carry is the load's
+    // only way), the heap nobody may carry for want of two trips stands short for «too far to
+    // carry on foot», the heap he carries for nothing. (The first run used the one-horse
+    // village: its cart took the heap, nothing stood short, and both read 0.)
     {
       std::uint32_t walkers = 0;
       std::uint32_t far_booked = 0;
       std::uint32_t near_booked = 0;
-      walker_day(1500.0F, walkers, 12.0F, 70.0F, &far_booked);
-      walker_day(1000.0F, walkers, 12.0F, 70.0F, &near_booked);
+      walker_day(1500.0F, walkers, 12.0F, 70.0F, &far_booked, 0);
+      walker_day(1000.0F, walkers, 12.0F, 70.0F, &near_booked, 0);
       std::cout << "  carter on foot, the reason: 1.5 km out kTooFarOnFoot job-days " << far_booked
                 << ", 1 km out " << near_booked << '\n';
       failures += Expect(far_booked == 1 && near_booked == 0,

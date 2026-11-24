@@ -1044,10 +1044,13 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
         ++carried;
       }
       // Nobody carried it, someone was too far for the day's trips, and the job stood short for
-      // no hands or for nothing booked: «too far to carry on foot today». A horse's or a road's
-      // reason, written first, stands.
-      const bool unreasoned =
-          !shortfall[job_index] || *shortfall[job_index] == JobShortfall::kNoHands;
+      // no horse, no hands or nothing booked: «too far to carry on foot today». The carry is
+      // the no-horse load's fallback, so where it was tried and the distance stopped it, the
+      // distance is what holds the job (the unit's first run: a horseless heap kept kNoHorse
+      // and the new reason never fired). A crew cap's or a road's reason stands.
+      const bool unreasoned = !shortfall[job_index] ||
+                              *shortfall[job_index] == JobShortfall::kNoHands ||
+                              *shortfall[job_index] == JobShortfall::kNoHorse;
       if (carried == 0 && too_far > 0 && covered[job_index] < job.work_days_remaining &&
           unreasoned) {
         shortfall[job_index] = JobShortfall::kTooFarOnFoot;
