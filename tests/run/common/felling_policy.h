@@ -110,9 +110,15 @@ class FellingPolicy {
       --cooldown_;
       return;
     }
+    // THE STOCK'S OWN PATH, COUNTED (boss 24 Nov, the null pair): a stock winter day ends held
+    // by a moving mark, or (where the season raised what is wanted) met by the logs in hand -
+    // the lying logs count - or marked.
+    const bool stock_winter = season_stock_ && InStockMonths(world);
     if (held) {
+      stock_held_days_ += stock_winter ? 1U : 0U;
       return;
     }
+    stock_free_days_ += stock_winter ? 1U : 0U;
     // LOGS IN HAND, and the logs already felled and lying count as in hand: a
     // chairman who has a heap in the grove does not fell another for want of
     // carts.
@@ -175,21 +181,21 @@ class FellingPolicy {
     core::Grams wanted = (static_cast<core::Grams>(granary_logs_) * catalog_.log_grams) + owed +
                          saw_log_grams + ahead;
     // The winter stock: November to February, a whole season's logs in hand (StockForTheSeason).
-    if (season_stock_) {
-      const std::uint32_t month =
-          (world.calendar.day % core::kDaysPerYear) / core::kDaysPerMonth;  // 0 = January
-      if (month >= 10U || month <= 1U) {
-        const core::ResourceId log = catalog_.log_resource;
-        const auto at = [&log](const core::ResourceAmounts& amounts) {
-          return log.value < amounts.size() ? amounts[log.value] : core::Grams{0};
-        };
-        const core::Grams season =
-            at(world.ledger.closed.built_in) + at(world.ledger.closed.processed);
-        season_target_max_ = std::max(season_target_max_, season);
-        wanted = std::max(wanted, season);
-      }
+    bool lifted = false;
+    if (stock_winter) {
+      const core::ResourceId log = catalog_.log_resource;
+      const auto at = [&log](const core::ResourceAmounts& amounts) {
+        return log.value < amounts.size() ? amounts[log.value] : core::Grams{0};
+      };
+      const core::Grams season =
+          at(world.ledger.closed.built_in) + at(world.ledger.closed.processed);
+      season_target_max_ = std::max(season_target_max_, season);
+      lifted = season > wanted;
+      wanted = std::max(wanted, season);
     }
+    stock_lifted_days_ += lifted ? 1U : 0U;
     if (logs >= wanted) {
+      stock_met_days_ += lifted ? 1U : 0U;
       return;
     }
     // ONE FELLING, SIZED TO THE WHOLE SHORTFALL — the sites' logs and the
@@ -201,10 +207,12 @@ class FellingPolicy {
         static_cast<std::uint32_t>((wanted - logs + catalog_.log_grams - 1) / catalog_.log_grams);
     core::OrderRow order;
     if (!NearestMark(simulation, short_logs > granary_logs_ ? short_logs : granary_logs_, order)) {
+      stock_no_stand_days_ += lifted ? 1U : 0U;  // no stand a feller can be sent to today
       return;
     }
     simulation.StageOrders(std::span<const core::OrderRow>(&order, 1), {});
     ++marked_;
+    stock_marked_ += lifted ? 1U : 0U;
     cooldown_ = kCooldownDays;
   }
 
@@ -228,6 +236,14 @@ class FellingPolicy {
       std::cout << "; winter stock ON, largest season target "
                 << season_target_max_ / catalog_.log_grams << " logs"
                 << (season_target_max_ == 0 ? " WINTER_STOCK_NEVER_AIMED" : "");
+      // Its path (boss 24 Nov): the stock winter days held by a moving mark, free of one; of
+      // the free, the days the season raised the want, met by the logs in hand, and marked.
+      std::cout << "; stock days held_by_moving_mark " << stock_held_days_ << " free "
+                << stock_free_days_ << " lifted " << stock_lifted_days_ << " met_in_hand "
+                << stock_met_days_ << " no_mannable_stand " << stock_no_stand_days_ << " marked "
+                << stock_marked_
+                << (stock_lifted_days_ > 0 && stock_marked_ == 0 ? " STOCK_NEVER_MARKED" : "")
+                << (stock_held_days_ + stock_free_days_ == 0 ? " STOCK_DAYS_NOT_COUNTED" : "");
     }
     std::cout << '\n';
   }
@@ -403,6 +419,20 @@ class FellingPolicy {
   std::uint32_t houses_ahead_ = 3;
   bool season_stock_ = false;
   core::Grams season_target_max_ = 0;
+  /// The stock's path, counted (Report): stock winter days held by a moving mark and free of
+  /// one; of the free, lifted by the season, met in hand, without a mannable stand; its marks.
+  std::uint32_t stock_held_days_ = 0;
+  std::uint32_t stock_free_days_ = 0;
+  std::uint32_t stock_lifted_days_ = 0;
+  std::uint32_t stock_met_days_ = 0;
+  std::uint32_t stock_no_stand_days_ = 0;
+  std::uint32_t stock_marked_ = 0;
+
+  /// November to February, the stock's months (month 0 = January).
+  static bool InStockMonths(const core::WorldState& world) {
+    const std::uint32_t month = (world.calendar.day % core::kDaysPerYear) / core::kDaysPerMonth;
+    return month >= 10U || month <= 1U;
+  }
 
   /// unit_types.csv row of the wooden house; past logs_by_type_ when absent.
   std::uint32_t house_type_ = core::kNoTableRow;
