@@ -635,6 +635,9 @@ bool g_salt_points_zero = false;
 /// since 0.37.379 with #1677's materials wait and raise under it (374 had it on
 /// bare, 375 took it back on K5's population red); `--no-smokehouse` is the arm.
 bool g_smokehouse = true;
+/// `--winter-log-stock` (econ's lever for B3, boss 24 Nov): the chairman fells and carts a
+/// whole season's logs from November to February (FellingPolicy::StockForTheSeason).
+bool g_winter_log_stock = false;
 /// #1677 shape (2): the smokehouse family starts only when the houses' materials
 /// are covered - the canon's since 0.37.379; `--no-smokehouse-houses-first` off.
 bool g_smokehouse_houses_first = true;
@@ -947,6 +950,7 @@ bool Walk(std::uint64_t seed,
   }
   builder.limit.BuySeedLotFirst(!g_empty_seed_key.empty());  // #1377 P0; off in the canon
   builder.smokehouse.Enable(g_smokehouse);  // #1644: the arm --smokehouse; off in the canon
+  builder.felling.StockForTheSeason(g_winter_log_stock);  // econ's B3 lever, --winter-log-stock
   builder.smokehouse.WaitForHouses(g_smokehouse_houses_first);  // #1677 shape (2)
   builder.smokehouse.SetWindow(g_smokehouse_window);            // #1761 window (c)
   builder.fallow.SetHousesDeadline(g_fallow_houses_deadline);   // #1726 option 2
@@ -1697,13 +1701,17 @@ bool Walk(std::uint64_t seed,
       builder.trails.Print(std::cout, seed);                // #2072's TRAIL2072
       builder.trail_legs.Print(std::cout, seed);            // #2072's LEGS2072
       builder.decomp.Print(std::cout, seed);                // #2072's DECOMP2072
-      builder.scale.Print(std::cout, seed);                 // #2118's SCALE2118
-      builder.district_table.Print(std::cout, seed);        // «Стол для района», TABLE1953
-      builder.field_work.Print(std::cout, seed);            // #2264
-      builder.clerk.Print(std::cout, seed);                 // #589
-      builder.reputation.Print(std::cout, seed);            // #1897's REP1897
-      builder.plan_over.Print(std::cout, seed);             // #1946's OVER1946
-      herds.PrintCowFlows(std::cout, seed);                 // #1570
+      if (g_winter_log_stock) {  // the lever's own ground: did it ever aim?
+        builder.felling.Report(("population_curve (seed " + std::to_string(seed) + ")").c_str(),
+                               simulation->CompletedState());
+      }
+      builder.scale.Print(std::cout, seed);           // #2118's SCALE2118
+      builder.district_table.Print(std::cout, seed);  // «Стол для района», TABLE1953
+      builder.field_work.Print(std::cout, seed);      // #2264
+      builder.clerk.Print(std::cout, seed);           // #589
+      builder.reputation.Print(std::cout, seed);      // #1897's REP1897
+      builder.plan_over.Print(std::cout, seed);       // #1946's OVER1946
+      herds.PrintCowFlows(std::cout, seed);           // #1570
       hand_overs.Print(std::cout, seed);
       builder.houses.PrintQueueLines(std::cout, seed);  // #1677: the queue by cause, short lines
       feed_rung.Print(std::cout, seed);                 // #1573
@@ -1939,6 +1947,8 @@ int main(int argc, char** argv) {
           std::string(argument.substr(std::string_view("--seed-offset=").size())).c_str(),
           nullptr,
           10);
+    } else if (argument == "--winter-log-stock") {
+      g_winter_log_stock = true;  // econ's B3 lever (FellingPolicy::StockForTheSeason)
     } else if (argument.starts_with("--years=")) {
       const auto years = std::strtoul(
           std::string(argument.substr(std::string_view("--years=").size())).c_str(), nullptr, 10);

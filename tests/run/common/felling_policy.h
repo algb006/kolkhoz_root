@@ -83,6 +83,13 @@ class FellingPolicy {
   /// @param houses How many next houses' logs to keep; 0 — as before.
   void KeepAhead(std::uint32_t houses) { houses_ahead_ = houses; }
 
+  /// @brief THE WINTER STOCK (econ's lever for B3, boss 24 Nov; the 2 Oct rule: the bot plays
+  ///        well): from November to February the logs kept in hand cover the whole next
+  ///        building season - last year's logs built into walls and taken in by the shops (the
+  ///        closed book's built_in and processed) - so the mud weeks need no felling and no log
+  ///        carting. Off: the felling follows today's sites, as before.
+  void StockForTheSeason(bool on) { season_stock_ = on; }
+
   /// @brief One day of the chairman's attention. Call once a day.
   /// @param saw_log_grams The logs the saw needs for the boards the sites still
   ///        lack (SawmillPolicy::LogsForMissingBoards); 0 in a run with no saw.
@@ -165,8 +172,23 @@ class FellingPolicy {
                                   ? static_cast<core::Grams>(logs_by_type_[house_type_]) *
                                         static_cast<core::Grams>(houses_ahead_) * catalog_.log_grams
                                   : 0;
-    const core::Grams wanted = (static_cast<core::Grams>(granary_logs_) * catalog_.log_grams) +
-                               owed + saw_log_grams + ahead;
+    core::Grams wanted = (static_cast<core::Grams>(granary_logs_) * catalog_.log_grams) + owed +
+                         saw_log_grams + ahead;
+    // The winter stock: November to February, a whole season's logs in hand (StockForTheSeason).
+    if (season_stock_) {
+      const std::uint32_t month =
+          (world.calendar.day % core::kDaysPerYear) / core::kDaysPerMonth;  // 0 = January
+      if (month >= 10U || month <= 1U) {
+        const core::ResourceId log = catalog_.log_resource;
+        const auto at = [&log](const core::ResourceAmounts& amounts) {
+          return log.value < amounts.size() ? amounts[log.value] : core::Grams{0};
+        };
+        const core::Grams season =
+            at(world.ledger.closed.built_in) + at(world.ledger.closed.processed);
+        season_target_max_ = std::max(season_target_max_, season);
+        wanted = std::max(wanted, season);
+      }
+    }
     if (logs >= wanted) {
       return;
     }
@@ -200,7 +222,14 @@ class FellingPolicy {
     }
     std::cout << run << ": the run's chairman marked " << marked_
               << " fellings; groves and belts hold " << std::lround(felled_left) << " of "
-              << std::lround(started) << " m3\n";
+              << std::lround(started) << " m3";
+    if (season_stock_) {
+      // The winter stock's own ground: the largest season it aimed at (0 says it never aimed).
+      std::cout << "; winter stock ON, largest season target "
+                << season_target_max_ / catalog_.log_grams << " logs"
+                << (season_target_max_ == 0 ? " WINTER_STOCK_NEVER_AIMED" : "");
+    }
+    std::cout << '\n';
   }
 
  private:
@@ -372,6 +401,8 @@ class FellingPolicy {
   /// in every run that fells: the house policy's three sites at once
   /// (house_policy.h) — the next batch he will open.
   std::uint32_t houses_ahead_ = 3;
+  bool season_stock_ = false;
+  core::Grams season_target_max_ = 0;
 
   /// unit_types.csv row of the wooden house; past logs_by_type_ when absent.
   std::uint32_t house_type_ = core::kNoTableRow;
