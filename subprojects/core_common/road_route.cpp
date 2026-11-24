@@ -336,6 +336,10 @@ class RoadIndexImpl final : public RoadIndex {
     const float weight = rules_.off_road_weight[static_cast<std::size_t>(mode)];
     const auto mode_index = static_cast<std::size_t>(mode);
     Choice best;
+    if (MayGoAcross(mode)) {
+      best.kind = Choice::kStraight;
+      best.km = Distance(from, to) / 1000.0F * LegCost(mode, from, to, day);
+    }
     const std::size_t nodes = graph_.nodes.size();
     // PRICED ONCE, AND ONLY WHEN THEY COULD WIN (#2072 CPU, exact): floors no less than the
     // best cannot replace it (strict comparisons), so their legs go unpriced.
@@ -399,14 +403,6 @@ class RoadIndexImpl final : public RoadIndex {
           }
         }
       }
-    }
-    // THE STRAIGHT LINE LAST (#2116 item 2, exact): it wins ties, as when priced first, and is
-    // priced only when its floor does not already lose to the network's best.
-    const float line_km = Distance(from, to) / 1000.0F;
-    if (MayGoAcross(mode) && !(line_km * floor > best.km)) {
-      const float km = line_km * LegCost(mode, from, to, day);
-      best = km <= best.km ? Choice{} : best;  // Choice{}: kStraight
-      best.km = std::min(best.km, km);
     }
     if (!(best.km < kNoWay)) {
       // A cart with no road to go by: the straight line, said so.
@@ -600,10 +596,14 @@ class RoadIndexImpl final : public RoadIndex {
   static inline std::atomic<std::uint64_t> g_day_table_builds{0};
 
  private:
-  /// THE NEAR TABLE (0.36.2): each cell of a dense grid over the network (out to kNearReach)
-  /// holds its kNearEdges nearest edges and their nearest segments, per usability class; built
-  /// once a network by every segment telling the cells in reach. A place reads one cell, not
-  /// the hundreds of segments a ring search visits.
+  /// THE NEAR TABLE (0.36.2): every cell of a dense grid over the network,
+  /// out to kNearReach beyond it, holds the kNearEdges edges nearest its
+  /// centre and, for each, the segment nearest it — per usability class
+  /// (roads only; roads and paths). Built by letting every segment tell the
+  /// cells within reach about itself, so the cost is the segments' count
+  /// times a few dozen cells, once a network. A place then reads one cell and
+  /// walks each listed edge to its own nearest point: a few segments, not
+  /// the hundreds a ring search visits.
   void BuildNearTable() {
     if (segments_.empty()) {
       return;
