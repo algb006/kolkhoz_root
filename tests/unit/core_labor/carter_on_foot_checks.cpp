@@ -421,7 +421,8 @@ int CheckCarterOnFoot() {
     const auto walker_day = [&labor](float metres_out,
                                      std::uint32_t& walkers,
                                      float light_hours = 12.0F,
-                                     float health = 70.0F) {
+                                     float health = 70.0F,
+                                     std::uint32_t* too_far = nullptr) {
       core::WorldState world = Village(2, 1);
       world.weather.daylight_hours = light_hours;
       for (core::ResidentRow& person : world.residents.rows) {
@@ -430,6 +431,10 @@ int CheckCarterOnFoot() {
       const core::FieldId heap = AddHeap(world, 50.0F, metres_out);
       RunHours(*labor, world, 0);
       walkers = CartersOfField(world, heap).walkers;
+      if (too_far != nullptr) {
+        *too_far = world.ledger.current.short_job_days[static_cast<std::size_t>(
+            core::WorkKind::kHauling)][static_cast<std::size_t>(core::JobShortfall::kTooFarOnFoot)];
+      }
       RunHours(*labor, world, core::kTicksPerDay - 3U);  // to hour 21: worked, not yet paid off
       float paid = 0.0F;
       for (const core::ResidentRow& person : world.residents.rows) {
@@ -455,6 +460,20 @@ int CheckCarterOnFoot() {
     failures += Expect(near_paid > 0.60F && near_paid < 0.65F,
                        "carter on foot, the pay: two and a half trips of 20 kg against a norm of "
                        "80 are 0.625 of a norm-day");
+    // AND THE SKIP IS BOOKED (save 230, boss 24 Nov): the heap nobody may carry for want of two
+    // trips stands short for «too far to carry on foot», the heap he carries for nothing.
+    {
+      std::uint32_t walkers = 0;
+      std::uint32_t far_booked = 0;
+      std::uint32_t near_booked = 0;
+      walker_day(1500.0F, walkers, 12.0F, 70.0F, &far_booked);
+      walker_day(1000.0F, walkers, 12.0F, 70.0F, &near_booked);
+      std::cout << "  carter on foot, the reason: 1.5 km out kTooFarOnFoot job-days " << far_booked
+                << ", 1 km out " << near_booked << '\n';
+      failures += Expect(far_booked == 1 && near_booked == 0,
+                         "carter on foot, the reason: a heap past the two trips is booked «too far "
+                         "to carry on foot», a heap he carries is not");
+    }
     std::uint32_t june_walkers = 0;
     walker_day(1500.0F, june_walkers, 16.0F);
     failures += Expect(june_walkers == 0,
