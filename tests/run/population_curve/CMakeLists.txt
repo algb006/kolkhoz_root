@@ -1,4 +1,9 @@
 kolkhoz_add_test_app(population_curve main.cpp)
+# /bigobj under MSVC (save-230's host build, 24 Nov 2026): main.cpp with its tallies passed
+# the COFF object's section limit (C1128); clang's ELF has no such limit.
+if(MSVC)
+  target_compile_options(population_curve PRIVATE /bigobj)
+endif()
 # PROCESSORS 16: the run walks its sixteen villages at once, a thread a seed
 # (main.cpp, std::async) - and ctest counted it as one, so a suite on -j N ran
 # N + 15 threads whenever it overlapped the others (the human, 13 October 2026,
