@@ -20,6 +20,7 @@
 
 #include "../common/run_harness.h"
 #include "core_common/calendar.h"
+#include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 #include "core_save/save.h"
 
@@ -62,12 +63,18 @@ int main() {
   // THE FIRST DAY WITH ALL THREE TO LOSE, within a year (the first run saved a July day: its
   // field crews ride the brigade cart, so nobody the accountant placed trod anything).
   std::uint32_t save_day = kDaysBefore;
+  // Working heads, and how many of them walk (WorkRidesOut false: the tread's own predicate).
   const auto working = [](const core::WorldState& world) {
     std::size_t count = 0;
+    std::size_t walking = 0;
     for (const core::ResidentRow& person : world.residents.rows) {
-      count += person.work.kind != core::WorkKind::kNone ? 1U : 0U;
+      if (person.work.kind == core::WorkKind::kNone) {
+        continue;
+      }
+      ++count;
+      walking += core::WorkRidesOut(world, person.work) ? 0U : 1U;
     }
-    return count;
+    return std::to_string(count) + " (walking " + std::to_string(walking) + ")";
   };
   for (std::uint32_t search = 0; search < core::kDaysPerYear; ++search) {
     for (std::uint32_t tick = 0; tick < kSaveHour; ++tick) {
@@ -100,14 +107,8 @@ int main() {
                      "the save carries trails, a pending tread and yesterday's walks - a save "
                      "with none of them would pass for the wrong reason");
   std::cout << "save_continue: at the save - trails " << trails << ", pending passes " << pending
-            << ", yesterday's walks " << walks << ", residents at work " <<
-      [&at_save] {
-        std::size_t working = 0;
-        for (const core::ResidentRow& person : at_save.residents.rows) {
-          working += person.work.kind != core::WorkKind::kNone ? 1U : 0U;
-        }
-        return working;
-      }() << '\n';
+            << ", yesterday's walks " << walks << ", residents at work " << working(at_save)
+            << '\n';
 
   const std::vector<std::byte> bytes = core::EncodeWorld(at_save, *continued.tables);
   core::WorldState decoded;
