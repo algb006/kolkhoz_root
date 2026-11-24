@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <memory>
 #include <numbers>
+#include <span>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -25,20 +26,39 @@ namespace {
 /// Square metres in a hectare (FieldRow::area_ga is hectares).
 constexpr float kSquareMetresPerHectare = 10000.0F;
 
-/// Rule 9: the leg's midpoint on a field with a standing crop - the field as its disc
-/// (centre, area), the core keeping no outline.
-bool CrossesAStandingCrop(const WorldState& world, Vec2 from, Vec2 to) {
-  const Vec2 middle{.x = (from.x + to.x) / 2.0F, .y = (from.y + to.y) / 2.0F};
+/// A field with a standing crop as rule 9 sees it: its disc (centre, area), the core keeping no
+/// outline.
+struct StandingCrop {
+  Vec2 center;
+  float radius = 0.0F;
+};
+
+/// The day's standing crops, gathered once a tread (#2116 CPU, exact: rule 9 asked every field
+/// for every step - steps times fields a day - and most days few or none stand).
+std::vector<StandingCrop> StandingCropsOf(const WorldState& world) {
+  std::vector<StandingCrop> crops;
   for (const FieldRow& field : world.fields.rows) {
     if (field.kind != LandKind::kArable ||
         (field.phase != FieldPhase::kGrowing && field.phase != FieldPhase::kHarvest)) {
       continue;
     }
-    const float radius =
-        std::sqrt(field.area_ga * kSquareMetresPerHectare / std::numbers::pi_v<float>);
-    const float dx = middle.x - field.center.x;
-    const float dy = middle.y - field.center.y;
-    if ((dx * dx) + (dy * dy) <= radius * radius) {
+    crops.push_back(StandingCrop{
+        .center = field.center,
+        .radius = std::sqrt(field.area_ga * kSquareMetresPerHectare / std::numbers::pi_v<float>)});
+  }
+  return crops;
+}
+
+/// Rule 9: the leg's midpoint on a field with a standing crop.
+bool CrossesAStandingCrop(std::span<const StandingCrop> crops, Vec2 from, Vec2 to) {
+  if (crops.empty()) {
+    return false;
+  }
+  const Vec2 middle{.x = (from.x + to.x) / 2.0F, .y = (from.y + to.y) / 2.0F};
+  for (const StandingCrop& crop : crops) {
+    const float dx = middle.x - crop.center.x;
+    const float dy = middle.y - crop.center.y;
+    if ((dx * dx) + (dy * dy) <= crop.radius * crop.radius) {
       return true;
     }
   }
@@ -143,10 +163,11 @@ void TreadPlacedWalkers(const TrailRules& rules,
   // The passes gathered, then sorted and counted at once (#2072 CPU: one sorted insert a step
   // was the tread's cost) - the same rows and counts in the same key order.
   std::vector<TrailPass> passes = std::move(pending);
+  const std::vector<StandingCrop> crops = StandingCropsOf(current);
   for (auto [a, b] : steps) {
     const Vec2 from = TrailEndPosition(a);
     const Vec2 to = TrailEndPosition(b);
-    if (CrossesAStandingCrop(current, from, to)) {
+    if (CrossesAStandingCrop(crops, from, to)) {
       continue;  // rule 9
     }
     if (std::tie(b.x, b.y) < std::tie(a.x, a.y)) {
