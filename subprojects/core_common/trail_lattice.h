@@ -50,17 +50,9 @@ struct TrailLookup {
   std::int32_t columns = 0;
   std::int32_t rows_of_cells = 0;
   std::vector<const TrailRow*> grid;
-  /// THE NEAREST TRAIL, in cells (#2116 item 3): per grid cell the octile distance to the
-  /// nearest cell any trail touches (0 on one) - the walker's search's heuristic reads it.
-  std::vector<float> nearest_trail;
 
   /// @brief The row of the edge between two cells (either way), or nullptr.
   const TrailRow* Find(TrailEnd a, TrailEnd b) const;
-
-  /// @brief A LOWER BOUND, in cells, on the octile distance from `cell` to the nearest cell a
-  ///        trail touches: exact inside the trails' box, the distance to the box outside it,
-  ///        infinity with no trail at all.
-  float NearestTrailCells(TrailEnd cell) const;
 
   bool Empty() const { return table == nullptr || table->rows.empty(); }
 
