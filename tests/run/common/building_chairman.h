@@ -52,6 +52,7 @@
 #include "repair_policy.h"
 #include "reputation_tally.h"
 #include "sawmill_policy.h"
+#include "scale_tally.h"
 #include "school_policy.h"
 #include "smokehouse_policy.h"
 #include "social_objects_policy.h"
@@ -611,6 +612,8 @@ class BuildingChairman {
   bool count_trail_legs = false;
   /// #2072's DECOMP2072: what the walking time could move, by village-year (decomp_tally.h).
   DecompTally decomp;
+  /// #2118's SCALE2118: a day's CPU against the village's size (scale_tally.h).
+  ScaleTally scale;
   /// #2264's print: M1-M4 of the field-work coordinator, y1-y3 (field_work_tally.h).
   FieldWorkTally field_work;
   /// #589's print: the clerk's post and his family's satiety (clerk_tally.h).

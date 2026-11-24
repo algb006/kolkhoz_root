@@ -1112,6 +1112,7 @@ bool Walk(std::uint64_t seed,
         builder.sport_talk_on = true;
       }
       const std::uint32_t unexplained_before = builder.upgrades.held().unexplained;
+      const double steps_started = run::ScaleTally::ThreadSeconds();  // #2118's SCALE2118
       LiveOneDay(*simulation,
                  builder.upgrades,
                  out,
@@ -1128,7 +1129,10 @@ bool Walk(std::uint64_t seed,
                  &herds,
                  &crime,
                  &horse_tail);
+      const double chairman_started = run::ScaleTally::ThreadSeconds();
+      builder.scale.AddSimulation(chairman_started - steps_started);
       builder.RunDay(*simulation);
+      builder.scale.AddChairman(run::ScaleTally::ThreadSeconds() - chairman_started);
       timber.CountDay(simulation->CompletedState());
       avatar_book.CountDay(simulation->CompletedState());
       builder.milkmaids.CountDayEnd(simulation->CompletedState());
@@ -1378,6 +1382,7 @@ bool Walk(std::uint64_t seed,
       }
     }
     const core::WorldState& state = simulation->CompletedState();
+    builder.scale.CloseYear(state, year);  // #2118's SCALE2118
     const auto population = static_cast<std::uint32_t>(state.residents.rows.size());
     if (year == 7) {
       out.year7 = population;
@@ -1689,6 +1694,7 @@ bool Walk(std::uint64_t seed,
       builder.trails.Print(std::cout, seed);                // #2072's TRAIL2072
       builder.trail_legs.Print(std::cout, seed);            // #2072's LEGS2072
       builder.decomp.Print(std::cout, seed);                // #2072's DECOMP2072
+      builder.scale.Print(std::cout, seed);                 // #2118's SCALE2118
       builder.district_table.Print(std::cout, seed);        // «Стол для района», TABLE1953
       builder.field_work.Print(std::cout, seed);            // #2264
       builder.clerk.Print(std::cout, seed);                 // #589
