@@ -1667,21 +1667,6 @@ class LaborSystem final : public ILaborSystem {
         params.yard_ride_km[job_index] = index->EffectiveKm(found_yard[ride_mode], ride_place);
       }
     }
-    // A CARRIER ON FOOT IN SNOW (roads.md §3, 24 Nov): the hauling jobs' carry km, through the
-    // door the carrier's world time asks (CarrierSnowKm); only on a snow day.
-    params.carrier_km.clear();
-    if (CarrierSnowKm(current, Vec2{}, Vec2{}) >= 0.0F) {
-      params.carrier_km.assign(jobs.size() * homes.size(), -1.0F);
-      for (std::size_t job_index = 0; job_index < jobs.size(); ++job_index) {
-        if (jobs[job_index].kind != WorkKind::kHauling) {
-          continue;
-        }
-        for (std::size_t slot = 0; slot < homes.size(); ++slot) {
-          params.carrier_km[(job_index * homes.size()) + slot] =
-              CarrierSnowKm(current, homes[slot], jobs[job_index].position);
-        }
-      }
-    }
   }
 
   /// @brief Takes off the morning's work the men whose horse is gone: the

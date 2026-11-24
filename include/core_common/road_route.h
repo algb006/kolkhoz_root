@@ -287,13 +287,6 @@ float WalkRouteKm(const WorldState& world,
 /// @brief ReachMeasure's effective km.
 float ReachKm(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to);
 
-/// @brief A CARRIER ON FOOT IN SNOW (roads.md §3, boss 24 Nov, 3d8407219: a hand sledge): on a
-///        day the dirt bed lies in snow, the km a hauler on foot pays from `from` to `to` - the
-///        way's distance over the trailed network (ReachKm: trodden routes on top, no ground)
-///        at the snow trail's rate (1 / walk_wet) everywhere; -1 on any other day (he walks as
-///        every walker). The one door for the planner's carry and the carrier's world time.
-float CarrierSnowKm(const WorldState& world, Vec2 from, Vec2 to);
-
 /// @brief How many day node tables this process has computed (the run's recompute cost).
 std::uint64_t DayTableBuilds();
 

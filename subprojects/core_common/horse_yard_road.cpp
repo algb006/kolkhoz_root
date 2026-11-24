@@ -71,14 +71,6 @@ float WorkRoadHours(const WorldState& world,
   // A WALKER'S WORLD TIME IS HIS LATTICE ROUTE (#2072 (A), boss 23 Nov): the same way the
   // morning's tread walks; a rider keeps the network's.
   if (!rides && mode == TravelMode::kWalk) {
-    // A CARRIER ON FOOT IN SNOW pulls a hand sledge (roads.md §3, 24 Nov): the snow trail's
-    // rate over the trailed way - the planner's carry asks the same door (CarrierSnowKm).
-    if (work.kind == WorkKind::kHauling) {
-      const float carried = CarrierSnowKm(world, home, target);
-      if (carried >= 0.0F) {
-        return carried * walk_hours_per_km;
-      }
-    }
     return WalkRouteKm(world, home, target, nullptr) * walk_hours_per_km;
   }
   return RoadKm(world, mode, home, target) * (rides ? ride_rate : walk_hours_per_km);
