@@ -466,16 +466,18 @@ int CheckCarterOnFoot() {
     failures += Expect(near_paid > 0.60F && near_paid < 0.65F,
                        "carter on foot, the pay: two and a half trips of 20 kg against a norm of "
                        "80 are 0.625 of a norm-day");
-    // AND THE SKIP IS BOOKED (save 230, boss 24 Nov): with no horse (the carry is the load's
-    // only way), the heap nobody may carry for want of two trips stands short for «too far to
-    // carry on foot», the heap he carries for nothing. (The first run used the one-horse
-    // village: its cart took the heap, nothing stood short, and both read 0.)
+    // AND THE SKIP IS BOOKED (save 230, boss 24 Nov): in the one-horse village the cart takes
+    // one hand and the heap, and the second hand is the carriers' pass's (it runs only where
+    // carts exist) - 1.5 km out he is too far for two trips and the heap stands short «too far
+    // to carry on foot» (it read kNoHorse, the horse being the cart's, until b521ad93); 1 km
+    // out he carries, nothing of it is booked so. Without a horse there is no carriers' pass:
+    // the horseless run read kNoHands at both distances.
     {
       std::uint32_t walkers = 0;
       std::uint32_t far_booked = 0;
       std::uint32_t near_booked = 0;
-      walker_day(1500.0F, walkers, 12.0F, 70.0F, &far_booked, 0);
-      walker_day(1000.0F, walkers, 12.0F, 70.0F, &near_booked, 0);
+      walker_day(1500.0F, walkers, 12.0F, 70.0F, &far_booked, 1);
+      walker_day(1000.0F, walkers, 12.0F, 70.0F, &near_booked, 1);
       std::cout << "  carter on foot, the reason: 1.5 km out kTooFarOnFoot job-days " << far_booked
                 << ", 1 km out " << near_booked << '\n';
       failures += Expect(far_booked == 1 && near_booked == 0,
