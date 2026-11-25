@@ -24,6 +24,7 @@
 #include "barrack_policy.h"
 #include "beach_policy.h"
 #include "cemetery_policy.h"
+#include "church_haul_tally.h"
 #include "clerk_tally.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
@@ -123,6 +124,7 @@ class BuildingChairman {
         rye_probe(tables),
         plan_loss(tables),
         data_pack(tables),
+        church_haul(tables),
         plan_years(tables),
         field_work(tables),
         plan_over(tables),
@@ -355,6 +357,7 @@ class BuildingChairman {
     district_table.WatchStep(world);  // TABLE1953: each kDistrictTable as the step raises it
     road_holds.CountStep(world);      // HOLD2129: the day's carts, every plan of it
     data_pack.CountStep(world);       // DATAPACK2157 (probe): thefts, pantries, the book
+    church_haul.CountStep(world);     // HAUL2157 (probe): the plan's carts by load kind
   }
 
   /// @brief #713'S MUST-NOT ARM (econ, boss-econ-713-1302-reads [3]): the
@@ -423,18 +426,19 @@ class BuildingChairman {
     if (count_trail_legs) {
       trail_legs.CountDay(simulation.CompletedState());  // #2072's LEGS2072 (--trail-legs)
     }
-    decomp.CountDay(simulation.CompletedState());      // #2072's DECOMP2072
-    road_holds.CountDay(simulation.CompletedState());  // #2129's HOLD2129
-    winter_felling.CountDay(simulation);               // WFELL2072
-    winter_horses.CountDay(simulation);                // WHORSE2072
-    econ_side.CountDay(simulation.CompletedState());   // S2072
-    rye_probe.CountDay(simulation.CompletedState());   // RYE2157 (probe)
-    plan_loss.CountDay(simulation.CompletedState());   // PLANLOSS2157
-    data_pack.CountDay(simulation.CompletedState());   // DATAPACK2157 (probe)
-    plan_years.CountDay(simulation.CompletedState());  // PLANY2072
-    clerk.CountDay(simulation);                        // #589's print
-    reputation.CountDay(simulation.CompletedState());  // #1897's REP1897
-    plan_over.CountDay(simulation.CompletedState());   // #1946's OVER1946
+    decomp.CountDay(simulation.CompletedState());       // #2072's DECOMP2072
+    road_holds.CountDay(simulation.CompletedState());   // #2129's HOLD2129
+    winter_felling.CountDay(simulation);                // WFELL2072
+    winter_horses.CountDay(simulation);                 // WHORSE2072
+    econ_side.CountDay(simulation.CompletedState());    // S2072
+    rye_probe.CountDay(simulation.CompletedState());    // RYE2157 (probe)
+    plan_loss.CountDay(simulation.CompletedState());    // PLANLOSS2157
+    data_pack.CountDay(simulation.CompletedState());    // DATAPACK2157 (probe)
+    church_haul.CountDay(simulation.CompletedState());  // HAUL2157 (probe)
+    plan_years.CountDay(simulation.CompletedState());   // PLANY2072
+    clerk.CountDay(simulation);                         // #589's print
+    reputation.CountDay(simulation.CompletedState());   // #1897's REP1897
+    plan_over.CountDay(simulation.CompletedState());    // #1946's OVER1946
     // The season's talk to the drinker (#1238; sport_talk_policy.h).
     if (sport_talk_on) {
       sport_talk.RunDay(simulation);
@@ -655,6 +659,8 @@ class BuildingChairman {
   PlanLossTally plan_loss;
   /// DATAPACK2157 (#2157's data pack for econ, years 1-3; data_pack_tally.h).
   DataPackTally data_pack;
+  /// HAUL2157 (the church's haul in year 1; church_haul_tally.h).
+  ChurchHaulTally church_haul;
   /// PLANY2072 (econ's #2072 gate, boss 25 Nov): each year's verdict and every short position's
   /// book and named cause (plan_year_tally.h).
   PlanYearTally plan_years;
