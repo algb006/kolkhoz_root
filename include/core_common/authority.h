@@ -67,6 +67,7 @@ enum class UnderstoodReason : std::uint8_t {
   kWeather,       ///< A harvest or hay lamp is burning (the weather presses).
   kPlanDeadline,  ///< The plan's deadline within 4 game days, the plan short.
   kEmergency,     ///< A fire, a flood or a herd loss today or yesterday.
+  kSowingWindow,  ///< The sowing window closing: a field ploughed, harrowed or sown (econ [7]).
   kUnderstoodReasonCount,
 };
 

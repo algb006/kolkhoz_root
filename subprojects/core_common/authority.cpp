@@ -74,10 +74,18 @@ UnderstoodReason UnderstoodReasonToday(const WorldState& world, const AuthorityR
   // THE WEATHER PRESSES: a field in its harvest, or its reaped crop still lying on it. Read off
   // the fields, not the lamps: the lamps are the session's, derived between steps, and no
   // subsystem sees them inside one.
+  // (A meadow in its cut is in kHarvest too: «сено не успевает», econ [7], is this reason.)
+  bool sowing = false;
   for (const FieldRow& field : world.fields.rows) {
     if (field.phase == FieldPhase::kHarvest || field.reaped_grams > 0) {
       return UnderstoodReason::kWeather;
     }
+    sowing = sowing || field.phase == FieldPhase::kPlowing ||
+             field.phase == FieldPhase::kHarrowing || field.phase == FieldPhase::kSowing;
+  }
+  // THE SOWING WINDOW CLOSING (econ [7]): a field ploughed, harrowed or sown today.
+  if (sowing) {
+    return UnderstoodReason::kSowingWindow;
   }
   // THE PLAN'S DEADLINE: the turn within `deadline_days`, a position still short.
   if (world.plan.announced != 0 && DaysToPlanTurn(world) <= rules.deadline_days) {

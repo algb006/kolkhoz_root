@@ -67,6 +67,7 @@ class AuthorityTally {
       if (last_understood_day_ != 0) {
         ++row.understood_days;
         ++row.cancelled_days;
+        row.understood_on.push_back((last_understood_day_ - 1U) % core::kDaysPerYear + 1U);
       }
     }
   }
@@ -77,6 +78,10 @@ class AuthorityTally {
     const std::uint32_t year = (day / core::kDaysPerYear) + 1U;
     Year& row = by_year_[year];
     row.authority_end = world.chairman.authority;
+    row.residents_end = static_cast<std::uint32_t>(world.residents.rows.size());
+    for (const core::FamilyRow& family : world.families.rows) {
+      row.hunger_family_days += family.hunger_alarm_lit != 0 ? 1U : 0U;
+    }
     // The judged cancelled days are counted at their judgement (CountStep): the first read
     // compared cancelled_day_off with yesterday and counted day 1's 0 as a cancelled day 0 -
     // 64 of 64 in year 1 of au2on, all spurious.
@@ -88,6 +93,12 @@ class AuthorityTally {
         stolen += static_cast<double>(grams) / 1000.0;
       }
       closed.stolen_kg = stolen;
+      double issued = 0.0;
+      for (const core::Grams grams : world.ledger.closed.issued) {
+        issued += static_cast<double>(grams) / 1000.0;
+      }
+      closed.issued_kg = issued;
+      closed.residents_end = static_cast<std::uint32_t>(world.residents.rows.size());
       closed.closed = true;
     }
   }
@@ -111,8 +122,14 @@ class AuthorityTally {
              "cancelled_days_off"
           << " authority_end " << row.authority_end << " complaints " << row.complaints
           << " cancelled_days " << row.cancelled_days << " understood " << row.understood_days
-          << " stolen_kg " << row.stolen_kg << " no_reason(sowing/urgent/months) "
-          << row.no_reason_sowing << '/' << row.no_reason_urgent << '/';
+          << " stolen_kg " << row.stolen_kg << " residents_end " << row.residents_end
+          << " issued_kg " << row.issued_kg << " hunger_family_days " << row.hunger_family_days
+          << " understood_on ";
+      for (const std::uint32_t day : row.understood_on) {
+        out << day << ';';
+      }
+      out << " no_reason(sowing/urgent/months) " << row.no_reason_sowing << '/'
+          << row.no_reason_urgent << '/';
       for (const std::uint32_t month : row.no_reason_months) {
         out << month << ';';
       }
@@ -130,6 +147,10 @@ class AuthorityTally {
     std::uint32_t complaints = 0;
     std::uint32_t cancelled_days = 0;
     std::uint32_t understood_days = 0;
+    std::uint32_t residents_end = 0;
+    std::uint32_t hunger_family_days = 0;
+    double issued_kg = 0.0;
+    std::vector<std::uint32_t> understood_on;  ///< the year's days (1-based)
     std::uint32_t no_reason_sowing = 0;
     std::uint32_t no_reason_urgent = 0;
     std::vector<std::uint32_t> no_reason_months;

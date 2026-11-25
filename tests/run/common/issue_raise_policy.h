@@ -56,7 +56,17 @@ class IssueRaisePolicy {
     const core::WorldState& world = simulation.CompletedState();
     const std::uint32_t year = (world.calendar.day / core::kDaysPerYear) + 1U;
     const std::uint32_t season = core::AuthoritySeasonOf(world.calendar.day);
+    // econ [7]'s worst-village print: the free stock at each year's turn, in both arms.
+    if (world.calendar.day % core::kDaysPerYear == 0) {
+      const core::FreeStockView turn = simulation.FreeStockToday();
+      by_year_[year].free_days_at_turn = turn.measured ? turn.days : -1.0F;
+    }
     if (world.chairman.authority_live == 0 || season == last_season_ || table_grams_.empty()) {
+      return;
+    }
+    // ONCE A MONTH, on its last day as the core judges it (boss: a cost growing with the world -
+    // a scan of every family - is not paid daily). The first cut scanned every day.
+    if ((world.calendar.day + 1U) % core::kDaysPerMonth != 0) {
       return;
     }
     const core::IssueShortfall shortfall = core::IssueShortfallOf(world, core::kAuthorityRules);
@@ -86,13 +96,20 @@ class IssueRaisePolicy {
     Year& row = by_year_[year];
     ++row.raises;
     row.positions += static_cast<std::uint32_t>(orders.size());
+    row.raise_days.push_back((world.calendar.day % core::kDaysPerYear) + 1U);
+    row.free_days_at_raise = free.days;
   }
 
   void Print(std::ostream& out, std::uint64_t seed) const {
     for (const auto& [year, row] : by_year_) {
       out << "population_curve: IR2164 seed " << seed << " year " << year
           << " ground=issue_raised_when_a_tenth_short_and_the_free_stock_covers_it raises "
-          << row.raises << " positions " << row.positions << '\n';
+          << row.raises << " positions " << row.positions << " raise_days ";
+      for (const std::uint32_t day : row.raise_days) {
+        out << day << ';';
+      }
+      out << " free_days_at_raise " << row.free_days_at_raise << " free_days_at_turn "
+          << row.free_days_at_turn << '\n';
     }
   }
 
@@ -102,6 +119,9 @@ class IssueRaisePolicy {
 
   struct Year {
     std::uint32_t raises = 0;
+    std::vector<std::uint32_t> raise_days;
+    float free_days_at_raise = -1.0F;
+    float free_days_at_turn = -1.0F;
     std::uint32_t positions = 0;
   };
 
