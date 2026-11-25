@@ -49,6 +49,7 @@
 #include "milkmaid_policy.h"
 #include "night_pasture_policy.h"
 #include "office_policy.h"
+#include "plan_loss_tally.h"
 #include "plan_year_tally.h"
 #include "planting_policy.h"
 #include "repair_policy.h"
@@ -119,6 +120,7 @@ class BuildingChairman {
         winter_horses(tables),
         econ_side(tables),
         rye_probe(tables),
+        plan_loss(tables),
         plan_years(tables),
         field_work(tables),
         plan_over(tables),
@@ -424,6 +426,7 @@ class BuildingChairman {
     winter_horses.CountDay(simulation);                // WHORSE2072
     econ_side.CountDay(simulation.CompletedState());   // S2072
     rye_probe.CountDay(simulation.CompletedState());   // RYE2157 (probe)
+    plan_loss.CountDay(simulation.CompletedState());   // PLANLOSS2157
     plan_years.CountDay(simulation.CompletedState());  // PLANY2072
     clerk.CountDay(simulation);                        // #589's print
     reputation.CountDay(simulation.CompletedState());  // #1897's REP1897
@@ -644,6 +647,8 @@ class BuildingChairman {
   EconSideTally econ_side;
   /// RYE2157 (#2157's probe; rye_plan_probe.h).
   RyePlanProbe rye_probe;
+  /// PLANLOSS2157 (#2157's measurement; plan_loss_tally.h).
+  PlanLossTally plan_loss;
   /// PLANY2072 (econ's #2072 gate, boss 25 Nov): each year's verdict and every short position's
   /// book and named cause (plan_year_tally.h).
   PlanYearTally plan_years;
