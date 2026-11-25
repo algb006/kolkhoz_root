@@ -12,6 +12,7 @@
 #ifndef TESTS_RUN_COMMON_RYE_PLAN_PROBE_H_
 #define TESTS_RUN_COMMON_RYE_PLAN_PROBE_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <ostream>
@@ -39,6 +40,11 @@ class RyePlanProbe {
     if (const core::ITable* const crops = tables.FindTable("crops")) {
       rye_crop_ = crops->FindRowByKey("rye_winter");
     }
+    if (const core::ITable* const types = tables.FindTable("unit_types")) {
+      church_ = types->FindRowByKey("church_store");
+      food_yard_ = types->FindRowByKey("food_yard");
+      granary_ = types->FindRowByKey("granary");
+    }
   }
 
   /// @brief Once a day, after the day's step; prints nothing past year 1.
@@ -48,14 +54,8 @@ class RyePlanProbe {
       return;
     }
     // The chosen days, 1-based as host's probe counts them: around the rye's season and turn.
-    static constexpr std::uint32_t kDays[] = {1, 10, 20, 28, 32, 36, 40, 44, 46, 47, 48};
-    bool chosen = false;
-    for (const std::uint32_t at : kDays) {
-      chosen = chosen || at == day + 1U;
-    }
-    if (!chosen) {
-      return;
-    }
+    // EVERY DAY of year 1 (boss's church read needs the day the food yard stands and the
+    // church starts emptying).
     const std::size_t rye = rye_;
     const auto at = [rye](const core::ResourceAmounts& amounts) -> core::Grams {
       return rye < amounts.size() ? amounts[rye] : 0;
@@ -88,6 +88,23 @@ class RyePlanProbe {
            << " reaped_kg " << Kg(field.reaped_grams) << "]";
     }
     line << " count " << fields;
+    // boss's #2157 read: the church's rye, its emptying, and the stores that could take rye.
+    core::Grams church_rye = 0;
+    int church_emptying = 0;
+    int food_yard = 0;
+    int granary = 0;
+    for (const core::UnitRow& unit : world.units.rows) {
+      const bool built =
+          unit.level >= 1 && unit.construction.phase == core::ConstructionPhase::kNone;
+      if (unit.type.value == church_) {
+        church_rye += rye < unit.stock.size() ? unit.stock[rye] : 0;
+        church_emptying = std::max(church_emptying, static_cast<int>(unit.emptying));
+      }
+      food_yard += built && unit.type.value == food_yard_ ? 1 : 0;
+      granary += built && unit.type.value == granary_ ? 1 : 0;
+    }
+    line << " church_rye " << Kg(church_rye) << " church_emptying " << church_emptying
+         << " food_yards " << food_yard << " granaries " << granary;
     lines_.push_back(line.str());
   }
 
@@ -103,6 +120,9 @@ class RyePlanProbe {
   std::unique_ptr<core::IProductionSystem> production_;
   std::uint32_t rye_ = core::kNoTableRow;
   std::uint32_t rye_crop_ = core::kNoTableRow;
+  std::uint32_t church_ = core::kNoTableRow;
+  std::uint32_t food_yard_ = core::kNoTableRow;
+  std::uint32_t granary_ = core::kNoTableRow;
   std::vector<std::string> lines_;
 };
 
