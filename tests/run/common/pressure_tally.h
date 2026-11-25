@@ -36,6 +36,7 @@ class PressureTally {
     if (crops == nullptr || resources == nullptr) {
       return;
     }
+    milk_ = resources->FindRowByKey("milk");
     const std::uint32_t resource_col = crops->FindColumn("resource");
     const std::uint32_t yield_col = crops->FindColumn("yield_kg_per_ha");
     if (resource_col == core::kNoTableColumn || yield_col == core::kNoTableColumn) {
@@ -78,7 +79,13 @@ class PressureTally {
         for (const core::UnitRow& unit : world.units.rows) {
           lying += at < unit.stock.size() ? unit.stock[at] : 0;
         }
-        row.lamp_uncovered = row.lamp_uncovered || owed > lying;
+        // The milk is carted daily (the milk cart's share) and never lies stored for the turn: pr9
+        // read owed > stock in 99.7 % of years with it in.
+        const bool daily = static_cast<std::uint32_t>(at) == milk_;
+        if (owed > lying && !daily) {
+          row.lamp_uncovered = true;
+          row.uncovered_positions[static_cast<std::uint32_t>(at)] = true;
+        }
       }
     }
     // The plan's positions, read while they stand (the closed book has no due).
@@ -115,7 +122,11 @@ class PressureTally {
           << " ground=lamp=turn_within_4_days_with_a_position_short(stand-in);harvest=closed_"
              "book_vs_table_yield_x_slot0_ha"
           << " lamp " << row.lamp << " lamp_uncovered " << row.lamp_uncovered << " short15 "
-          << row.short15 << " short25 " << row.short25 << '\n';
+          << row.short15 << " short25 " << row.short25 << " uncovered_resources ";
+      for (const auto& [resource, flag] : row.uncovered_positions) {
+        out << resource << ';';
+      }
+      out << '\n';
     }
   }
 
@@ -128,11 +139,13 @@ class PressureTally {
     std::map<std::uint32_t, bool> positions;
     bool lamp = false;
     bool lamp_uncovered = false;
+    std::map<std::uint32_t, bool> uncovered_positions;
     bool short15 = false;
     bool short25 = false;
     bool closed = false;
   };
 
+  std::uint32_t milk_ = core::kNoTableRow;
   std::vector<std::uint32_t> crop_resource_;
   std::vector<float> crop_yield_kg_;
   std::map<std::uint32_t, Year> by_year_;
