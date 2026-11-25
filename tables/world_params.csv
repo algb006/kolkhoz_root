@@ -418,3 +418,5 @@ trail_forest_decay_factor,1.5,core
 trail_weight_full,1.1,core
 trail_visible_strength,0.3,core
 winter_horse_reserve,1,core
+road_following,1,core
+road_overtake_after_min,3,core
