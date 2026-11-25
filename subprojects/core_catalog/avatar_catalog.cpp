@@ -112,6 +112,12 @@ bool ReadAvatars(const ITableSet& tables, std::vector<AvatarDef>& avatars, std::
                       Range{.low = 0.0F, .high = 100.0F},
                       avatar.start_reputation,
                       error) ||
+        !ReadFactor(*table,  // #2164: the village's trust at the start (absent = 50)
+                    row,
+                    "start_authority",
+                    Range{.low = 0.0F, .high = 100.0F},
+                    avatar.start_authority,
+                    error) ||
         !ReadFactor(*table,
                     row,
                     "crime_modifier",

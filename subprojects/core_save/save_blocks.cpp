@@ -90,7 +90,11 @@ static_assert(AggregateArity<WeatherState>() == 14,
 // Save 195 (#1308): the cut's crew, a u16 at 86, and its mower-days, a float
 // at 88 - measured 136 (the float pushed the tail past 128) and 43 fields;
 // six bytes in the codec.
-static_assert(sizeof(ChairmanState) == 136, "ChairmanState changed — update the codec");
+// Save 232 (#2164): the understanding's season (u32 at 128) and days used (u8 at 132), the
+// complaint's season and the issue-raised month - predicted 144 (the layout read off the
+// comments above), MEASURED 152 by a probe (the tail was not where those comments put it);
+// 48 fields; thirteen bytes in the codec.
+static_assert(sizeof(ChairmanState) == 152, "ChairmanState changed — update the codec");
 // And the avral's days on the cut, a third u16 beside them: predicted 88
 // unmoved (into the tail's padding) and twenty-six fields; two more bytes in
 // the codec. Save 166 (#1043): the rating's recovery owed, a byte after them:
@@ -101,7 +105,7 @@ static_assert(sizeof(ChairmanState) == 136, "ChairmanState changed — update th
 // Save 225 («Стол для района»): district_table_declined, a byte after raikom_reputation - 136
 // unmoved (the float's padding, a probe read before the build) and 44 fields; one byte in the
 // codec.
-static_assert(AggregateArity<ChairmanState>() == 44,
+static_assert(AggregateArity<ChairmanState>() == 48,
               "ChairmanState gained or lost a field — update the codec and VERSION_SAVE");
 // PLANSTATE HAD NO TRIPWIRE AT ALL until 2026-09-12, and it was the only
 // serialized block without one: six blocks go into the save, five were
@@ -609,6 +613,10 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteFloat(world.chairman.eye_crisis_gained);
   out.WriteU16(world.chairman.eye_crisis_year);
   out.WriteU32(world.chairman.sugar_complaint_season);  // save 188 (#1241)
+  out.WriteU32(world.chairman.understood_season);       // save 232 (#2164)
+  out.WriteU8(world.chairman.understood_used);
+  out.WriteU32(world.chairman.complaint_season);
+  out.WriteU32(world.chairman.issue_raised_month);
 
   out.WriteFloat(world.traction_ration);
   // The team's two alarms' memory (save 109).
@@ -962,6 +970,10 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->chairman.eye_crisis_gained = in.ReadFloat();
   world->chairman.eye_crisis_year = in.ReadU16();
   world->chairman.sugar_complaint_season = in.ReadU32();  // save 188 (#1241)
+  world->chairman.understood_season = in.ReadU32();       // save 232 (#2164)
+  world->chairman.understood_used = in.ReadU8();
+  world->chairman.complaint_season = in.ReadU32();
+  world->chairman.issue_raised_month = in.ReadU32();
 
   world->traction_ration = in.ReadFloat();
   world->traction_watch.short_ration_days = in.ReadU16();  // save 109

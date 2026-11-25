@@ -978,6 +978,18 @@ enum class EventKind : std::uint8_t {
   /// not pay). kNotable. Seam key `district_table`.
   kDistrictTable,
 
+  /// THE VILLAGE REMEMBERED (#2164; authority.h MoveAuthority): a loud deed moved the
+  /// chairman's authority. amount: the AuthorityDeed in bits 0-7 and the move in tenths of a
+  /// point, signed, in bits 8-31 - the feed's cause line («Село запомнило: …»). Carries no
+  /// subject. kNotable. Seam key `authority_moved`.
+  kAuthorityMoved,
+
+  /// THE COMPLAINT UPWARD (#2164; RunAuthorityComplaint): authority below the complaint line,
+  /// once a season - «на вас написали в район»; the raikom's loss is booked and an
+  /// extraordinary visit (kComplaint) called for the next day. kNotable. Seam key
+  /// `complaint_to_district`.
+  kComplaintToDistrict,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.
@@ -1043,7 +1055,8 @@ inline constexpr std::array<EventKind, 3> kEndingConditionEventKinds = {
 /// has asked «is it an ending's condition?», added it above if so, and raised
 /// this count - the list cannot fall behind the enum silently.
 // kDistrictTable (127): not an ending's condition.
-static_assert(static_cast<std::size_t>(EventKind::kEventKindCount) == 127,
+// kAuthorityMoved (128), kComplaintToDistrict (129): not an ending's condition.
+static_assert(static_cast<std::size_t>(EventKind::kEventKindCount) == 129,
               "a new EventKind: classify it in kEndingConditionEventKinds, then raise this count");
 
 /// @brief One thing that happened. Plain data, no text: the presentation

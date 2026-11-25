@@ -29,6 +29,10 @@ struct AvatarDef {
   /// The Райком sign as a number (#634): applied once, at genesis.
   float start_reputation = 50.0F;
 
+  /// THE VILLAGE'S TRUST AT THE START (#2164; metrics §6's row by avatar, no random): applied
+  /// once, at genesis, into ChairmanState::authority. An absent column is 50.
+  float start_authority = 50.0F;
+
   /// DORMANT (#634): copied into ChairmanState at genesis; no reader yet.
   float crime_modifier = 0.0F;
   float electrification_threshold_factor = 1.0F;

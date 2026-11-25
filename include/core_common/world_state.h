@@ -435,7 +435,9 @@ struct ChairmanState {
   std::uint8_t district_table_declined = 0;
 
   /// Authority with the villagers, 0..100. Aggregate; decides re-election in
-  /// Epoch III (metrics design, §6).
+  /// Epoch III (metrics design, §6). LIVE IN EPOCH I (#2164; authority.h): set at
+  /// genesis from avatars.csv `start_authority`, moved only by loud deeds
+  /// (MoveAuthority), never faded.
   Metric authority = 50.0f;
 
   /// Reputation in the shadow world, 0..100. Exists only with the role lines;
@@ -677,6 +679,19 @@ struct ChairmanState {
   /// THE CHILDREN'S COMPLAINT's last talk season, plus one (save 188; #1241):
   /// «не чаще раза в сезон на село» - 0 when none has been said.
   std::uint32_t sugar_complaint_season = 0;
+
+  /// THE UNDERSTANDING (#2164; authority.h, save 232): the talk season (TalkSeasonOf, plus
+  /// one; 0 none) whose understood days `understood_used` counts - a new season resets it.
+  std::uint32_t understood_season = 0;
+  std::uint8_t understood_used = 0;
+
+  /// The complaint upward's last talk season, plus one (0 none): once a season (#2164).
+  std::uint32_t complaint_season = 0;
+
+  /// The month (calendar.day / kDaysPerMonth, plus one; 0 none) in which the chairman raised
+  /// the issue norm or opened a reserve with families at the ration line - its +2 is said
+  /// once a month, and that month is not «unfair» (#2164).
+  std::uint32_t issue_raised_month = 0;
 };
 
 /// @brief Why the district calls the chairman «на ковёр» (district-trip.md
