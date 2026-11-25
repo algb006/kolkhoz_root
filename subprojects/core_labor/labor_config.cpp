@@ -38,11 +38,12 @@ namespace core {
 namespace {
 
 /// The world_params keys this config declares (#1442; LaborWorldParamKeys).
-constexpr std::array<std::string_view, 5> kLaborWorldParamKeys = {"crime_truancy_on",
+constexpr std::array<std::string_view, 6> kLaborWorldParamKeys = {"crime_truancy_on",
                                                                   "truancy_from_alcoholism",
                                                                   "truancy_share_at_cap",
                                                                   "chairman_placement_level",
-                                                                  "no_auto_placement"};
+                                                                  "no_auto_placement",
+                                                                  "winter_horse_reserve"};
 
 /// The most seats transport.csv may name on one cart: a bound against a
 /// slipped digit, not a design number (the design's carts seat 2 and 6).
@@ -913,6 +914,18 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
       return false;
     }
     config.no_auto_placement = no_auto >= 0.5F;
+    // econ's #2072 winter horse (Alex #2401; winter_felling_horse.h): the horses kept for the
+    // fellers' ride on a winter-horse day; 0 switches the rule off (a paired arm's door).
+    auto winter_horse = static_cast<float>(config.winter_horse_reserve);
+    if (!OptionalValue(*world,
+                       kLaborWorldParamKeys[5],
+                       Range{.low = 0.0F, .high = 3.0F},
+                       winter_horse,
+                       error)) {
+      PrefixError("world_params", "winter_horse_reserve", error);
+      return false;
+    }
+    config.winter_horse_reserve = static_cast<std::uint32_t>(winter_horse);
     if (!ParseTrailRules(*world, config.trails, error)) {  // #2072, roads.md §3
       return false;
     }
