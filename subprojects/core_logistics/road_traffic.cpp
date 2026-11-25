@@ -79,8 +79,7 @@ void RoadTraffic::BeginLeg(std::uint32_t cart,
   Push(static_cast<std::uint32_t>(streams_.size() - 1U), start_second);
 }
 
-bool RoadTraffic::OncomingFree(
-    const Piece& piece, float low, float high, double from_second, double to_second) const {
+bool RoadTraffic::OncomingClearAt(const Piece& piece, double position, double second) const {
   const std::uint64_t key =
       (static_cast<std::uint64_t>(piece.edge) * 2U) + (piece.forward ? 0U : 1U);
   const auto found = recent_.find(key);
@@ -90,13 +89,16 @@ bool RoadTraffic::OncomingFree(
   const Recent& oncoming = found->second;
   for (std::size_t at = 0; at < oncoming.count; ++at) {
     const Passage& other = oncoming.passages[at];
-    // Its positions run the other way: in this direction it covers [-to_m, -from_m].
-    const float other_low = -other.to_m;
-    const float other_high = -other.from_m;
-    const bool meets_in_space = other_low < high && low < other_high;
-    const bool meets_in_time = static_cast<double>(other.in_second) < to_second &&
-                               from_second < static_cast<double>(other.out_second);
-    if (meets_in_space && meets_in_time) {
+    const auto in = static_cast<double>(other.in_second);
+    const auto out = static_cast<double>(other.out_second);
+    if (second < in || second > out || !(out > in)) {
+      continue;  // not on the edge at that moment
+    }
+    // Where it is then, in its own direction, and so (negated) in this one.
+    const double own_way = static_cast<double>(other.from_m) +
+                           ((static_cast<double>(other.to_m) - static_cast<double>(other.from_m)) *
+                            (second - in) / (out - in));
+    if (std::abs(-own_way - position) < kOvertakeClearMetres) {
       return false;
     }
   }
@@ -142,6 +144,7 @@ void RoadTraffic::AdvanceTo(std::int32_t now_second,
       float shared_low = 0.0F;
       float shared_high = 0.0F;
       double leader_leaves = 0.0;
+      double leader_at_low = 0.0;
       for (std::size_t at = 0; piece.clamps && at < recent.count; ++at) {
         const Passage& other = recent.passages[at];
         const float low = std::max(own.from_m, other.from_m);
@@ -160,14 +163,36 @@ void RoadTraffic::AdvanceTo(std::int32_t now_second,
           shared_low = low;
           shared_high = high;
           leader_leaves = other.SecondAt(high);
+          leader_at_low = other.SecondAt(low);
         }
       }
       // OVERTAKING (roads §8, Alex #2443): where the road allows it, a cart that has been behind
-      // the slower one overtake_after_seconds passes him if the oncoming lane on the shared
-      // stretch is free while it is there; on a bridge it waits him out.
+      // the slower one overtake_after_seconds passes him at the first moment the oncoming lane
+      // is clear around them (OncomingClearAt), trying again each kOvertakeRetrySeconds until
+      // the shared stretch ends; on a bridge it waits him out. Until t8 one oncoming cart
+      // anywhere on the stretch at any time barred the pass: 9 holds over 30 min on open road
+      // in p9b, the worst 43 min behind a cart at three quarters of its pace.
       if (held > rules_.overtake_after_seconds && piece.no_pass == RoadNoPass::kNone &&
-          OncomingFree(piece, shared_low, shared_high, own.SecondAt(shared_low), leader_leaves)) {
-        held = rules_.overtake_after_seconds;
+          shared_high > shared_low) {
+        const double span = static_cast<double>(shared_high) - static_cast<double>(shared_low);
+        const double own_low = own.SecondAt(shared_low);
+        const double own_speed = span / (own.SecondAt(shared_high) - own_low);
+        const double lead_speed = span / (leader_leaves - leader_at_low);
+        if (own_speed > lead_speed) {
+          // Where the free follower would reach the leader: from there it is right behind him.
+          const double caught =
+              ((own_speed * own_low) - (lead_speed * leader_at_low)) / (own_speed - lead_speed);
+          for (double now = caught + rules_.overtake_after_seconds; now < leader_leaves;
+               now += kOvertakeRetrySeconds) {
+            const double place =
+                static_cast<double>(shared_low) + (lead_speed * (now - leader_at_low));
+            if (OncomingClearAt(piece, place, now)) {
+              const double leaves = now + ((static_cast<double>(shared_high) - place) / own_speed);
+              held = static_cast<std::int32_t>(std::lround(leaves - own.SecondAt(shared_high)));
+              break;
+            }
+          }
+        }
       }
       {
         if (held >= rules_.hold_min_seconds) {

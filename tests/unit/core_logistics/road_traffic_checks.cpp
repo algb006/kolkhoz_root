@@ -90,16 +90,40 @@ int CheckTheEdgeLedger() {
       Expect(!dirt.holds.empty() && dirt.holds[0].cart == 1 && dirt.holds[0].behind_cart == 0 &&
                  dirt.holds[0].cause == core::RoadHoldCause::kFollowing,
              "edge ledger: on dirt the fast cart is held behind the slow one");
-  failures += Expect(dirt.delayed_seconds == 180,
-                     "edge ledger: on open dirt it overtakes after 3 minutes behind");
+  // It catches the slow one at 1 200 s and passes 3 minutes later; behind him at half its pace
+  // for those 180 s it LOSES 90 (the delay is the time lost, not the time behind).
+  failures += Expect(dirt.delayed_seconds >= 85 && dirt.delayed_seconds <= 95,
+                     "edge ledger: on open dirt it overtakes after 3 minutes behind (90 s lost)");
   // ON A BRIDGE nobody overtakes: the fast cart waits the slow one out (4 h against 2 h 10 min).
   const Pair bridge = Run(core::RoadSurface::kDirt, 600, false, /*bridge=*/true);
   failures += Expect(bridge.delayed_seconds >= 6000,
                      "edge ledger: on a bridge the fast cart waits the whole way (>= 100 min)");
-  // AND WITH THE ONCOMING LANE TAKEN it waits too.
-  const Pair busy = Run(core::RoadSurface::kDirt, 600, false, false, /*third_oncoming=*/true);
-  failures += Expect(busy.delayed_seconds >= 6000,
-                     "edge ledger: with an oncoming cart on the stretch it does not overtake");
+  // AN ONCOMING CART FAR OFF does not bar the pass (cart 2 enters the far end as the pair sets
+  // out: it is 1.8 km away when the fast cart tries).
+  const Pair far = Run(core::RoadSurface::kDirt, 600, false, false, /*third_oncoming=*/true);
+  failures += Expect(far.delayed_seconds >= 85 && far.delayed_seconds <= 95,
+                     "edge ledger: an oncoming cart far off does not bar the pass");
+  // AN ONCOMING CART AT THE PLACE OF THE PASS makes it wait for the gap: the pair sets out at
+  // 10 000 s, the fast cart tries at 11 380 s some 190 m in, and cart 2 (1 h a km from the far
+  // end since 4 868 s) is there; it passes once cart 2 is 150 m behind them.
+  {
+    const core::WorldState world = RoadWorld(core::RoadSurface::kDirt);
+    core::RoadTraffic traffic(world, {}, core::RoadTrafficRules{});
+    const core::Vec2 west{.x = 0.0F, .y = 0.0F};
+    const core::Vec2 east{.x = 2000.0F, .y = 0.0F};
+    traffic.BeginLeg(2, 0, core::TravelMode::kCart, 1.0F, east, west, 4868);
+    traffic.BeginLeg(0, 0, core::TravelMode::kCart, 2.0F, west, east, 10000);
+    traffic.BeginLeg(1, 0, core::TravelMode::kCart, 1.0F, west, east, 10600);
+    std::vector<core::RoadHold> holds;
+    std::vector<core::LegDelay> delays;
+    traffic.AdvanceTo(24 * 3600, holds, delays);
+    std::int32_t lost = 0;
+    for (const core::LegDelay& delay : delays) {
+      lost += delay.cart == 1 ? delay.seconds : 0;
+    }
+    failures += Expect(lost > 95 && lost < 1200,
+                       "edge ledger: an oncoming cart at the pass makes it wait for the gap");
+  }
   // ON ASPHALT it overtakes: no hold.
   const Pair asphalt = Run(core::RoadSurface::kAsphalt, 600, false);
   failures += Expect(asphalt.holds.empty() && asphalt.delayed_seconds == 0,

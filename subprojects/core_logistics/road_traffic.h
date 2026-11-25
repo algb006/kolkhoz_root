@@ -176,11 +176,16 @@ class RoadTraffic {
 
   void Push(std::uint32_t stream, std::int32_t second);
 
-  /// Whether no recent passage the other way shares [low, high] (positions in `piece`'s
-  /// direction) between `from_second` and `to_second`. Named: an oncoming cart that enters the
-  /// edge later than this one is not processed yet and is not seen.
-  bool OncomingFree(
-      const Piece& piece, float low, float high, double from_second, double to_second) const;
+  /// Whether no recent passage the other way is within kOvertakeClearMetres of `position` (in
+  /// `piece`'s direction) at `second`: the gap an overtaking cart needs in the oncoming lane.
+  /// Named: an oncoming cart that enters the edge later than this one is not processed yet and
+  /// is not seen.
+  bool OncomingClearAt(const Piece& piece, double position, double second) const;
+
+  /// The oncoming lane must be clear this far either side of the overtaking cart (game metres).
+  static constexpr double kOvertakeClearMetres = 150.0;
+  /// After a refused try the overtaking cart tries again this much later (game seconds).
+  static constexpr double kOvertakeRetrySeconds = 60.0;
 
   RoadTrafficRules rules_;
   std::shared_ptr<const RoadIndex> index_;
