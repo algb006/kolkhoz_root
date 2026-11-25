@@ -446,6 +446,7 @@ class ProductionSystem final : public IProductionSystem {
     // The district's people: announced first, so a notice of zero days
     // announces a visit before it arrives on the same tick (district_visit.h).
     RunAuthorityComplaint(current, kAuthorityRules);  // #2164: low trust writes to the district
+    MarkPlanPressure(config_, current);               // #2164: the plan under a real threat
     AnnounceRegularVisits(config_, current);
     ArriveDistrictVisits(config_, current);
     // THE YEAR'S HIGH-WATER MARK OF WORKED LAND, raised once a day. The

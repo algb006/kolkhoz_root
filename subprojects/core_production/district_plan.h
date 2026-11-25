@@ -260,6 +260,12 @@ float WorkedArableHa(const WorldState& current, SimDay year_start);
 /// and the year's unsealings are cleared.
 void JudgePlan(const ProductionConfig& config, WorldState& current);
 
+/// @brief #2164 (econ [10]): daily, near the plan's turn - a position (the daily-carted milk
+///        aside) owed more than lies stored marks the year under pressure
+///        (ChairmanState::year_under_pressure), the «план под угрозой» lamp's stand-in until
+///        #2190. JudgePlan adds the second pressure, a position's harvest 15 % short.
+void MarkPlanPressure(const ProductionConfig& config, WorldState& current);
+
 }  // namespace core
 
 #endif  // CORE_PRODUCTION_DISTRICT_PLAN_H_

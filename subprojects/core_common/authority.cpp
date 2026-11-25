@@ -22,16 +22,6 @@ constexpr float kAuthorityMid = 50.0F;
 constexpr float kTenths = 10.0F;
 constexpr int kDeedBits = 8;
 
-bool PlanPositionShort(const WorldState& world) {
-  for (std::size_t at = 0; at < world.plan.due.size(); ++at) {
-    const Grams sent = at < world.plan.delivered.size() ? world.plan.delivered[at] : 0;
-    if (world.plan.due[at] > sent) {
-      return true;
-    }
-  }
-  return false;
-}
-
 bool IsStubDeed(AuthorityDeed deed) {
   return deed == AuthorityDeed::kHolidayWorked || deed == AuthorityDeed::kHolidayHalfWorked;
 }
@@ -187,15 +177,8 @@ void JudgeIssueMonth(WorldState& world, const AuthorityRules& rules, Grams free_
   const std::uint32_t month = (day / kDaysPerMonth) + 1U;
   const std::uint32_t season = AuthoritySeasonOf(day);
   const IssueShortfall shortfall = IssueShortfallOf(world, rules);
-  // THE YEAR'S PRESSURE (econ [9]), read monthly with the shortfall it shares: a month with the
-  // families short, or the plan's turn within `deadline_days` with a position short.
-  // The plan's part stands in for the «план под угрозой» lamp, which is #2190's and not built:
-  // named, not the lamp.
-  if (FamiliesShort(shortfall, rules) ||
-      (world.plan.announced != 0 && DaysToPlanTurn(world) <= rules.deadline_days &&
-       PlanPositionShort(world))) {
-    chairman.year_under_pressure = 1;
-  }
+  // (The year's pressure is the plan's, econ [10]: core_production MarkPlanPressure - not this
+  // month's shortfall, which marked 74 % of the canon's years.)
   if (chairman.issue_raised_month == month || chairman.unfair_season == season) {
     return;
   }

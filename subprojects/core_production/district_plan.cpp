@@ -924,7 +924,69 @@ float WorkedArableHa(const WorldState& current, SimDay year_start) {
 /// plan.csv — every unit test's world — is a world with no district, and
 /// it must not accumulate a record of triumphs it was never asked for.
 /// The verdict is simply not taken there, which is what kNone is for.
+void MarkPlanPressure(const ProductionConfig& config, WorldState& current) {
+  // THE REAL THREAT (econ [10]; PRESS2164 pr10: 5.3 % of canon years): near the turn a position
+  // owed MORE than lies stored. The milk is carted daily and never lies for the turn - with it
+  // in, 99.7 %. The «план под угрозой» lamp's stand-in until #2190.
+  if (current.plan.announced == 0 || DaysToPlanTurn(current) > kAuthorityRules.deadline_days) {
+    return;
+  }
+  for (std::size_t at = 0; at < current.plan.due.size(); ++at) {
+    if (at == config.milk_resource.value) {
+      continue;
+    }
+    const Grams sent = at < current.plan.delivered.size() ? current.plan.delivered[at] : 0;
+    const Grams owed = current.plan.due[at] > sent ? current.plan.due[at] - sent : 0;
+    Grams lying = 0;
+    for (const UnitRow& unit : current.units.rows) {
+      lying += at < unit.stock.size() ? unit.stock[at] : 0;
+    }
+    if (owed > lying) {
+      current.chairman.year_under_pressure = 1;
+      return;
+    }
+  }
+}
+
+namespace {
+
+/// econ [10]'s second pressure: a plan position whose year's harvest fell at least
+/// kPressureHarvestShort below the cheapest expectation - the table's yield (at neutral
+/// fertility) times the hectares of its crop reaped this year. PRESS2164 pr10: 2.7 % of years.
+constexpr float kPressureHarvestShort = 0.15F;
+
+bool PlanHarvestFellShort(const ProductionConfig& config, const WorldState& current) {
+  std::vector<double> expected_kg(current.plan.due.size(), 0.0);
+  for (const FieldRow& field : current.fields.rows) {
+    if (field.crop.value >= config.crops.size() || field.reaped_day == kNeverReapedDay ||
+        field.reaped_day / kDaysPerYear != current.calendar.day / kDaysPerYear) {
+      continue;
+    }
+    const auto& crop = config.crops[field.crop.value];
+    if (crop.resource.value < expected_kg.size()) {
+      expected_kg[crop.resource.value] +=
+          static_cast<double>(field.area_ga) * static_cast<double>(crop.yield_kg_per_ha);
+    }
+  }
+  const ResourceAmounts& harvest = current.ledger.current.harvest;
+  for (std::size_t at = 0; at < current.plan.due.size(); ++at) {
+    if (current.plan.due[at] <= 0 || !(expected_kg[at] > 0.0)) {
+      continue;
+    }
+    const double got = at < harvest.size() ? static_cast<double>(harvest[at]) / 1000.0 : 0.0;
+    if (got < (1.0 - static_cast<double>(kPressureHarvestShort)) * expected_kg[at]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
 void JudgePlan(const ProductionConfig& config, WorldState& current) {
+  if (PlanHarvestFellShort(config, current)) {
+    current.chairman.year_under_pressure = 1;  // read before SayPlanYearMet below
+  }
   bool asked = false;
   for (const Grams due : current.plan.due) {
     asked = asked || due > 0;
