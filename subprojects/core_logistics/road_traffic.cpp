@@ -65,6 +65,9 @@ void RoadTraffic::BeginLeg(std::uint32_t cart,
       piece.to_chainage_m = part.to_chainage_m;
       const std::uint32_t row = FindRow(*roads_, part.road);
       piece.clamps = row != kNoRow && !Overtakes(roads_->rows[row].surface);
+      const std::vector<RoadEdge>& edges = index_->Graph().edges;
+      piece.no_pass = part.edge < edges.size() && edges[part.edge].bridge ? RoadNoPass::kBridge
+                                                                          : RoadNoPass::kNone;
       any_edge = true;
     }
     stream.pieces.push_back(piece);
@@ -74,6 +77,30 @@ void RoadTraffic::BeginLeg(std::uint32_t cart,
   }
   streams_.push_back(std::move(stream));
   Push(static_cast<std::uint32_t>(streams_.size() - 1U), start_second);
+}
+
+bool RoadTraffic::OncomingFree(
+    const Piece& piece, float low, float high, double from_second, double to_second) const {
+  const std::uint64_t key =
+      (static_cast<std::uint64_t>(piece.edge) * 2U) + (piece.forward ? 0U : 1U);
+  const auto found = recent_.find(key);
+  if (found == recent_.end()) {
+    return true;
+  }
+  const Recent& oncoming = found->second;
+  for (std::size_t at = 0; at < oncoming.count; ++at) {
+    const Passage& other = oncoming.passages[at];
+    // Its positions run the other way: in this direction it covers [-to_m, -from_m].
+    const float other_low = -other.to_m;
+    const float other_high = -other.from_m;
+    const bool meets_in_space = other_low < high && low < other_high;
+    const bool meets_in_time = static_cast<double>(other.in_second) < to_second &&
+                               from_second < static_cast<double>(other.out_second);
+    if (meets_in_space && meets_in_time) {
+      return false;
+    }
+  }
+  return true;
 }
 
 void RoadTraffic::Push(std::uint32_t stream, std::int32_t second) {
@@ -112,6 +139,9 @@ void RoadTraffic::AdvanceTo(std::int32_t now_second,
       // own pace (named: he then follows at the leader's pace only on the shared stretch).
       std::int32_t held = 0;
       std::uint32_t ahead = kNoCartAhead;
+      float shared_low = 0.0F;
+      float shared_high = 0.0F;
+      double leader_leaves = 0.0;
       for (std::size_t at = 0; piece.clamps && at < recent.count; ++at) {
         const Passage& other = recent.passages[at];
         const float low = std::max(own.from_m, other.from_m);
@@ -127,7 +157,17 @@ void RoadTraffic::AdvanceTo(std::int32_t now_second,
         if (wait > held) {
           held = wait;
           ahead = other.cart;
+          shared_low = low;
+          shared_high = high;
+          leader_leaves = other.SecondAt(high);
         }
+      }
+      // OVERTAKING (roads §8, Alex #2443): where the road allows it, a cart that has been behind
+      // the slower one overtake_after_seconds passes him if the oncoming lane on the shared
+      // stretch is free while it is there; on a bridge it waits him out.
+      if (held > rules_.overtake_after_seconds && piece.no_pass == RoadNoPass::kNone &&
+          OncomingFree(piece, shared_low, shared_high, own.SecondAt(shared_low), leader_leaves)) {
+        held = rules_.overtake_after_seconds;
       }
       {
         if (held >= rules_.hold_min_seconds) {

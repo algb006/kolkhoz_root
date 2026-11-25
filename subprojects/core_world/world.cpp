@@ -1540,6 +1540,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       known.emplace_back("flood_heap_deadline");
       // #2129's following rule switch, read by core_logistics' config (absent = on).
       known.emplace_back("road_following");
+      // #2129's overtaking delay (Alex #2443), read by core_logistics' config (absent = 3).
+      known.emplace_back("road_overtake_after_min");
       //   (`feed_draught_first` stood here in 0.37.301, read by nobody once its
       //   switch went; the base dropped the key in boss's export of 19 October.)
       //   (`billet_household_milk_share` stood here from 0.37.65 to 0.37.69,

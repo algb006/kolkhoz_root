@@ -23,12 +23,17 @@ int Expect(bool condition, const char* label) {
   return 0;
 }
 
-/// A straight road 2 km east along y = 0 of `surface`.
-core::WorldState RoadWorld(core::RoadSurface surface) {
+/// A straight road 2 km east along y = 0 of `surface`; with `bridge` a bridge deck mark at its
+/// middle vertex (the whole edge a no-pass stretch).
+core::WorldState RoadWorld(core::RoadSurface surface, bool bridge = false) {
   core::WorldState world;
   core::RoadRow road;
   road.surface = surface;
   road.axis.push_back(core::RoadPoint{.position = {.x = 0.0F, .y = 0.0F}});
+  if (bridge) {
+    road.axis.push_back(
+        core::RoadPoint{.position = {.x = 1000.0F, .y = 0.0F}, .mark = core::RoadMark::kBridge});
+  }
   road.axis.push_back(core::RoadPoint{.position = {.x = 2000.0F, .y = 0.0F}});
   core::AppendRow(world.roads, road);
   world.road_index = core::BuildRoadIndex(world.roads, world.trails, world.weather.road_beds);
@@ -42,12 +47,20 @@ struct Pair {
   std::int32_t delayed_seconds = 0;
 };
 
-Pair Run(core::RoadSurface surface, std::int32_t behind_seconds, bool oncoming) {
-  const core::WorldState world = RoadWorld(surface);
+Pair Run(core::RoadSurface surface,
+         std::int32_t behind_seconds,
+         bool oncoming,
+         bool bridge = false,
+         bool third_oncoming = false) {
+  const core::WorldState world = RoadWorld(surface, bridge);
   core::RoadTraffic traffic(world, {}, core::RoadTrafficRules{});
   const core::Vec2 west{.x = 0.0F, .y = 0.0F};
   const core::Vec2 east{.x = 2000.0F, .y = 0.0F};
   traffic.BeginLeg(0, 0, core::TravelMode::kCart, 2.0F, west, east, 0);
+  if (third_oncoming) {
+    // Cart 2 comes the other way the whole morning: the oncoming lane is never free.
+    traffic.BeginLeg(2, 0, core::TravelMode::kCart, 3.0F, east, west, 0);
+  }
   traffic.BeginLeg(1,
                    0,
                    core::TravelMode::kCart,
@@ -68,15 +81,25 @@ Pair Run(core::RoadSurface surface, std::int32_t behind_seconds, bool oncoming) 
 
 int CheckTheEdgeLedger() {
   int failures = 0;
-  // ON DIRT the fast cart, leaving 10 minutes after the slow one the same way, cannot leave the
-  // road before it: the slow one is out at 4 h, the fast one would be at 2 h 10 min.
+  // ON OPEN DIRT the fast cart, leaving 10 minutes after the slow one the same way, catches it
+  // and OVERTAKES after the rule's 3 minutes behind it, the oncoming lane being free (Alex
+  // «Разрешаем обгон», #2443; until then it waited the whole way, >= 100 min - that check
+  // moved to the bridge below).
   const Pair dirt = Run(core::RoadSurface::kDirt, 600, false);
   failures +=
       Expect(!dirt.holds.empty() && dirt.holds[0].cart == 1 && dirt.holds[0].behind_cart == 0 &&
                  dirt.holds[0].cause == core::RoadHoldCause::kFollowing,
              "edge ledger: on dirt the fast cart is held behind the slow one");
-  failures += Expect(dirt.delayed_seconds >= 6000,
-                     "edge ledger: the fast cart's leg is lengthened by the wait (>= 100 min)");
+  failures += Expect(dirt.delayed_seconds == 180,
+                     "edge ledger: on open dirt it overtakes after 3 minutes behind");
+  // ON A BRIDGE nobody overtakes: the fast cart waits the slow one out (4 h against 2 h 10 min).
+  const Pair bridge = Run(core::RoadSurface::kDirt, 600, false, /*bridge=*/true);
+  failures += Expect(bridge.delayed_seconds >= 6000,
+                     "edge ledger: on a bridge the fast cart waits the whole way (>= 100 min)");
+  // AND WITH THE ONCOMING LANE TAKEN it waits too.
+  const Pair busy = Run(core::RoadSurface::kDirt, 600, false, false, /*third_oncoming=*/true);
+  failures += Expect(busy.delayed_seconds >= 6000,
+                     "edge ledger: with an oncoming cart on the stretch it does not overtake");
   // ON ASPHALT it overtakes: no hold.
   const Pair asphalt = Run(core::RoadSurface::kAsphalt, 600, false);
   failures += Expect(asphalt.holds.empty() && asphalt.delayed_seconds == 0,

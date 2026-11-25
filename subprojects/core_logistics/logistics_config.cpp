@@ -264,6 +264,18 @@ bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std:
       return false;
     }
     config.traffic.following_on = following >= 0.5F;
+    // #2129's overtaking (Alex #2443, roads §8): minutes behind a slower cart before passing.
+    auto overtake_min = static_cast<float>(config.traffic.overtake_after_seconds) / 60.0F;
+    if (!OptionalValue(*world,
+                       "road_overtake_after_min",
+                       Range{.low = 2.0F, .high = 5.0F},
+                       overtake_min,
+                       error)) {
+      PrefixError("world_params", "road_overtake_after_min", error);
+      return false;
+    }
+    config.traffic.overtake_after_seconds =
+        static_cast<std::int32_t>(std::lround(overtake_min * 60.0F));
   }
   // THE HAY's NIGHTLY LOSS (#1056 C3, the third lever): production's cells
   // and ranges (production_config.cpp, hay_weathering_*). One cell, two readers.

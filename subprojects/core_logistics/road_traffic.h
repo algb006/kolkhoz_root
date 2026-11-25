@@ -45,6 +45,22 @@ struct RoadTrafficRules {
   std::int32_t hold_min_seconds = 60;
   /// 1: standing obstacles are read (RoadObstaclesToday); off in the first slice (boss [2] q1).
   bool obstacles_on = false;
+  /// OVERTAKING (roads §8 «Обгон — там, где дорога позволяет»; Alex «Разрешаем обгон», #2443):
+  /// on open dirt and gravel a cart behind a slower one overtakes after this long behind it,
+  /// when the oncoming lane on the shared stretch is free (world_params
+  /// `road_overtake_after_min`, 2..5 game minutes, 3 by default; one number for every road
+  /// class - per class is a STUB). On a no-pass stretch it waits.
+  std::int32_t overtake_after_seconds = 180;
+};
+
+/// @brief Why a stretch of road allows no overtaking (roads §8; seam word `road_no_pass`).
+///        Values are appended before the count and never renumbered.
+enum class RoadNoPass : std::uint8_t {
+  kNone = 0,  ///< Open road: overtaking allowed where the oncoming lane is free.
+  kBridge,    ///< A bridge deck lies on the edge (RoadEdge::bridge, RoadMark::kBridge).
+  kDam,       ///< STUB: a dam - the core has no dam on its roads (map_lines' brook mark only).
+  kYardLane,  ///< STUB: a lane between yards - the core has no such road class.
+  kRoadNoPassCount,
 };
 
 /// @brief A leg's delay the clock adds to its remaining time.
@@ -100,7 +116,8 @@ class RoadTraffic {
   struct Piece {
     RoadEdgeIndex edge = kNoRoadEdge;
     bool forward = true;
-    bool clamps = false;  ///< dirt or gravel: no overtaking
+    bool clamps = false;                     ///< dirt or gravel: one follows the slower one ahead
+    RoadNoPass no_pass = RoadNoPass::kNone;  ///< and does not overtake him here
     std::int32_t free_seconds = 0;
     RoadId road;
     float chainage_m = 0.0F;     ///< where the piece joins the edge, along the road's axis
@@ -158,6 +175,12 @@ class RoadTraffic {
   };
 
   void Push(std::uint32_t stream, std::int32_t second);
+
+  /// Whether no recent passage the other way shares [low, high] (positions in `piece`'s
+  /// direction) between `from_second` and `to_second`. Named: an oncoming cart that enters the
+  /// edge later than this one is not processed yet and is not seen.
+  bool OncomingFree(
+      const Piece& piece, float low, float high, double from_second, double to_second) const;
 
   RoadTrafficRules rules_;
   std::shared_ptr<const RoadIndex> index_;
