@@ -6,9 +6,9 @@
 # where it goes: resource_stores.csv (clay -> clay_pile, stone -> stone_pile, sand -> build_yard)
 # x_m, y_m: the loading point — the site's ground nearest a road, metres from the south-west corner; walk and haul are measured to it
 site,resource,x_m,y_m,area_ha,inexhaustible
-clay_pit_bank_north,clay,8511.2,10258.9,0.5,0
+clay_pit_bank_north,clay,8511.2,10264.9,0.5,0
 clay_pit_village,clay,7358.8,8536.1,0.5,0
-sand_pit_bank_bridge,sand,8263.8,10266.1,0.5,0
+sand_pit_bank_bridge,sand,8186.2,10243.9,0.5,0
 sand_pit_mouth,sand,9023.9,10368.8,0.5,0
 stone_quarry_manor,stone,9471.2,9476.1,0.5,0
 stone_quarry_slope_north,stone,7537,10237,0.43,1
