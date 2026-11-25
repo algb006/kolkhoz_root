@@ -2250,8 +2250,8 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // Save 232 (#2164): the chairman's understanding, complaint, issue month, understood day and
     // the switch, +18 - predicted 1539 -> 1557 before the build and held; the hash read off au2u.
     // And econ [6]'s two season marks, +8 - predicted 1557 -> 1565; the hash re-read owed.
-    // And econ [8]'s five fields, +12 - predicted 1565 -> 1577.
-    {"world", 1577, 0xf4ef1c1a96b56ee8ULL},
+    // And econ [8]'s five fields, +12 - predicted 1565 -> 1577, held; the hash read off au6u.
+    {"world", 1577, 0x87d6a83d67cec626ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2342,9 +2342,9 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // build, held; the hash read off it (s1630b2).
     // Save 224: yard_herd_trudodni and plot_ratio_without_sum struck (#1442), -8 a family, two
     // - predicted 458 -> 442 before the build, held; the hash read off ufarm.
-    // Save 232 (#2164): the month's table, two floats a family, two - predicted 442 -> 458; the
-    // hash re-read owed.
-    {"families", 458, 0xc246ad3bbe70ebbbULL},
+    // Save 232 (#2164): the month's table, two floats a family, two - predicted 442 -> 458,
+    // held; the hash read off au6u.
+    {"families", 458, 0xbd2706d606c74a00ULL},
     // Save 84: +36 — the harvest by parts' laid share (4) and grams (8), 12
     // a row, three rows; predicted before the build and held. Then the first
     // row given non-zero values: the size held at 305, the hash moved.
