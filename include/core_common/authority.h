@@ -18,7 +18,8 @@
 ///     past the budget: the full cost and AuthorityDeed::kDayOffWithoutReason. No carry-over.
 ///   * THEFT: the night thief's kilograms × TheftAuthorityFactor (1 − (A − 50) × 0.015,
 ///     clamped 0.25..1.75) - A = 50 changes nothing (boss: the CENTRED form).
-///   * COMPLAINT UPWARD: below `complaint_below` (30), once a season, a complaint to the
+///   * COMPLAINT UPWARD: on a season's turn, below `complaint_below` (30) AND fallen over the
+///     season just ended, at most once a calendar year (econ [8]), a complaint to the
 ///     district - raikom −2 and an extraordinary visit next day (DistrictVisitCause::kComplaint).
 ///   * THE SUM e = clamp(p + (A − 50), 0, 100), p = ResidentRow::attitude_to_chairman: the
 ///     residents' tone and the headman read it (EffectiveAttitudeOf), never output.
@@ -89,7 +90,8 @@ struct AuthorityRules {
   float theft_slope = 0.015F;
   float theft_factor_low = 0.25F;
   float theft_factor_high = 1.75F;
-  /// The complaint upward: below this A, once a season, the raikom moves by this.
+  /// The complaint upward: below this A, fallen over the season, at most once a year, the
+  /// raikom moves by this.
   float complaint_below = 30.0F;
   float complaint_reputation = -2.0F;
   /// The plan's deadline reason: within this many days of the turn with the plan short.

@@ -105,7 +105,7 @@ enum class DistrictVisitCause : std::uint8_t {
   kSchedule = 0,  ///< A regular visit of the plan.
   kPlanFailed,    ///< The economic year closed kFailed.
   kJuniorSignal,  ///< A regular visit found something; the senior comes.
-  kComplaint,     ///< Residents complained upward. STUB: never raised.
+  kComplaint,     ///< Residents complained upward: raised by RunAuthorityComplaint (#2164).
   kEmergency,     ///< A fire, a loss of herd. STUB: never raised.
   kSatire,        ///< A satire in the district paper. STUB: never raised.
   kDenunciation,  ///< A denunciation. STUB: never raised.

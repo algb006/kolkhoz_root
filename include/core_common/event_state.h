@@ -984,8 +984,9 @@ enum class EventKind : std::uint8_t {
   /// subject. kNotable. Seam key `authority_moved`.
   kAuthorityMoved,
 
-  /// THE COMPLAINT UPWARD (#2164; RunAuthorityComplaint): authority below the complaint line,
-  /// once a season - «на вас написали в район»; the raikom's loss is booked and an
+  /// THE COMPLAINT UPWARD (#2164; RunAuthorityComplaint): on a season's turn, authority below
+  /// the complaint line and fallen over the season, at most once a year - «на вас написали в
+  /// район»; the raikom's loss is booked and an
   /// extraordinary visit (kComplaint) called for the next day. kNotable. Seam key
   /// `complaint_to_district`.
   kComplaintToDistrict,

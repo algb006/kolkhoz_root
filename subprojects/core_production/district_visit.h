@@ -44,8 +44,9 @@ void AnnounceRegularVisits(const ProductionConfig& config, WorldState& current);
 ///        already on its way is not doubled.
 void CallPlanFailedVisit(WorldState& current);
 
-/// @brief The complaint upward (#2164; authority.h): authority below `complaint_below`, once a
-///        talk season - the raikom by `complaint_reputation` (booked), Karasev's extraordinary
+/// @brief The complaint upward (#2164; authority.h): on a talk season's turn, authority below
+///        `complaint_below` and fallen over the season, at most once a calendar year (econ
+///        [8]) - the raikom by `complaint_reputation` (booked), Karasev's extraordinary
 ///        visit tomorrow (DistrictVisitCause::kComplaint) and EventKind::kComplaintToDistrict.
 ///        A no-op with authority off. Daily, in the district's slot.
 void RunAuthorityComplaint(WorldState& current, const AuthorityRules& rules);
