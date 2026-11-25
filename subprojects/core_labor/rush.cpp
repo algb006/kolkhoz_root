@@ -78,6 +78,9 @@ OrderRefusal DeclareRush(WorldState& current, const OrderRow& order) {
     }
     field.rush_step = step;
     field.rush_phase = step == 0 ? FieldPhase::kIdle : field.phase;
+    if (step != 0) {
+      CountHardAsk(current);  // econ [8]: a rush is a hard ask of the year
+    }
     return OrderRefusal::kNone;
   }
   const std::uint32_t row = FindRow(current.units, order.unit);
@@ -89,6 +92,9 @@ OrderRefusal DeclareRush(WorldState& current, const OrderRow& order) {
     return OrderRefusal::kRuleForbids;
   }
   site.rush_step = step;
+  if (step != 0) {
+    CountHardAsk(current);
+  }
   return OrderRefusal::kNone;
 }
 
@@ -241,6 +247,7 @@ void JudgeCancelledDay(const LaborConfig& config, WorldState& current) {
   if (!IsCancelledDayOff(current)) {
     return;
   }
+  CountHardAsk(current);  // econ [8]: a plan year met with none of these is met «fairly»
   // The old fighter's free days are his path, not the village's judgement (#635).
   if (FreeDaysOffLeft(AvatarOf(config.avatars, current.chairman.avatar),
                       current.chairman,

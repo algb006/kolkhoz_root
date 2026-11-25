@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "construction_config.h"
+#include "core_common/authority.h"
 #include "core_common/calendar.h"
 #include "core_common/day_off.h"
 #include "core_common/emit_event.h"
@@ -73,6 +74,17 @@ constexpr float kFireWearScar = 33.0F;
 /// this wrapper forwards to it rather than building an event of its own.
 void Emit(WorldState& current, EventKind kind, EventSeverity severity, UnitId unit) {
   EmitEvent(current, kind, severity).unit = unit;
+}
+
+/// #2164 (econ [8]): a unit that stands for the first time and is one of the first-social
+/// kinds is a loud deed, once a kind.
+void SayIfFirstSocial(const ConstructionConfig& config, WorldState& current, UnitTypeId type) {
+  for (std::uint32_t kind = 0; kind < config.first_social_types.size(); ++kind) {
+    const UnitTypeId social = config.first_social_types[kind];
+    if (social.value != kInvalidDefIdValue && social.value == type.value) {
+      SaySocialBuilt(current, kAuthorityRules, kind);
+    }
+  }
 }
 
 /// @brief How many residents are assigned to this site right now.
@@ -934,6 +946,7 @@ class ConstructionSystem final : public IConstructionSystem {
     const UnitId unit = AppendRow(current.units, site);
     if (stands_free) {
       Emit(current, EventKind::kUnitBuilt, EventSeverity::kNotable, unit);
+      SayIfFirstSocial(config_, current, order.unit_type);
     }
     return OrderRefusal::kNone;
   }
@@ -1457,6 +1470,7 @@ class ConstructionSystem final : public IConstructionSystem {
     FoldAwaitingIntoStock(site);
     site.construction = ConstructionState{};
     Emit(current, EventKind::kUnitBuilt, EventSeverity::kNotable, unit);
+    SayIfFirstSocial(config_, current, site.type);  // an upgrade's kind was built already
   }
 
   // -- the world's own facts -------------------------------------------------

@@ -1062,6 +1062,14 @@ bool ParseConstructionConfig(const ITableSet& tables,
   // The worker's workshops at half labour (#635; avatars.csv
   // workshops_l1_labor_factor): the type and the avatars' rows.
   config.workshops_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("workshops"));
+  // #2164 (econ [8]): the social kinds whose first building is a loud deed - the bath, the
+  // school, the culture house (the reading hut and the club are its levels), the nursery.
+  {
+    std::size_t at = 0;
+    for (const char* key : {"bathhouse", "school", "culture_house", "kindergarten"}) {
+      config.first_social_types[at++] = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey(key));
+    }
+  }
   if (!ReadAvatars(tables, config.avatars, error)) {
     return false;
   }

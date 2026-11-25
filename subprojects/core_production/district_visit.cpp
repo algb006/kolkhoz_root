@@ -103,15 +103,22 @@ void CallPlanFailedVisit(WorldState& current) {
 
 void RunAuthorityComplaint(WorldState& current, const AuthorityRules& rules) {
   ChairmanState& chairman = current.chairman;
-  const std::uint32_t season = AuthoritySeasonOf(current.calendar.day);
-  if (chairman.authority_live == 0 || !(chairman.authority < rules.complaint_below) ||
-      chairman.complaint_season == season) {
+  if (chairman.authority_live == 0) {
+    return;
+  }
+  // ON A SEASON'S TURN, ONLY IF A FELL OVER IT, AT MOST ONCE A YEAR (econ [8], metrics §6): a
+  // low but rising chairman is not written up. Until the re-cut it was every season below 30 -
+  // the low starts complained 4 times a village-year for 16 years (a4-* runs).
+  const bool turned = MarkAuthoritySeason(current);
+  const std::uint32_t year = current.calendar.date.year;
+  if (!turned || chairman.authority_fell == 0 || !(chairman.authority < rules.complaint_below) ||
+      chairman.complaint_year == year) {
     return;
   }
   // «НА ВАС НАПИСАЛИ В РАЙОН» (#2164; econ §5a 6): the raikom's loss booked as its writers
   // book theirs, and the instructor - Karasev, the regular visitor of the village - comes
   // tomorrow, unannounced (DistrictVisitCause::kComplaint, its first producer).
-  chairman.complaint_season = season;
+  chairman.complaint_year = year;
   const float before = chairman.raikom_reputation;
   chairman.raikom_reputation = std::max(0.0F, before + rules.complaint_reputation);
   BookReputationLoss(current, before);

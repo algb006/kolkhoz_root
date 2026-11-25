@@ -54,6 +54,8 @@ enum class AuthorityDeed : std::uint8_t {
   kRaisedIssueAtLine,     ///< Raised the issue norm or opened a reserve in such a month.
   kUnfairIssueMonth,      ///< A month of families under the line, food in store, nothing done.
   kAuditRemark,           ///< The district's audit remarked on the stores (#1893).
+  kPlanMetFairly,         ///< The plan year met with no rush and no cancelled day off (econ [8]).
+  kFirstSocialBuilding,   ///< The first of a social kind stands (bath, school, culture, nursery).
   kAuthorityDeedCount,
 };
 
@@ -75,7 +77,7 @@ enum class UnderstoodReason : std::uint8_t {
 struct AuthorityRules {
   /// Each deed's move, points of A (index: AuthorityDeed).
   std::array<float, kAuthorityDeedCountValue> deed_delta = {
-      -4.0F, -2.0F, -2.0F, 4.0F, -4.0F, 2.0F, -2.0F, -3.0F};
+      -4.0F, -2.0F, -2.0F, 4.0F, -4.0F, 2.0F, -2.0F, -3.0F, 2.0F, 2.0F};
   float catch_up_below = 30.0F;
   float catch_up_factor = 1.5F;
   /// The understanding budget's edges: 0 below the first, 1 to the second, 2 from it.
@@ -160,6 +162,23 @@ void SayIssueRaised(WorldState& world, const AuthorityRules& rules);
 ///        grain equivalent, no raise this month - and once a season - AuthorityDeed::
 ///        kUnfairIssueMonth. A no-op on any other day.
 void JudgeIssueMonth(WorldState& world, const AuthorityRules& rules, Grams free_grain_eq_grams);
+
+/// @brief A hard ask of the year: a cancelled day off or a rush declared. A plan year with
+///        none is met «fairly» (SayPlanYearMet).
+void CountHardAsk(WorldState& world);
+
+/// @brief The plan year judged met (district_plan.cpp JudgePlan): with no hard ask this year,
+///        AuthorityDeed::kPlanMetFairly; the year's count is reset either way (econ [8]).
+void SayPlanYearMet(WorldState& world, const AuthorityRules& rules, bool met);
+
+/// @brief A unit finished building whose type is one of the first-social kinds (`kind` its
+///        index, 0..3): the first of a kind is AuthorityDeed::kFirstSocialBuilding, once.
+void SaySocialBuilt(WorldState& world, const AuthorityRules& rules, std::uint32_t kind);
+
+/// @brief The season's mark for the complaint (daily): on a new season, whether A fell over
+///        the one just ended is remembered (authority_fell) and the new season's start A
+///        stored. Returns true on the day a season turns.
+bool MarkAuthoritySeason(WorldState& world);
 
 /// @brief Whether today's cancelled day off is understood (SpendUnderstoodDay spent today).
 bool UnderstoodToday(const WorldState& world);

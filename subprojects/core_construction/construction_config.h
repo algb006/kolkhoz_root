@@ -432,6 +432,11 @@ struct ConstructionConfig {
   /// workshops site starts its labour at × the avatar's
   /// workshops_l1_labor_factor (the worker's 0.5; avatars.md «Пути», P5).
   UnitTypeId workshops_type;
+
+  /// #2164 (econ [8]): the social kinds whose FIRST building is a loud deed (+2 once a kind):
+  /// bathhouse, school, culture_house (its levels are the reading hut and the club),
+  /// kindergarten (the nursery). Invalid where the table has no such row.
+  std::array<UnitTypeId, 4> first_social_types{};
   std::vector<AvatarDef> avatars;
 
   /// THE CRAFTS' GATE (UnitGate::kPlanOrReputation; #637, unlocks §3): the

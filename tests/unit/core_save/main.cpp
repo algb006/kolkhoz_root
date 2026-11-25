@@ -181,7 +181,12 @@ core::WorldState MakeWorld() {
   world.chairman.sugar_complaint_season = 9;  // save 188 (#1241)
   world.chairman.understood_season = 6;       // save 232 (#2164)
   world.chairman.understood_used = 2;
-  world.chairman.complaint_season = 7;
+  world.chairman.complaint_year = 7;
+  world.chairman.authority_at_season_start = 33.5F;  // econ [8]
+  world.chairman.authority_season = 12;
+  world.chairman.authority_fell = 1;
+  world.chairman.year_hard_asks = 3;
+  world.chairman.social_kinds_built = 5;
   world.chairman.issue_raised_month = 8;
   world.chairman.understood_day = 9;
   world.chairman.unfair_season = 10;  // econ [6]'s season marks
@@ -1466,7 +1471,12 @@ core::WorldState MakeWitnessWorld() {
   witness.chairman.sugar_complaint_season = 2;
   witness.chairman.understood_season = 3;  // save 232 (#2164)
   witness.chairman.understood_used = 1;
-  witness.chairman.complaint_season = 4;
+  witness.chairman.complaint_year = 4;
+  witness.chairman.authority_at_season_start = 41.5F;
+  witness.chairman.authority_season = 9;
+  witness.chairman.authority_fell = 1;
+  witness.chairman.year_hard_asks = 2;
+  witness.chairman.social_kinds_built = 3;
   witness.chairman.issue_raised_month = 5;
   witness.chairman.understood_day = 6;
   witness.chairman.unfair_season = 7;
@@ -1695,11 +1705,17 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"chairman.sugar_complaint_season", U32(world.chairman.sugar_complaint_season)});
   chunks.push_back({"chairman.understood_season", U32(world.chairman.understood_season)});
   chunks.push_back({"chairman.understood_used", U8(world.chairman.understood_used)});
-  chunks.push_back({"chairman.complaint_season", U32(world.chairman.complaint_season)});
+  chunks.push_back({"chairman.complaint_year", U32(world.chairman.complaint_year)});
   chunks.push_back({"chairman.issue_raised_month", U32(world.chairman.issue_raised_month)});
   chunks.push_back({"chairman.understood_day", U32(world.chairman.understood_day)});
   chunks.push_back({"chairman.unfair_season", U32(world.chairman.unfair_season)});
   chunks.push_back({"chairman.raise_season", U32(world.chairman.raise_season)});
+  chunks.push_back(
+      {"chairman.authority_at_season_start", F32(world.chairman.authority_at_season_start)});
+  chunks.push_back({"chairman.authority_season", U32(world.chairman.authority_season)});
+  chunks.push_back({"chairman.authority_fell", U8(world.chairman.authority_fell)});
+  chunks.push_back({"chairman.year_hard_asks", U16(world.chairman.year_hard_asks)});
+  chunks.push_back({"chairman.social_kinds_built", U8(world.chairman.social_kinds_built)});
   chunks.push_back({"chairman.authority_live", U8(world.chairman.authority_live)});
 
   chunks.push_back({"traction_ration", F32(world.traction_ration)});
@@ -2234,7 +2250,8 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // Save 232 (#2164): the chairman's understanding, complaint, issue month, understood day and
     // the switch, +18 - predicted 1539 -> 1557 before the build and held; the hash read off au2u.
     // And econ [6]'s two season marks, +8 - predicted 1557 -> 1565; the hash re-read owed.
-    {"world", 1565, 0xf4ef1c1a96b56ee8ULL},
+    // And econ [8]'s five fields, +12 - predicted 1565 -> 1577.
+    {"world", 1577, 0xf4ef1c1a96b56ee8ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -3310,7 +3327,10 @@ int main() {
           loaded.families.rows[0].salt_hunger_days == 9.5F &&  // save 208 (#1630 (B))
           loaded.families.rows[0].salt_step == 2 && loaded.residents.rows[0].mood_base == 57.5F &&
           loaded.chairman.sugar_complaint_season == 9 && loaded.chairman.understood_season == 6 &&
-          loaded.chairman.understood_used == 2 && loaded.chairman.complaint_season == 7 &&
+          loaded.chairman.understood_used == 2 && loaded.chairman.complaint_year == 7 &&
+          loaded.chairman.authority_at_season_start == 33.5F &&
+          loaded.chairman.authority_season == 12 && loaded.chairman.authority_fell == 1 &&
+          loaded.chairman.year_hard_asks == 3 && loaded.chairman.social_kinds_built == 5 &&
           loaded.chairman.issue_raised_month == 8 && loaded.chairman.understood_day == 9 &&
           loaded.chairman.unfair_season == 10 && loaded.chairman.raise_season == 11 &&
           loaded.chairman.authority_live == 0 && loaded.families.rows[1].advance_turns == 0 &&

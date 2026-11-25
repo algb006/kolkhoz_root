@@ -685,8 +685,9 @@ struct ChairmanState {
   std::uint32_t understood_season = 0;
   std::uint8_t understood_used = 0;
 
-  /// The complaint upward's last talk season, plus one (0 none): once a season (#2164).
-  std::uint32_t complaint_season = 0;
+  /// The complaint upward's last calendar year (0 none): at most once a year (#2164, econ [8];
+  /// was once a talk season until econ's re-cut).
+  std::uint32_t complaint_year = 0;
 
   /// The month (calendar.day / kDaysPerMonth, plus one; 0 none) in which the chairman raised
   /// the issue norm or opened a reserve with families at the ration line - its +2 is said
@@ -701,6 +702,15 @@ struct ChairmanState {
   /// raise's +2: each row at most once a season (#2164, econ [6]).
   std::uint32_t unfair_season = 0;
   std::uint32_t raise_season = 0;
+
+  /// econ [8]: A at the current talk season's start and that season (plus one), whether A fell
+  /// over the season before (0/1), the year's hard asks (cancelled days off + rushes; reset at
+  /// the plan's judgement) and the first-social kinds already built (bits 0..3).
+  float authority_at_season_start = 50.0F;
+  std::uint32_t authority_season = 0;
+  std::uint8_t authority_fell = 0;
+  std::uint16_t year_hard_asks = 0;
+  std::uint8_t social_kinds_built = 0;
 
   /// 1: authority is live (#2164). 0 (world_params `authority_live` 0 at genesis, the paired
   /// arm's door): A stays 50, no deed moves it, no day is understood, no complaint is made -

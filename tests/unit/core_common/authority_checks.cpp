@@ -123,6 +123,33 @@ int TestAuthority() {
                        "authority: the unfair month needs a tenth short and the stock to cover "
                        "them, once a season, and a raise answers it (+2 instead)");
   }
+  // THE TWO PLUS DOORS (econ [8]): a plan year met with no hard ask is +2, with one it is
+  // nothing; the first of a social kind is +2, the second of it nothing.
+  {
+    core::WorldState fair = WorldAt(50.0F);
+    core::SayPlanYearMet(fair, rules, true);
+    core::WorldState driven = WorldAt(50.0F);
+    core::CountHardAsk(driven);
+    core::SayPlanYearMet(driven, rules, true);
+    core::WorldState social = WorldAt(50.0F);
+    core::SaySocialBuilt(social, rules, 1);
+    core::SaySocialBuilt(social, rules, 1);
+    failures +=
+        Expect(fair.chairman.authority == 52.0F && driven.chairman.authority == 50.0F &&
+                   driven.chairman.year_hard_asks == 0 && social.chairman.authority == 52.0F,
+               "authority: a plan met without driving +2, the first of a kind +2 once");
+  }
+  // THE COMPLAINT'S SEASON MARK: A that fell over a season is remembered at the next.
+  {
+    core::WorldState world = WorldAt(28.0F);
+    world.calendar.day = 13;
+    const bool first = core::MarkAuthoritySeason(world);  // the first mark: nothing to compare
+    world.chairman.authority = 25.0F;
+    world.calendar.day = 13 + core::kDaysPerSeason;
+    const bool turned = core::MarkAuthoritySeason(world);
+    failures += Expect(!first && turned && world.chairman.authority_fell == 1,
+                       "authority: a season that ended lower than it began marks a fall");
+  }
   // THE THEFT FACTOR: exactly 1 at 50 (the world before 232), 0.25 at 100, 1.75 at 0.
   failures += Expect(core::TheftAuthorityFactor(rules, 50.0F) == 1.0F &&
                          core::TheftAuthorityFactor(rules, 100.0F) == 0.25F &&

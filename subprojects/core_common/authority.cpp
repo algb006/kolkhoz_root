@@ -191,6 +191,48 @@ void JudgeIssueMonth(WorldState& world, const AuthorityRules& rules, Grams free_
   MoveAuthority(world, rules, AuthorityDeed::kUnfairIssueMonth);
 }
 
+void CountHardAsk(WorldState& world) {
+  if (world.chairman.year_hard_asks < 0xFFFFU) {
+    ++world.chairman.year_hard_asks;
+  }
+}
+
+void SayPlanYearMet(WorldState& world, const AuthorityRules& rules, bool met) {
+  // THE PLAN MET WITHOUT DRIVING THE PEOPLE (econ [8]): no rush and no cancelled day off.
+  if (met && world.chairman.year_hard_asks == 0) {
+    MoveAuthority(world, rules, AuthorityDeed::kPlanMetFairly);
+  }
+  world.chairman.year_hard_asks = 0;
+}
+
+void SaySocialBuilt(WorldState& world, const AuthorityRules& rules, std::uint32_t kind) {
+  constexpr std::uint32_t kKinds = 8;
+  if (kind >= kKinds) {
+    return;
+  }
+  const auto bit = static_cast<std::uint8_t>(1U << kind);
+  if ((world.chairman.social_kinds_built & bit) != 0 || world.chairman.authority_live == 0) {
+    return;  // the first of a kind only
+  }
+  world.chairman.social_kinds_built =
+      static_cast<std::uint8_t>(world.chairman.social_kinds_built | bit);
+  MoveAuthority(world, rules, AuthorityDeed::kFirstSocialBuilding);
+}
+
+bool MarkAuthoritySeason(WorldState& world) {
+  ChairmanState& chairman = world.chairman;
+  const std::uint32_t season = AuthoritySeasonOf(world.calendar.day);
+  if (chairman.authority_season == season) {
+    return false;
+  }
+  const bool first = chairman.authority_season == 0;
+  chairman.authority_fell =
+      !first && chairman.authority < chairman.authority_at_season_start ? 1U : 0U;
+  chairman.authority_at_season_start = chairman.authority;
+  chairman.authority_season = season;
+  return !first;
+}
+
 bool UnderstoodToday(const WorldState& world) {
   return world.chairman.understood_day == world.calendar.day + 1U;
 }

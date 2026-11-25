@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "core_catalog/table_value.h"
+#include "core_common/authority.h"
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
 #include "core_common/land_state.h"
@@ -987,6 +988,7 @@ void JudgePlan(const ProductionConfig& config, WorldState& current) {
     if (met && current.plan.met_years_total < 0xFFFFU) {
       ++current.plan.met_years_total;  // #637: the crafts' gate reads it
     }
+    SayPlanYearMet(current, kAuthorityRules, met);  // #2164 econ [8]: met without driving them
     const float step = met ? config.plan_met_reputation : config.plan_failed_reputation;
     // Clamped to the metric's own scale, both ends. A reputation that
     // walked past 100 on a run of good years would make the fall back
