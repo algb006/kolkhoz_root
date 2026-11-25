@@ -82,6 +82,7 @@ class EconSideTally {
       row.deferrable_open_1_march = deferrable;
     }
     // S5: old households hungry today.
+    bool old_hungry_today = false;
     if (elder_years_ > 0.0F && speedup_ > 0.0F) {
       for (std::uint32_t family = 0; family < world.families.rows.size(); ++family) {
         if (world.families.rows[family].hunger_alarm_lit == 0) {
@@ -99,7 +100,25 @@ class EconSideTally {
                                    speedup_, person.birth_day, world.calendar.day) >= elder_years_;
         }
         row.old_hungry_family_days += any && all_old ? 1U : 0U;
+        if (any && all_old) {
+          ++row.old_hungry_by_month[month];
+          old_hungry_today = true;
+        }
       }
+    }
+    // econ's [19]: on a day an old household is hungry, the deferrable loads standing open,
+    // by kind (task-days) - is the hunger behind a load the horse rule may hold back?
+    if (old_hungry_today) {
+      for (const core::LogisticsTaskRow& task : world.logistics_tasks.rows) {
+        const auto kind = static_cast<std::size_t>(task.load_kind);
+        if (Deferrable(task.load_kind) && kind < row.open_on_hungry_days.size()) {
+          ++row.open_on_hungry_days[kind];
+        }
+      }
+    }
+    // The year's salt deaths (the only hunger cause of death the core has: DeathCause kSalt).
+    if (day_of_year == 0 && world.calendar.day > 0) {
+      by_year_[year - 1U].salt_deaths = world.ledger.closed.deaths_salt;
     }
     // S6: sites waiting for logs, and the logs built in by winter month.
     if (log_grams_ > 0 && log_.value != core::kInvalidDefIdValue) {
@@ -134,6 +153,23 @@ class EconSideTally {
           << row.winter_logs_built[1] << '/' << row.winter_logs_built[2] << '/'
           << row.winter_logs_built[3]
           << (elder_years_ > 0.0F ? "" : " S5_NOT_MEASURED(elder age not read)") << '\n';
+      // econ's [19]: where the old households' hunger sits, and what stood deferrable then.
+      out << "population_curve: S2072M seed " << seed << " year " << year
+          << " ground=old_hungry_family_days_by_month(jan..dec);open_deferrable_task_days_on_"
+             "those_days_by_kind;salt_deaths(no_other_hunger_death_cause_in_the_core)"
+          << " months";
+      for (const std::uint32_t days : row.old_hungry_by_month) {
+        out << ' ' << days;
+      }
+      out << " open district_lot "
+          << row.open_on_hungry_days[Kind(core::LogisticsLoadKind::kDistrictLot)]
+          << " store_emptied "
+          << row.open_on_hungry_days[Kind(core::LogisticsLoadKind::kStoreTransfer)] << " dig "
+          << row.open_on_hungry_days[Kind(core::LogisticsLoadKind::kSiteDig)] << " manure_dose "
+          << row.open_on_hungry_days[Kind(core::LogisticsLoadKind::kManureField)] << " field_heap "
+          << row.open_on_hungry_days[Kind(core::LogisticsLoadKind::kFieldHeap)] << " site_supply "
+          << row.open_on_hungry_days[Kind(core::LogisticsLoadKind::kSiteSupply)] << " salt_deaths "
+          << row.salt_deaths << '\n';
     }
   }
 
@@ -143,9 +179,16 @@ class EconSideTally {
     std::uint32_t deferrable_open_1_march = 0;
     double milk_spoiled_kg = 0.0;
     std::uint32_t old_hungry_family_days = 0;
+    std::array<std::uint32_t, 12> old_hungry_by_month{};
+    std::array<std::uint32_t,
+               static_cast<std::size_t>(core::LogisticsLoadKind::kLogisticsLoadKindCount)>
+        open_on_hungry_days{};
+    std::uint32_t salt_deaths = 0;
     std::uint32_t site_days_waiting_logs = 0;
     std::array<double, 4> winter_logs_built{};
   };
+
+  static std::size_t Kind(core::LogisticsLoadKind kind) { return static_cast<std::size_t>(kind); }
 
   static bool Deferrable(core::LogisticsLoadKind kind) {
     return kind == core::LogisticsLoadKind::kDistrictLot ||
