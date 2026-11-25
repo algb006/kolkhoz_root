@@ -19,8 +19,9 @@
 /// Named gaps the print counts: teams, horsemen, brigade carts and mowers are not in the plan;
 /// a dock queue on the road is the layout's (transport.md); a people's cart's hold is drawn,
 /// not charged to its riders.
-/// THE PAY (econ, boss [3]): a hold is NOT paid - it shortens the carter's day like travel
-/// (fewer trips); a task's norm-days stay priced from bed and distance alone.
+/// THE PAY: OPEN. econ's [3] («not paid, shortens the day») is questioned by Alex (#2154,
+/// pay idle time not the worker's fault); until his word the hold is TIME ONLY - it lengthens
+/// the plan's leg and touches neither the carter's day nor a task's norm-days (boss 25 Nov).
 /// @threading PARALLEL_READONLY
 /// Plain data, built in phase 3 (decisions) and read between steps.
 
