@@ -141,10 +141,10 @@ int TestAuthority() {
     core::WorldState social = WorldAt(50.0F);
     core::SaySocialBuilt(social, rules, 1);
     core::SaySocialBuilt(social, rules, 1);
-    failures +=
-        Expect(fair.chairman.authority == 52.0F && driven.chairman.authority == 50.0F &&
-                   driven.chairman.year_hard_asks == 0 && social.chairman.authority == 52.0F,
-               "authority: a plan met without driving +2, the first of a kind +2 once");
+    failures += Expect(fair.chairman.authority == 52.0F && driven.chairman.authority == 50.0F &&
+                           driven.chairman.year_hard_asks == 0 &&
+                           social.chairman.authority == 53.0F,  // +3 a kind (econ's pre-set, a12)
+                       "authority: a plan met without driving +2, the first of a kind +3 once");
   }
   // THE COMPLAINT'S SEASON MARK: A that fell over a season is remembered at the next.
   {

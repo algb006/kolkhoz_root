@@ -77,7 +77,8 @@ enum class UnderstoodReason : std::uint8_t {
 struct AuthorityRules {
   /// Each deed's move, points of A (index: AuthorityDeed).
   std::array<float, kAuthorityDeedCountValue> deed_delta = {
-      -4.0F, -2.0F, -2.0F, 4.0F, -4.0F, 2.0F, -2.0F, -3.0F, 2.0F, 2.0F};
+      -4.0F, -2.0F, -2.0F, 4.0F, -4.0F, 2.0F, -2.0F, -3.0F, 2.0F, 3.0F};
+  // (first_social +3 a kind, econ's pre-set fix: a12's student reached 32 at y15, below 35.)
   float catch_up_below = 30.0F;
   float catch_up_factor = 1.5F;
   /// The understanding budget's edges: 0 below the first, 1 to the second, 2 from it.
