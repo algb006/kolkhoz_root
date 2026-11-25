@@ -1542,6 +1542,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       known.emplace_back("road_following");
       // #2129's overtaking delay (Alex #2443), read by core_logistics' config (absent = 3).
       known.emplace_back("road_overtake_after_min");
+      // #2164's authority switch, read at genesis here (absent = on).
+      known.emplace_back("authority_live");
       //   (`feed_draught_first` stood here in 0.37.301, read by nobody once its
       //   switch went; the base dropped the key in boss's export of 19 October.)
       //   (`billet_household_milk_share` stood here from 0.37.65 to 0.37.69,
@@ -1610,6 +1612,16 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   if (!ApplyStartAvatar(start, *config.tables, config.avatar_key, &avatar_error)) {
     LogError(avatar_error);
     return nullptr;
+  }
+  // #2164's switch, the paired arm's door: world_params `authority_live` 0 leaves the
+  // chairman's authority at 50 and dead (authority.h) - the world as before save 232.
+  if (const ITable* const world_params = config.tables->FindTable("world_params")) {
+    const std::uint32_t row = world_params->FindRowByKey("authority_live");
+    const std::uint32_t value = world_params->FindColumn("value");
+    if (row != kNoTableRow && world_params->CellReal(row, value).value_or(1.0F) < 0.5F) {
+      start.chairman.authority_live = 0;
+      start.chairman.authority = 50.0F;
+    }
   }
   // THE START'S DERIVED FAMILY METRICS, before the first tick (0.37.23;
   // boss-core-layers-doors-2026-09-29 [4]): genesis draws the components,

@@ -67,6 +67,13 @@ void StandDownRushes(WorldState& current);
 /// FreeDaysOffLeft > 0: the old fighter's six a year); the series counts on.
 void BookRushAtPay(const LaborConfig& config, WorldState& current, ResidentRow& resident);
 
+/// @brief The village's judgement of today's cancelled day off (#2164; authority.h): with a
+///        reason and a season's budget it is understood (no satisfaction cost today), else
+///        AuthorityDeed::kDayOffWithoutReason. Once a day: at StartDay for a day cancelled
+///        before it, at the order for today declared working. The old fighter's free days and
+///        a world with authority off are not judged.
+void JudgeCancelledDay(const LaborConfig& config, WorldState& current);
+
 /// @brief The day's close: the cancelled day, once lived, is spent — one of
 /// the avatar's free days of the year if any is left (ChairmanState::
 /// free_days_off_*); a day off actually taken breaks the series.

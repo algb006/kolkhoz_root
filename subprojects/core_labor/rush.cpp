@@ -4,6 +4,7 @@
 
 #include <cstdint>
 
+#include "core_common/authority.h"
 #include "core_common/calendar.h"
 #include "core_common/day_off.h"
 #include "core_common/family_state.h"
@@ -116,6 +117,8 @@ OrderRefusal CancelDayOff(const LaborConfig& config, WorldState& current, const 
     }
     chairman.cancelled_day_off = today;
     chairman.place_after_declaring = 1;
+    // Today's StartDay judged no cancelled day: the village judges this one now (#2164).
+    JudgeCancelledDay(config, current);
     return OrderRefusal::kNone;
   }
   // AT OR AFTER TODAY (static analysis, 2026-09-19): on the cancelled day
@@ -216,15 +219,38 @@ void BookRushAtPay(const LaborConfig& config, WorldState& current, ResidentRow& 
   const bool free_day = FreeDaysOffLeft(AvatarOf(config.avatars, current.chairman.avatar),
                                         current.chairman,
                                         current.calendar.date.year) > 0;
+  // AN UNDERSTOOD DAY (#2164; authority.h) costs no satisfaction - neither the cancelled day
+  // off's nor that day's rush - but the body does not understand: the series' rest still goes.
+  const bool understood = UnderstoodToday(current);
+  if (understood) {
+    penalty = 0.0F;
+  }
   if (IsCancelledDayOff(current) && !free_day) {
     const float series_rest = config.day_off_cancel_rest_per_series *
                               static_cast<float>(current.chairman.days_off_cancelled_in_a_row);
     resident.rest = resident.rest > series_rest ? resident.rest - series_rest : 0.0F;
-    penalty += config.day_off_cancel_satisfaction;
+    penalty += understood ? 0.0F : config.day_off_cancel_satisfaction;
   }
   const std::uint32_t family_row = FindRow(current.families, resident.family);
   if (family_row != kNoRow && penalty > 0.0F) {
     current.families.rows[family_row].overwork_penalty += penalty;
+  }
+}
+
+void JudgeCancelledDay(const LaborConfig& config, WorldState& current) {
+  if (!IsCancelledDayOff(current)) {
+    return;
+  }
+  // The old fighter's free days are his path, not the village's judgement (#635).
+  if (FreeDaysOffLeft(AvatarOf(config.avatars, current.chairman.avatar),
+                      current.chairman,
+                      current.calendar.date.year) > 0) {
+    return;
+  }
+  // UNDERSTOOD, OR «ГОНЯЕТ БЕЗ НУЖДЫ» (#2164; econ §2.1): a reason the people accept and a
+  // season's budget left spend an understood day; otherwise the village remembers it.
+  if (!SpendUnderstoodDay(current, kAuthorityRules)) {
+    MoveAuthority(current, kAuthorityRules, AuthorityDeed::kDayOffWithoutReason);
   }
 }
 

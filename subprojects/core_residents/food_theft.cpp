@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "core_catalog/table_value.h"
+#include "core_common/authority.h"
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
 #include "core_common/ledger_state.h"
@@ -395,7 +396,12 @@ void RunFoodTheft(const FoodTheftConfig& config,
     open[row] = !StoreLeakClosed(night, current, row);
   }
   // 2a: EACH DRINKER OF 40+ TO THE NEAREST OPEN STORE IN REACH.
-  const Grams per_thief = GramsFromKilograms(config.kg_per_thief_month);
+  // THE VILLAGE'S TRUST SCALES WHAT A THIEF TAKES, not how many steal (#2164; econ §5a 2):
+  // × (1 − (A − 50) × 0.015), clamped - exactly 1 at A = 50, so the world before 232 is kept
+  // there. Дисциплина's factor beside it is #2167's (STUB, named in authority.h).
+  const Grams per_thief =
+      GramsFromKilograms(config.kg_per_thief_month *
+                         TheftAuthorityFactor(kAuthorityRules, current.chairman.authority));
   for (std::uint32_t person_row = 0; person_row < current.residents.rows.size(); ++person_row) {
     const ResidentRow& person = current.residents.rows[person_row];
     if (person.sex != Sex::kMale || person.alcoholism < config.thief_from_alcoholism ||
@@ -643,6 +649,8 @@ void RunStoreAudit(const FoodTheftConfig& config, WorldState& current) {
   audit.remarked = 1;
   ++book.audit_remarks;
   MoveReputation(current, config.audit_remark_reputation);
+  MoveAuthority(
+      current, kAuthorityRules, AuthorityDeed::kAuditRemark);  // #2164: read in the village
   SimEvent& remark = EmitEvent(current, EventKind::kAuditRemark, EventSeverity::kNotable);
   remark.amount = amount;
   remark.unit = worst_unit;

@@ -17,6 +17,7 @@
 #include <limits>
 #include <vector>
 
+#include "core_common/authority.h"
 #include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
@@ -1012,8 +1013,17 @@ void ConsumeIssueNormOrders(const FoodConfig& config, WorldState& current) {
         }
       }
     }
+    // A RAISE (#2164): above the norm in force - his own, or the table's grams for a position
+    // under the default rule (named: the default's share of a harvest's remainder is not
+    // compared, the table's floor is).
+    const Grams before = current.issue_norms[index] == kIssueNormByDefault
+                             ? GramsFromKilograms(config.resources[index].issue_kg_per_trudoden)
+                             : current.issue_norms[index];
     current.issue_norms[index] = reset ? kIssueNormByDefault : order.amount;
     order.status = OrderStatus::kDone;
+    if (!reset && order.amount > before) {
+      SayIssueRaised(current, kAuthorityRules);
+    }
   }
 }
 

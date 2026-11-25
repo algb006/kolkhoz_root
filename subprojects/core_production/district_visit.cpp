@@ -101,6 +101,24 @@ void CallPlanFailedVisit(WorldState& current) {
   CallExtraordinary(current, DistrictFace::kKorenev, DistrictVisitCause::kPlanFailed);
 }
 
+void RunAuthorityComplaint(WorldState& current, const AuthorityRules& rules) {
+  ChairmanState& chairman = current.chairman;
+  const std::uint32_t season = AuthoritySeasonOf(current.calendar.day);
+  if (chairman.authority_live == 0 || !(chairman.authority < rules.complaint_below) ||
+      chairman.complaint_season == season) {
+    return;
+  }
+  // «НА ВАС НАПИСАЛИ В РАЙОН» (#2164; econ §5a 6): the raikom's loss booked as its writers
+  // book theirs, and the instructor - Karasev, the regular visitor of the village - comes
+  // tomorrow, unannounced (DistrictVisitCause::kComplaint, its first producer).
+  chairman.complaint_season = season;
+  const float before = chairman.raikom_reputation;
+  chairman.raikom_reputation = std::max(0.0F, before + rules.complaint_reputation);
+  BookReputationLoss(current, before);
+  CallExtraordinary(current, DistrictFace::kKarasev, DistrictVisitCause::kComplaint);
+  EmitEvent(current, EventKind::kComplaintToDistrict, EventSeverity::kNotable);
+}
+
 namespace {
 
 /// The finance channel's two faces — the ones who count the stores.

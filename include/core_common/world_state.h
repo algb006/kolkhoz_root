@@ -692,6 +692,15 @@ struct ChairmanState {
   /// the issue norm or opened a reserve with families at the ration line - its +2 is said
   /// once a month, and that month is not «unfair» (#2164).
   std::uint32_t issue_raised_month = 0;
+
+  /// The day (plus one; 0 none) whose cancelled day off the village understood: every worker's
+  /// cost of that day is waived (SpendUnderstoodDay / UnderstoodToday; #2164).
+  std::uint32_t understood_day = 0;
+
+  /// 1: authority is live (#2164). 0 (world_params `authority_live` 0 at genesis, the paired
+  /// arm's door): A stays 50, no deed moves it, no day is understood, no complaint is made -
+  /// the world as before 232.
+  std::uint8_t authority_live = 1;
 };
 
 /// @brief Why the district calls the chairman «на ковёр» (district-trip.md

@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <string>
 
+#include "authority_tally.h"
 #include "barrack_policy.h"
 #include "beach_policy.h"
 #include "cemetery_policy.h"
@@ -348,6 +349,7 @@ class BuildingChairman {
     distiller.WatchStep(world);
     district_table.WatchStep(world);  // TABLE1953: each kDistrictTable as the step raises it
     road_holds.CountStep(world);      // HOLD2129: the day's carts, every plan of it
+    authority.CountStep(world);       // AUTH2164: the step's deeds and complaints
   }
 
   /// @brief #713'S MUST-NOT ARM (econ, boss-econ-713-1302-reads [3]): the
@@ -418,6 +420,7 @@ class BuildingChairman {
     }
     decomp.CountDay(simulation.CompletedState());      // #2072's DECOMP2072
     road_holds.CountDay(simulation.CompletedState());  // #2129's HOLD2129
+    authority.CountDay(simulation.CompletedState());   // #2164's AUTH2164
     winter_felling.CountDay(simulation);               // WFELL2072
     winter_horses.CountDay(simulation);                // WHORSE2072
     econ_side.CountDay(simulation.CompletedState());   // S2072
@@ -629,6 +632,8 @@ class BuildingChairman {
   DecompTally decomp;
   /// #2129's HOLD2129: the road's lost time by cause (road_hold_tally.h).
   RoadHoldTally road_holds;
+  /// AUTH2164 (#2164's pair prints; authority_tally.h).
+  AuthorityTally authority;
   /// #2118's SCALE2118: a day's CPU against the village's size (scale_tally.h).
   ScaleTally scale;
   /// WFELL2072 (boss 24 Nov, the null winter stock): a marked stand's days - offered or

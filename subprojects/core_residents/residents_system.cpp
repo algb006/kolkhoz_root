@@ -33,6 +33,7 @@
 
 #include "appearance_memory.h"
 #include "core_catalog/definitions.h"
+#include "core_common/authority.h"
 #include "core_common/body.h"
 #include "core_common/calendar.h"
 #include "core_common/family_food_watch.h"
@@ -590,6 +591,12 @@ class ResidentsSystem final : public IResidentsSystem {
     UpdateHungerAlarms(current);
     if (current.calendar.day == previous.calendar.day) {
       return;  // daily work, self-gated to day boundaries
+    }
+    // THE MONTH'S ISSUE JUDGED (#2164): families at the line while the store holds free food
+    // over its funds, and the chairman changed nothing - «месяц под чертой при полном складе».
+    {
+      const FreeStockView free = FreeStockOf(current);
+      JudgeIssueMonth(current, kAuthorityRules, free.measured && free.days > 0.0F);
     }
     // THE HUNGER FORECAST'S MEMORY CLOSES YESTERDAY (#1046; family_food_watch.h):
     // its own food folds into the mean.

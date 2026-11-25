@@ -72,6 +72,8 @@ int TestTripTerms();
 
 /// Trodden paths' rules and the one door (trail_checks.cpp; #2072).
 int TestTrails();
+/// The chairman's authority (authority_checks.cpp; #2164).
+int TestAuthority();
 }  // namespace core_test
 
 namespace {
@@ -3099,7 +3101,8 @@ int main() {
   failures += core_test::TestTheIceWater();
   failures += core_test::TestTheStoreTheft();
   failures += core_test::TestTripTerms();
-  failures += core_test::TestTrails();  // #2072
+  failures += core_test::TestTrails();     // #2072
+  failures += core_test::TestAuthority();  // #2164
   failures += TestRoadTrace();
   failures += TestRoadPieces();
   failures += TestRoadCut();

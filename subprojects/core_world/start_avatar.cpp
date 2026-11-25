@@ -57,6 +57,9 @@ bool ApplyStartAvatar(WorldState& world,
   const AvatarDef& row = avatars[avatar.value];
   world.chairman.avatar = avatar;
   world.chairman.raikom_reputation = row.start_reputation;
+  // THE VILLAGE'S TRUST BY THE AVATAR ALONE (#2164; Alex «рандом тут не нужен»); a world with
+  // authority off (authority_live 0) keeps it at 50 - world.cpp clears it after this.
+  world.chairman.authority = row.start_authority;
   world.chairman.crime_modifier = row.crime_modifier;
   world.chairman.electrification_threshold_factor = row.electrification_threshold_factor;
   world.chairman.sees_theft_same_day = row.sees_theft_same_day ? 1U : 0U;  // P3, dormant

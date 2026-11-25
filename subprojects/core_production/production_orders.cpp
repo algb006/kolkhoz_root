@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <limits>
 
+#include "core_common/authority.h"
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
 #include "core_common/order_state.h"
@@ -189,6 +190,10 @@ OrderRefusal UnsealFund(const ProductionConfig& config,
     released->resize(static_cast<std::size_t>(index) + 1U, 0);
   }
   (*released)[index] += order.amount;
+  // A FOOD RESERVE OPENED to families at the line (#2164; «поднял норму или открыл запас»).
+  if (index < config.food_kcal_per_gram.size() && config.food_kcal_per_gram[index] > 0.0F) {
+    SayIssueRaised(current, kAuthorityRules);
+  }
   return OrderRefusal::kNone;
 }
 

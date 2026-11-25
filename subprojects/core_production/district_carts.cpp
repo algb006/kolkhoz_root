@@ -8,6 +8,7 @@
 #include <cstdint>
 
 #include "cart_trips.h"
+#include "core_common/authority.h"
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
 #include "core_common/ledger_state.h"
@@ -98,6 +99,7 @@ OrderRefusal RequestPlanDelivery(
   outgoing.arrive_day = current.calendar.day;
   outgoing.goods.assign(current.plan.due.size(), 0);
   Grams raised = 0;
+  bool over_plan_food = false;
   for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
     if (only.value != kInvalidDefIdValue && index != only.value) {
       continue;
@@ -111,6 +113,10 @@ OrderRefusal RequestPlanDelivery(
     // order would otherwise put the same grain on a row a day.
     const Grams pending = OutboundPendingGrams(current, index);
     const Grams owed = current.plan.due[index] - current.plan.delivered[index] - pending;
+    // OVER THE PLAN, A FOOD, WHILE FAMILIES STAND AT THE LINE (#2164; «согласие на вредную
+    // разнарядку»): an amount beyond what is still owed of a food position.
+    over_plan_food = over_plan_food || (amount > owed && index < config.food_kcal_per_gram.size() &&
+                                        config.food_kcal_per_gram[index] > 0.0F);
     if (!own) {
       // THE DISTRICT's CART: the request rises by the amount, or to what is
       // owed; it is collected on the month's last day (the mud slips it).
@@ -139,6 +145,9 @@ OrderRefusal RequestPlanDelivery(
   }
   if (own) {
     AppendRow(current.limit_deliveries, outgoing);
+  }
+  if (over_plan_food && FamiliesAtRationLine(current)) {
+    MoveAuthority(current, kAuthorityRules, AuthorityDeed::kOverPlanAtRationLine);
   }
   return OrderRefusal::kNone;
 }

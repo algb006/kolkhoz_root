@@ -18,6 +18,7 @@
 #ifndef CORE_PRODUCTION_DISTRICT_VISIT_H_
 #define CORE_PRODUCTION_DISTRICT_VISIT_H_
 
+#include "core_common/authority.h"
 #include "core_common/district_visit_state.h"
 #include "core_common/world_state.h"
 #include "production_config.h"
@@ -42,6 +43,12 @@ void AnnounceRegularVisits(const ProductionConfig& config, WorldState& current);
 ///        DistrictVisitCause::kPlanFailed, unannounced. A Korenev visit
 ///        already on its way is not doubled.
 void CallPlanFailedVisit(WorldState& current);
+
+/// @brief The complaint upward (#2164; authority.h): authority below `complaint_below`, once a
+///        talk season - the raikom by `complaint_reputation` (booked), Karasev's extraordinary
+///        visit tomorrow (DistrictVisitCause::kComplaint) and EventKind::kComplaintToDistrict.
+///        A no-op with authority off. Daily, in the district's slot.
+void RunAuthorityComplaint(WorldState& current, const AuthorityRules& rules);
 
 /// @brief What a visit finds, computed on the day it arrives: the outcome the
 ///        event carries. A finance face (Polushkina, Zhernova) finds

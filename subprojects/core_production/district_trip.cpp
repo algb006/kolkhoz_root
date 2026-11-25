@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdint>
 
+#include "core_common/authority.h"
 #include "core_common/calendar.h"
 #include "core_common/chairman_away.h"
 #include "core_common/emit_event.h"
@@ -195,6 +196,7 @@ OrderRefusal OrderTradePlan(const ProductionConfig& config,
   if (position.value >= current.plan.due.size() || current.plan.due[position.value] <= 0) {
     return OrderRefusal::kNoSuchSubject;
   }
+  const Grams due_before = current.plan.due[position.value];
   float cost = trip.plan_trade_percent_rep_cost;
   if (swap) {
     if (order.rotation_year0.value >= config.crops.size() ||
@@ -221,6 +223,13 @@ OrderRefusal OrderTradePlan(const ProductionConfig& config,
   SimEvent& traded = EmitEvent(current, EventKind::kPlanTraded, EventSeverity::kNotable);
   traded.resource = position;
   traded.amount = current.plan.due[position.value];
+  // DEFENDING THE PEOPLE BEFORE THE DISTRICT (#2164; econ §5a 4): in a hunger season a bargain
+  // that LOWERED a food position is a loud deed - the village saw its bread kept.
+  const bool food = position.value < config.food_kcal_per_gram.size() &&
+                    config.food_kcal_per_gram[position.value] > 0.0F;
+  if (food && current.plan.due[position.value] < due_before && FamiliesAtRationLine(current)) {
+    MoveAuthority(current, kAuthorityRules, AuthorityDeed::kDefendedFoodPosition);
+  }
   return OrderRefusal::kNone;
 }
 

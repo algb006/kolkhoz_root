@@ -90,6 +90,10 @@ struct AuthorityRules {
   std::uint32_t deadline_days = 4;
 };
 
+/// @brief The rules every reader uses: econ's STUB numbers, one home. world_params for them come
+///        when a balance pair asks to move one (only `authority_live` is a key in 232).
+inline const AuthorityRules kAuthorityRules{};
+
 /// @brief Moves A by `deed` (with the catch-up below `catch_up_below`), clamps to 0..100, and
 ///        emits EventKind::kAuthorityMoved (amount: the deed in bits 0-7, the move in tenths
 ///        of a point, signed, in bits 8-31). STUB rows (the holiday) are refused by shape.
@@ -117,10 +121,31 @@ float TheftAuthorityFactor(const AuthorityRules& rules, float authority);
 /// @brief A resident's effective attitude: clamp(p + (A − 50), 0, 100).
 float EffectiveAttitude(float personal, float authority);
 
-/// @brief The once-a-season complaint upward (phase 6): below `complaint_below` and not yet
-///        this season - raikom by `complaint_reputation` (booked as a loss), an extraordinary
-///        visit next day (kComplaint) and EventKind::kComplaintToDistrict.
-void RunAuthorityComplaint(WorldState& world, const AuthorityRules& rules);
+/// @brief Whether any family stands at the ration line today (FamilyRow::hunger_alarm_lit):
+///        the core's «hunger season» for the plan and issue deeds (econ §5a 4; the yellow
+///        forecast lamp is the session's and not read inside a step).
+bool FamiliesAtRationLine(const WorldState& world);
+
+/// @brief The chairman raised a food issue norm or opened a food reserve: with families at the
+///        ration line, once a month, AuthorityDeed::kRaisedIssueAtLine; the month is marked
+///        (issue_raised_month) so it is not judged «unfair».
+void SayIssueRaised(WorldState& world, const AuthorityRules& rules);
+
+/// @brief The month's judgement, on its last day (phase 3): families at the ration line, food
+///        in store (`store_holds_food`, the caller's free-stock read) and no raise this month -
+///        AuthorityDeed::kUnfairIssueMonth. A no-op on any other day.
+void JudgeIssueMonth(WorldState& world, const AuthorityRules& rules, bool store_holds_food);
+
+/// @brief Whether today's cancelled day off is understood (SpendUnderstoodDay spent today).
+bool UnderstoodToday(const WorldState& world);
+
+/// @brief The talk season of `day`, plus one (the once-a-season index: the core's 3-month
+///        season, counted across years; the formula of core_residents' TalkSeasonOf).
+std::uint32_t AuthoritySeasonOf(std::uint32_t day);
+
+// The once-a-season complaint upward (RunAuthorityComplaint) needs the district's doors - the
+// reputation's loss book and the extraordinary visit - so it lives in core_production
+// (district_visit.h), not here.
 
 }  // namespace core
 

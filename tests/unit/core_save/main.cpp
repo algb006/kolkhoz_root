@@ -183,6 +183,8 @@ core::WorldState MakeWorld() {
   world.chairman.understood_used = 2;
   world.chairman.complaint_season = 7;
   world.chairman.issue_raised_month = 8;
+  world.chairman.understood_day = 9;
+  world.chairman.authority_live = 0;
   world.chairman.last_talk_season = 5;  // save 69: a talk had, not nought
   // Save 77: away on a summons, a trip of his own before, a trade had.
   world.chairman.away_from_tick = 2'000;
@@ -1462,6 +1464,8 @@ core::WorldState MakeWitnessWorld() {
   witness.chairman.understood_used = 1;
   witness.chairman.complaint_season = 4;
   witness.chairman.issue_raised_month = 5;
+  witness.chairman.understood_day = 6;
+  witness.chairman.authority_live = 0;
 
   witness.traction_ration = 0.75F;
   // The team's two alarms' memory (save 109): every slot different, so a
@@ -1687,6 +1691,8 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"chairman.understood_used", U8(world.chairman.understood_used)});
   chunks.push_back({"chairman.complaint_season", U32(world.chairman.complaint_season)});
   chunks.push_back({"chairman.issue_raised_month", U32(world.chairman.issue_raised_month)});
+  chunks.push_back({"chairman.understood_day", U32(world.chairman.understood_day)});
+  chunks.push_back({"chairman.authority_live", U8(world.chairman.authority_live)});
 
   chunks.push_back({"traction_ration", F32(world.traction_ration)});
   // The team's two alarms' memory (save 109).
@@ -2217,9 +2223,9 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // 1536 -> 1537 before the build, held; the hash read off utbl.
     // Save 226: the clerk's filled_by and written_order_pending, two bytes - predicted
     // 1537 -> 1539 before the build, held; the hash read off uclk.
-    // Save 232 (#2164): the chairman's understanding, complaint and issue month, +13 - predicted
-    // 1539 -> 1552 before the build; the hash to be read off the contract's units.
-    {"world", 1552, 0xf2c8c1b004e3716ULL},
+    // Save 232 (#2164): the chairman's understanding, complaint, issue month, understood day and
+    // the switch, +18 - predicted 1539 -> 1557 before the build; the hash to be read off units.
+    {"world", 1557, 0xf2c8c1b004e3716ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -3294,7 +3300,8 @@ int main() {
           loaded.families.rows[0].salt_step == 2 && loaded.residents.rows[0].mood_base == 57.5F &&
           loaded.chairman.sugar_complaint_season == 9 && loaded.chairman.understood_season == 6 &&
           loaded.chairman.understood_used == 2 && loaded.chairman.complaint_season == 7 &&
-          loaded.chairman.issue_raised_month == 8 && loaded.families.rows[1].advance_turns == 0 &&
+          loaded.chairman.issue_raised_month == 8 && loaded.chairman.understood_day == 9 &&
+          loaded.chairman.authority_live == 0 && loaded.families.rows[1].advance_turns == 0 &&
           loaded.ledger.current.advance_written_off_ended == 0 &&
           loaded.families.rows[1].formed_day == core::kNotFormedInPlay &&
           loaded.families.rows[1].advance_debt == 0 &&

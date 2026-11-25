@@ -1091,6 +1091,7 @@ class LaborSystem final : public ILaborSystem {
       resident.work = WorkAssignment{};
     }
     StandDownRushes(current);
+    JudgeCancelledDay(config_, current);  // #2164: understood, or remembered
     // THE CHAIRMAN'S HORSES FIRST (#1818): the ordered ploughmen, harrowers and the carters an
     // order gives horses take theirs out of the day's pool before the accountant plans, as the
     // funeral's do - an ordered carter walked while the accountant's rode.
