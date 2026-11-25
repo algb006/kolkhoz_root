@@ -53,6 +53,7 @@
 #include "office_policy.h"
 #include "plan_year_tally.h"
 #include "planting_policy.h"
+#include "pressure_tally.h"
 #include "repair_policy.h"
 #include "reputation_tally.h"
 #include "road_hold_tally.h"
@@ -125,7 +126,8 @@ class BuildingChairman {
         sport_talk(tables),
         distiller(tables),
         emptying(tables),
-        issue_raise(tables) {
+        issue_raise(tables),
+        pressure(tables) {
     if (const core::ITable* const types = tables.FindTable("unit_types")) {
       decomp.SetSawmill(types->FindRowByKey("sawmill"));  // DECOMP2072's sawyer-days
     }
@@ -423,6 +425,7 @@ class BuildingChairman {
     decomp.CountDay(simulation.CompletedState());      // #2072's DECOMP2072
     road_holds.CountDay(simulation.CompletedState());  // #2129's HOLD2129
     authority.CountDay(simulation.CompletedState());   // #2164's AUTH2164
+    pressure.CountDay(simulation.CompletedState());    // #2164's PRESS2164 (econ [10])
     winter_felling.CountDay(simulation);               // WFELL2072
     winter_horses.CountDay(simulation);                // WHORSE2072
     econ_side.CountDay(simulation.CompletedState());   // S2072
@@ -677,6 +680,8 @@ class BuildingChairman {
   StoreEmptyingPolicy emptying;
   /// The issue raised for a short village (#2164; issue_raise_policy.h).
   IssueRaisePolicy issue_raise;
+  /// PRESS2164 (econ [10]'s base rates; pressure_tally.h).
+  PressureTally pressure;
   /// The book's shortage written off after the audit's remark (#1568);
   /// `write_off.Enable(false)` is the arm without it.
   WriteOffPolicy write_off;
