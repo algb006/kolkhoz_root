@@ -176,6 +176,10 @@ const char* KindName(core::EventKind kind) {
       return "day_order_not_run";
     case core::EventKind::kDistrictTable:
       return "district_table";
+    case core::EventKind::kAuthorityMoved:
+      return "authority_moved";
+    case core::EventKind::kComplaintToDistrict:
+      return "complaint_to_district";
     case core::EventKind::kElectrificationUnlocked:
       return "electrification_unlocked";
     case core::EventKind::kFireBroke:
