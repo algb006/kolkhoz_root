@@ -27,6 +27,7 @@
 #include "clerk_tally.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "data_pack_tally.h"
 #include "decomp_tally.h"
 #include "distiller_policy.h"
 #include "district_table_policy.h"
@@ -121,6 +122,7 @@ class BuildingChairman {
         econ_side(tables),
         rye_probe(tables),
         plan_loss(tables),
+        data_pack(tables),
         plan_years(tables),
         field_work(tables),
         plan_over(tables),
@@ -352,6 +354,7 @@ class BuildingChairman {
     distiller.WatchStep(world);
     district_table.WatchStep(world);  // TABLE1953: each kDistrictTable as the step raises it
     road_holds.CountStep(world);      // HOLD2129: the day's carts, every plan of it
+    data_pack.CountStep(world);       // DATAPACK2157 (probe): thefts, pantries, the book
   }
 
   /// @brief #713'S MUST-NOT ARM (econ, boss-econ-713-1302-reads [3]): the
@@ -427,6 +430,7 @@ class BuildingChairman {
     econ_side.CountDay(simulation.CompletedState());   // S2072
     rye_probe.CountDay(simulation.CompletedState());   // RYE2157 (probe)
     plan_loss.CountDay(simulation.CompletedState());   // PLANLOSS2157
+    data_pack.CountDay(simulation.CompletedState());   // DATAPACK2157 (probe)
     plan_years.CountDay(simulation.CompletedState());  // PLANY2072
     clerk.CountDay(simulation);                        // #589's print
     reputation.CountDay(simulation.CompletedState());  // #1897's REP1897
@@ -649,6 +653,8 @@ class BuildingChairman {
   RyePlanProbe rye_probe;
   /// PLANLOSS2157 (#2157's measurement; plan_loss_tally.h).
   PlanLossTally plan_loss;
+  /// DATAPACK2157 (#2157's data pack for econ, years 1-3; data_pack_tally.h).
+  DataPackTally data_pack;
   /// PLANY2072 (econ's #2072 gate, boss 25 Nov): each year's verdict and every short position's
   /// book and named cause (plan_year_tally.h).
   PlanYearTally plan_years;
