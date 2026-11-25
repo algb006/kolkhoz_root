@@ -805,6 +805,16 @@ class FixturePolicy {
     // while any site of the farm goes up, so the mark was rarely reached, and
     // a rick is not one of «ours» there, so a marked one was never started -
     // the second rick stood in no village of nine (form (c)'s first pair).
+    // G1 FIRST AFTER THE PEN (#2188): the church's grain has no other home than the food yard's
+    // granary, and behind the rick and the clamp the granary was staked on day 39 (median of 64
+    // villages) and stood in none of them in year 1 - the church's rye stayed for the turn and
+    // its thieves. Now staked as soon as the chairman enters, the food yard with it (Mark).
+    if (granary_first_ && granary_.value != core::kInvalidDefIdValue &&
+        Rows(world, granary_) == 0 && ChurchHoldsGrain(world) && world.calendar.day >= entry_day_) {
+      last_ordered_cattle_ = false;
+      ++granary_first_orders_;
+      return Mark(world, granary_, order);
+    }
     if (rick_.value != core::kInvalidDefIdValue && world.calendar.day >= entry_day_ &&
         world.calendar.day < kSecondRickBeforeDay) {
       for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
@@ -932,12 +942,7 @@ class FixturePolicy {
     // only roof - emptied only after it. The long stores went first for the
     // snow's loss (parcel 419), which the clamp, «one takes the whole crop»,
     // now carries.
-    if (granary_first_ && granary_.value != core::kInvalidDefIdValue &&
-        Rows(world, granary_) == 0 && ChurchHoldsGrain(world)) {
-      last_ordered_cattle_ = false;
-      ++granary_first_orders_;
-      return Mark(world, granary_, order);
-    }
+    // (G1 moved up ahead of the rick and the clamp - #2188's experiment, see there.)
     // SUGAR'S OWN STORE, THE FOOD YARD'S food_store MODULE, as soon as the
     // village holds sugar (boss, core-boss-1250 [46]; the human's 2 October
     // word, the bots build optimally). Until 0.37.334 no run ever built it:
