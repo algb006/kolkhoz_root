@@ -92,6 +92,10 @@ struct RouteLeg {
   float from_chainage_m = 0.0F;
   float to_chainage_m = 0.0F;
 
+  /// On the network: the graph edge it runs (RoadGraph::edges; #2129's ledger keys on it);
+  /// kNoRoadEdge across open ground. CONTRACT: set by RoadLeg in the implementation task.
+  RoadEdgeIndex edge = kNoRoadEdge;
+
   /// Across open ground: the two points.
   Vec2 from;
   Vec2 to;

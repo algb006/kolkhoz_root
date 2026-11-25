@@ -627,8 +627,10 @@ static_assert(AggregateArity<CartLeg>() == 15,
               "CartLeg gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<CartPlan>() == 5,
               "CartPlan gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<GroomPlan>() == 4,
+static_assert(AggregateArity<GroomPlan>() == 5,  // save 231 (#2129): the holds
               "GroomPlan gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<RoadHold>() == 9,
+              "RoadHold gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<RoadStretch>() == 1,
               "RoadStretch gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(DistrictCarRow) == 24,
@@ -2513,6 +2515,9 @@ BarterTripRow ReadBarterTripRow(LoadSource& source) {
 constexpr std::size_t kSavedCartBytes = 14;
 constexpr std::size_t kSavedLegBytes = 62;
 constexpr std::size_t kSavedRiderBytes = 4;
+// Save 231 (#2129): a hold - cart, leg (8), cause (1), road (4), chainage (4), two minutes (4),
+// the cart ahead (4), rank (2) = 27; the plan gains the holds' count (+4).
+constexpr std::size_t kSavedHoldBytes = 27;
 
 void WriteGroomPlan(SaveSink& sink, const GroomPlan& plan) {
   ByteWriter& out = sink.Out();
@@ -2546,6 +2551,19 @@ void WriteGroomPlan(SaveSink& sink, const GroomPlan& plan) {
       }
       WriteEntityId(out, leg.pooled_task);  // save 177 (#1056 C3): the pool's second load
     }
+  }
+  // Save 231 (#2129; road_hold.h): the day's holds on the road, kSavedHoldBytes each.
+  out.WriteU32(static_cast<std::uint32_t>(plan.holds.size()));
+  for (const RoadHold& hold : plan.holds) {
+    out.WriteU32(hold.cart);
+    out.WriteU32(hold.leg);
+    out.WriteU8(static_cast<std::uint8_t>(hold.cause));
+    WriteEntityId(out, hold.road);
+    out.WriteFloat(hold.chainage_m);
+    out.WriteU16(hold.from_minute);
+    out.WriteU16(hold.to_minute);
+    out.WriteU32(hold.behind_cart);
+    out.WriteU16(hold.rank);
   }
 }
 
@@ -2638,6 +2656,39 @@ GroomPlan ReadGroomPlan(LoadSource& source) {
       cart.legs.push_back(std::move(leg));
     }
     plan.carts.push_back(std::move(cart));
+  }
+  // Save 231 (#2129): the day's holds, each naming a cart and leg the plan holds.
+  const std::uint32_t holds = in.ReadU32();
+  if (static_cast<std::size_t>(holds) * kSavedHoldBytes > in.Remaining()) {
+    source.Fail("the groom's plan names more holds than the bytes left");
+    return plan;
+  }
+  plan.holds.reserve(holds);
+  for (std::uint32_t index = 0; index < holds && source.Valid(); ++index) {
+    RoadHold hold;
+    hold.cart = in.ReadU32();
+    hold.leg = in.ReadU32();
+    hold.cause = static_cast<RoadHoldCause>(source.ReadEnumValue(
+        0, static_cast<std::uint8_t>(kRoadHoldCauseCountValue - 1U), "a hold's cause"));
+    hold.road = ReadEntityId<RoadId>(in);
+    hold.chainage_m = in.ReadFloat();
+    hold.from_minute = in.ReadU16();
+    hold.to_minute = in.ReadU16();
+    hold.behind_cart = in.ReadU32();
+    hold.rank = in.ReadU16();
+    if (hold.cart >= plan.carts.size() || hold.leg >= plan.carts[hold.cart].legs.size()) {
+      source.Fail("a hold of the groom's plan names a cart or leg the plan does not hold");
+      return plan;
+    }
+    if (hold.to_minute < hold.from_minute || !(hold.chainage_m >= 0.0F)) {
+      source.Fail("a hold of the groom's plan ends before it begins, or stands off its road");
+      return plan;
+    }
+    if (hold.behind_cart != kNoCartAhead && hold.behind_cart >= plan.carts.size()) {
+      source.Fail("a hold of the groom's plan waits behind a cart the plan does not hold");
+      return plan;
+    }
+    plan.holds.push_back(hold);
   }
   return plan;
 }

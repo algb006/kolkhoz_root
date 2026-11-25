@@ -49,6 +49,9 @@ using RoadEdgeIndex = std::uint32_t;
 
 inline constexpr std::uint32_t kNoRoadNode = 0xFFFFFFFFU;
 
+/// @brief No edge: a leg across open ground (RouteLeg::edge; #2129).
+inline constexpr RoadEdgeIndex kNoRoadEdge = 0xFFFFFFFFU;
+
 /// @brief A place where roads end or meet.
 struct RoadNode {
   Vec2 position;

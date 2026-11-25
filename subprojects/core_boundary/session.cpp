@@ -674,6 +674,14 @@ class Session final : public ISession {
 
   std::span<const PorterLeg> PorterLegs() const override { return porters_; }
 
+  // #2129's doors (road_hold.h). STUB: the plan's holds and the day's obstacles are empty and a
+  // cart leg's way is empty until the ledger's implementation task (road_traffic.h).
+  std::span<const RoadHold> RoadHolds() const override { return State().groom_plan.holds; }
+
+  std::span<const RoadObstacle> RoadObstacles() const override { return {}; }
+
+  Route CartLegWay(std::uint32_t /*cart*/, std::uint32_t /*leg*/) const override { return {}; }
+
   StinkStrength StinkFullAt(Vec2 point) const override { return simulation_->StinkFullAt(point); }
 
   StinkStrength StinkNowAt(Vec2 point) const override { return simulation_->StinkNowAt(point); }

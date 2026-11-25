@@ -40,6 +40,7 @@
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
+#include "core_common/road_hold.h"
 #include "core_common/state_table.h"
 #include "core_common/trip_terms.h"
 
@@ -404,6 +405,11 @@ struct GroomPlan {
   /// A task of level 0 appeared since the plan was built: re-plan at the next
   /// step, not at the hour (boss [4]).
   bool urgent_pending = false;
+
+  /// THE DAY'S LOST TIME ON THE ROAD (#2129; road_hold.h): every hold the edge ledger found
+  /// for this plan's carts, in the order found. Save 231. Empty until the ledger's
+  /// implementation task (core_logistics road_traffic.h).
+  std::vector<RoadHold> holds;
 };
 
 using LogisticsTaskTable = StateTable<LogisticsTaskId, LogisticsTaskRow>;

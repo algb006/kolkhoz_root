@@ -162,6 +162,8 @@
 #include "core_common/quantities.h"
 #include "core_common/readiness_view.h"
 #include "core_common/resident_activity.h"
+#include "core_common/road_hold.h"
+#include "core_common/road_route.h"
 #include "core_common/save_summary_view.h"
 #include "core_common/seed_fund_view.h"
 #include "core_common/stink.h"
@@ -950,6 +952,27 @@ class ISession {
   /// world with no logistics.
   /// @note Between steps; the answer describes State().
   virtual std::span<const PorterLeg> PorterLegs() const = 0;
+
+  /// @brief EVERY HOLD OF TODAY'S GROOM PLAN (#2129; core_common/road_hold.h): which cart and
+  /// leg lost time on the road, why (following on dirt or gravel; an obstacle), where, from and
+  /// to which minute, the cart directly ahead and its place in the queue - the whole day's, not
+  /// only the standing ones, because the driver «knows in advance» (roads.md §8). The layer
+  /// draws the queue in this order and keeps its own spacing (boss [2] q2).
+  /// CONTRACT: empty until the ledger's implementation (road_traffic.h).
+  /// @note Between steps; the answer describes State().
+  virtual std::span<const RoadHold> RoadHolds() const = 0;
+
+  /// @brief Today's standing obstacles on the carriageways (road_hold.h): the layer may lay a
+  /// pig (or a herd) on a road ONLY where this names one. Empty in the first slice (the pig is
+  /// off until road repair exists; boss [2] q1).
+  /// @note Between steps; the answer describes State().
+  virtual std::span<const RoadObstacle> RoadObstacles() const = 0;
+
+  /// @brief The way a plan cart's leg takes along the network (#2129), leg by edge
+  /// (RouteLeg::edge), so the frame drives the way the core priced. An empty Route for a cart
+  /// or leg the plan does not hold. CONTRACT: the implementation task fills it.
+  /// @note Between steps; a pure read of State().
+  virtual Route CartLegWay(std::uint32_t cart, std::uint32_t leg) const = 0;
 
   /// @brief How badly it stinks at a point of the map, in the four bands the
   /// design speaks in (water design §4). Two questions, two doors:

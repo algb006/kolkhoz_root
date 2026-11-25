@@ -924,6 +924,17 @@ core::WorldState MakeWorld() {
                                            .riders = {},
                                            .pooled_task = core::LogisticsTaskId{6}});  // save 177
   world.groom_plan.carts.push_back(plan_walker);
+  // Save 231 (#2129): one hold on the road, every field off its default - cart 0's second leg
+  // behind cart 1, ranked 2.
+  world.groom_plan.holds.push_back(core::RoadHold{.cart = 0,
+                                                  .leg = 1,
+                                                  .cause = core::RoadHoldCause::kFollowing,
+                                                  .road = core::RoadId{3},
+                                                  .chainage_m = 41.5F,
+                                                  .from_minute = 300,
+                                                  .to_minute = 312,
+                                                  .behind_cart = 1,
+                                                  .rank = 2});
 
   // The trodden paths (save 227, #2072): two rows in key order, every field off its default,
   // the second carrying snow.
@@ -2580,7 +2591,9 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // Save 179 (#1056 C3, ruling 4): +1 a leg, the back-load byte (and the first
     // leg now loaded) - three legs, 225 -> 228, predicted before the build and
     // held; the hash read off it.
-    {"groom_plan", 228, 0x644f5687c4977757ULL},  // save 155: 2 partners, 3 legs' loads
+    // Save 231 (#2129): the holds' count (4) and one hold (27) - 228 -> 259, predicted before
+    // the build; the hash to be read off it.
+    {"groom_plan", 259, 0x644f5687c4977757ULL},  // save 155: 2 partners, 3 legs' loads
     // Save 227 (#2072): the trails - two floats and a count (12), two rows of 24; predicted
     // 60 before the build, held; the hash read off utrlb.
     // Save 228 (roads.md §3): +48 - the ground factors, twelve floats after the two; predicted
@@ -3816,7 +3829,12 @@ int main() {
             back.carts[0].legs[1].kept_in_chain == 1 && back.carts[0].legs[0].kept_in_chain == 0 &&
             back.carts[1].legs[0].depart_minute == 129 &&
             back.carts[1].legs[0].arrive_minute == 362 && back.carts[0].legs[0].loaded == 1 &&
-            back.carts[0].legs[0].back_load == 1 && back.carts[0].legs[1].back_load == 0,
+            back.carts[0].legs[0].back_load == 1 && back.carts[0].legs[1].back_load == 0 &&
+            back.holds.size() == 1 && back.holds[0].cart == 0 && back.holds[0].leg == 1 &&
+            back.holds[0].cause == core::RoadHoldCause::kFollowing &&
+            back.holds[0].road.value == 3 && back.holds[0].chainage_m == 41.5F &&
+            back.holds[0].from_minute == 300 && back.holds[0].to_minute == 312 &&
+            back.holds[0].behind_cart == 1 && back.holds[0].rank == 2,
         "the groom's plan came back with its day, its flags, its cart and both legs in order, "
         "the rider on the first (save 136), the carrier on foot with his byte (save 137), "
         "the trips' resources, the walker's grams and his partner (save 155), the pooled "
