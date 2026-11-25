@@ -2594,8 +2594,8 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // held; the hash read off it.
     // Save 231 (#2129): the holds' count (4) and one hold (27) - 228 -> 259, predicted before
     // the build and held; the hash read off t1u. The hold's driver (+4, a re-plan's lasting
-    // address) - 259 -> 263, predicted before the build; the hash to be read off r4u.
-    {"groom_plan", 263, 0xa2eb4bf7880cf511ULL},  // save 155: 2 partners, 3 legs' loads
+    // address) - 259 -> 263, predicted before the build and held; the hash read off r4u.
+    {"groom_plan", 263, 0xc7bc5c15e9b00000ULL},  // save 155: 2 partners, 3 legs' loads
     // Save 227 (#2072): the trails - two floats and a count (12), two rows of 24; predicted
     // 60 before the build, held; the hash read off utrlb.
     // Save 228 (roads.md §3): +48 - the ground factors, twelve floats after the two; predicted
