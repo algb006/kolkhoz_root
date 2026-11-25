@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <iostream>
 #include <span>
 #include <utility>
 #include <vector>
@@ -50,7 +51,8 @@ void RoadTraffic::BeginLeg(std::uint32_t cart,
     return;
   }
   const Route way = index_->Way(mode, from, to);
-  Stream stream{.cart = cart, .leg = leg, .replay = replay, .pieces = {}, .next = 0};
+  Stream stream{
+      .cart = cart, .leg = leg, .replay = replay, .pace = hours_per_km, .pieces = {}, .next = 0};
   stream.pieces.reserve(way.legs.size());
   bool any_edge = false;
   for (const RouteLeg& part : way.legs) {
@@ -127,6 +129,21 @@ void RoadTraffic::AdvanceTo(std::int32_t now_second,
         if (wait > held) {
           held = wait;
           ahead = other.cart;
+          // PROBE (not for release): the pair, its speeds on the shared stretch, the place.
+          thread_local std::uint32_t printed = 0;
+          if (wait >= rules_.hold_min_seconds && !stream.replay && printed < 20000) {
+            ++printed;
+            const double own_mps = static_cast<double>(own.to_m - own.from_m) /
+                                   static_cast<double>(std::max(1, own_out - entry.second));
+            const double lead_mps =
+                static_cast<double>(other.to_m - other.from_m) /
+                static_cast<double>(std::max(1, other.out_second - other.in_second));
+            std::cerr << "PAIRB2129 road " << piece.road.value << " chainage "
+                      << static_cast<std::int32_t>(piece.chainage_m) << " shared_m "
+                      << static_cast<std::int32_t>(high - low) << " own_hpkm " << stream.pace
+                      << " own_mps " << own_mps << " lead_mps " << lead_mps << " held_s " << wait
+                      << '\n';
+          }
         }
       }
       {

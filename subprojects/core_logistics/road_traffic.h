@@ -143,6 +143,7 @@ class RoadTraffic {
     std::uint32_t cart = 0;
     std::uint32_t leg = 0;
     bool replay = false;
+    float pace = 0.0F;  // PROBE (wip/probe-2129-pairs2, not for release)
     std::vector<Piece> pieces;
     std::size_t next = 0;
   };
