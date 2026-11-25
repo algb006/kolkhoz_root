@@ -29,12 +29,17 @@ class RoadHoldTally {
  public:
   /// @brief Once a day, after the day's step: the day's plan as it ended.
   void CountDay(const core::WorldState& world) {
-    const std::uint32_t year = (world.calendar.day / core::kDaysPerYear) + 1U;
-    Year& row = by_year_[year];
+    // EACH DAY'S PLAN ONCE, BY ITS OWN DAY: at the daily look the calendar has turned to the
+    // next day, so the plan in the world is the day just ended's (the first read asked
+    // plan.day == calendar.day and printed NOT MEASURED for every year). Its year is its day's.
+    by_year_[(world.calendar.day / core::kDaysPerYear) + 1U];  // every year a line
     const core::GroomPlan& plan = world.groom_plan;
-    if (plan.day != world.calendar.day) {
+    if (counted_any_ && plan.day == last_counted_day_) {
       return;
     }
+    counted_any_ = true;
+    last_counted_day_ = plan.day;
+    Year& row = by_year_[(plan.day / core::kDaysPerYear) + 1U];
     std::uint32_t carts = 0;
     for (const core::CartPlan& cart : plan.carts) {
       carts += cart.on_foot ? 0U : 1U;
@@ -89,6 +94,8 @@ class RoadHoldTally {
   };
 
   std::map<std::uint32_t, Year> by_year_;
+  bool counted_any_ = false;
+  core::SimDay last_counted_day_ = 0;
 };
 
 }  // namespace run
