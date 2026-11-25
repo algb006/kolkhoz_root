@@ -928,7 +928,10 @@ void MarkPlanPressure(const ProductionConfig& config, WorldState& current) {
   // THE REAL THREAT (econ [10]; PRESS2164 pr10: 5.3 % of canon years): near the turn a position
   // owed MORE than lies stored. The milk is carted daily and never lies for the turn - with it
   // in, 99.7 %. The «план под угрозой» lamp's stand-in until #2190.
-  if (current.plan.announced == 0 || DaysToPlanTurn(current) > kAuthorityRules.deadline_days) {
+  // NOT ON THE TURN'S OWN DAY (0): there the next year's plan is already handed down, nothing of
+  // it sent yet, the harvest not in - au11 marked 47 % of years so (the base rate was 7.6 %).
+  const std::uint32_t days = DaysToPlanTurn(current);
+  if (current.plan.announced == 0 || days == 0 || days > kAuthorityRules.deadline_days) {
     return;
   }
   for (std::size_t at = 0; at < current.plan.due.size(); ++at) {
