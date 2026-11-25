@@ -31,6 +31,7 @@
 #include "distiller_policy.h"
 #include "district_table_policy.h"
 #include "dry_pantry_tally.h"
+#include "econ_side_tally.h"
 #include "extraction_policy.h"
 #include "fallow_policy.h"
 #include "family_food_tally.h"
@@ -114,6 +115,7 @@ class BuildingChairman {
         low_earners(tables),
         winter_felling(tables),
         winter_horses(tables),
+        econ_side(tables),
         plan_years(tables),
         field_work(tables),
         plan_over(tables),
@@ -415,6 +417,7 @@ class BuildingChairman {
     decomp.CountDay(simulation.CompletedState());      // #2072's DECOMP2072
     winter_felling.CountDay(simulation);               // WFELL2072
     winter_horses.CountDay(simulation);                // WHORSE2072
+    econ_side.CountDay(simulation.CompletedState());   // S2072
     plan_years.CountDay(simulation.CompletedState());  // PLANY2072
     clerk.CountDay(simulation);                        // #589's print
     reputation.CountDay(simulation.CompletedState());  // #1897's REP1897
@@ -629,6 +632,8 @@ class BuildingChairman {
   /// WHORSE2072 (econ's winter-horses page, boss 25 Nov): H, the mark slot and the logs built
   /// in by type (winter_horse_tally.h).
   WinterHorseTally winter_horses;
+  /// S2072 (econ's side gates of the winter horse; econ_side_tally.h).
+  EconSideTally econ_side;
   /// PLANY2072 (econ's #2072 gate, boss 25 Nov): each year's verdict and every short position's
   /// book and named cause (plan_year_tally.h).
   PlanYearTally plan_years;
