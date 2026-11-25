@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <iostream>
 #include <span>
 #include <utility>
 #include <vector>
@@ -50,7 +51,8 @@ void RoadTraffic::BeginLeg(std::uint32_t cart,
     return;
   }
   const Route way = index_->Way(mode, from, to);
-  Stream stream{.cart = cart, .leg = leg, .replay = replay, .pieces = {}, .next = 0};
+  Stream stream{
+      .cart = cart, .leg = leg, .replay = replay, .pace = hours_per_km, .pieces = {}, .next = 0};
   stream.pieces.reserve(way.legs.size());
   bool any_edge = false;
   for (const RouteLeg& part : way.legs) {
@@ -107,6 +109,18 @@ void RoadTraffic::AdvanceTo(std::int32_t now_second,
         // A REPLAYED leg (begun before a re-plan) waits as it waited, but its hold is the
         // earlier plan's and its time is in its arrival already: nothing new is recorded.
         if (held >= rules_.hold_min_seconds && !stream.replay) {
+          // PROBE (wip/probe-2129-pairs, not for release): the pair behind each hold.
+          thread_local std::uint32_t printed = 0;
+          if (printed < 6000) {
+            ++printed;
+            std::cerr << "PAIR2129 own_pace " << stream.pace << " lead_pace " << last.pace
+                      << " own_in " << entry.second << " lead_in " << last.in_second << " own_free "
+                      << piece.free_seconds << " lead_free " << last.free_seconds << " held "
+                      << held << " edge " << piece.edge << " fwd " << piece.forward << " own "
+                      << stream.cart << '/' << stream.leg << " lead " << last.cart << '/'
+                      << last.leg << " piece " << stream.next << '/' << stream.pieces.size()
+                      << '\n';
+          }
           holds.push_back(RoadHold{.cart = stream.cart,
                                    .leg = stream.leg,
                                    .driver = {},  // the clock names it (RunTheClock)
@@ -121,7 +135,12 @@ void RoadTraffic::AdvanceTo(std::int32_t now_second,
         }
       }
       if (out >= last.second) {
-        last = LastOut{.second = out, .cart = stream.cart};
+        last = LastOut{.second = out,
+                       .cart = stream.cart,
+                       .in_second = entry.second,
+                       .free_seconds = piece.free_seconds,
+                       .pace = stream.pace,
+                       .leg = stream.leg};
       }
     }
     if (stream.next < stream.pieces.size()) {

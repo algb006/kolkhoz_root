@@ -109,6 +109,7 @@ class RoadTraffic {
     std::uint32_t cart = 0;
     std::uint32_t leg = 0;
     bool replay = false;
+    float pace = 0.0F;  // PROBE
     std::vector<Piece> pieces;
     std::size_t next = 0;
   };
@@ -126,6 +127,11 @@ class RoadTraffic {
   struct LastOut {
     std::int32_t second = 0;
     std::uint32_t cart = 0;
+    // PROBE (wip/probe-2129-pairs, not for release): the leader's entry and pace.
+    std::int32_t in_second = 0;
+    std::int32_t free_seconds = 0;
+    float pace = 0.0F;
+    std::uint32_t leg = 0;
   };
 
   void Push(std::uint32_t stream, std::int32_t second);
