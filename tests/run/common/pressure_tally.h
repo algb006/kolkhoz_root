@@ -22,6 +22,7 @@
 #include "core_common/calendar.h"
 #include "core_common/fund_ladder.h"
 #include "core_common/land_state.h"
+#include "core_common/unit_state.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 
@@ -69,7 +70,15 @@ class PressureTally {
     if (world.plan.announced != 0 && core::DaysToPlanTurn(world) <= kDeadlineDays) {
       for (std::size_t at = 0; at < world.plan.due.size(); ++at) {
         const core::Grams sent = at < world.plan.delivered.size() ? world.plan.delivered[at] : 0;
-        row.lamp = row.lamp || world.plan.due[at] > sent;
+        const core::Grams owed = world.plan.due[at] > sent ? world.plan.due[at] - sent : 0;
+        row.lamp = row.lamp || owed > 0;
+        // THE REAL THREAT (pr8: «owed near the turn» is 100 % of years - the turn ships from the
+        // store, so every position is owed until it): what is owed exceeds what lies stored.
+        core::Grams lying = 0;
+        for (const core::UnitRow& unit : world.units.rows) {
+          lying += at < unit.stock.size() ? unit.stock[at] : 0;
+        }
+        row.lamp_uncovered = row.lamp_uncovered || owed > lying;
       }
     }
     // The plan's positions, read while they stand (the closed book has no due).
@@ -105,8 +114,8 @@ class PressureTally {
       out << "population_curve: PRESS2164 seed " << seed << " year " << year
           << " ground=lamp=turn_within_4_days_with_a_position_short(stand-in);harvest=closed_"
              "book_vs_table_yield_x_slot0_ha"
-          << " lamp " << row.lamp << " short15 " << row.short15 << " short25 " << row.short25
-          << '\n';
+          << " lamp " << row.lamp << " lamp_uncovered " << row.lamp_uncovered << " short15 "
+          << row.short15 << " short25 " << row.short25 << '\n';
     }
   }
 
@@ -118,6 +127,7 @@ class PressureTally {
     std::map<std::uint32_t, float> expected_kg;
     std::map<std::uint32_t, bool> positions;
     bool lamp = false;
+    bool lamp_uncovered = false;
     bool short15 = false;
     bool short25 = false;
     bool closed = false;
