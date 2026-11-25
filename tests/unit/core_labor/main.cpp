@@ -4377,8 +4377,13 @@ int TestTheAvralAndTheCancelledDayOff() {
   }
 
   // -- the cancelled day off ---------------------------------------------------
+  // THE CANCELLED DAY'S FULL COST, in a world with authority off (#2164): with it live this
+  // Sunday has a reason (the oats at harvest) and A = 50 a season's one understood day, so the
+  // family would pay nothing - that path is the block after this one. The red that showed it
+  // (au2u, 25 Nov): «the family pays 1.0» read 0.
   {
     DayWorld day(1);  // day 0 a Monday: Sundays are 6, 13, 20...
+    day.world.chairman.authority_live = 0;
     const core::FieldId id = oat_field(day);
     core::OrderRow cancel;
     cancel.kind = core::OrderKind::kCancelDayOff;
@@ -4426,6 +4431,25 @@ int TestTheAvralAndTheCancelledDayOff() {
     }
     failures += Expect(day.world.chairman.days_off_cancelled_in_a_row == 0,
                        "day off: a Sunday actually taken breaks the series");
+  }
+  // THE UNDERSTOOD SUNDAY (#2164): the same Sunday with authority live - A 50's one understood
+  // day spent on the harvest's reason, the family pays no satisfaction, the rest still goes.
+  {
+    DayWorld day(1);
+    oat_field(day);
+    core::OrderRow cancel;
+    cancel.kind = core::OrderKind::kCancelDayOff;
+    cancel.status = core::OrderStatus::kPending;
+    core::AppendRow(day.world.orders, cancel);
+    for (std::uint32_t game_day = 3; game_day <= 5; ++game_day) {
+      day.RunDay(*labor, game_day);
+    }
+    const float before = day.world.residents.rows[0].rest;
+    day.RunDay(*labor, 6);
+    const float lost = before - day.world.residents.rows[0].rest;
+    failures += Expect(day.world.chairman.understood_used == 1 &&
+                           day.world.families.rows[0].overwork_penalty < 0.001F && lost > 3.99F,
+                       "day off: an understood Sunday costs no satisfaction, the rest still goes");
   }
   // THE OLD FIGHTER'S SIX (#635): the same cancelled Sunday as above, its
   // price gone - the rest lost is a working day's, as Saturday's, and the
