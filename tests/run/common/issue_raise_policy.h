@@ -80,7 +80,10 @@ class IssueRaisePolicy {
     }
     // ONCE A MONTH, on its last day as the core judges it (boss: a cost growing with the world -
     // a scan of every family - is not paid daily). The first cut scanned every day.
-    if ((world.calendar.day + 1U) % core::kDaysPerMonth != 0) {
+    // On the month's THIRD day, the day before the core judges it (the month's last day, at its
+    // first tick): au7's bot raised on the last day itself, AFTER the judgement, and the +2 and
+    // the −2 fired in the same 403 seasons, cancelling.
+    if ((world.calendar.day + 2U) % core::kDaysPerMonth != 0) {
       return;
     }
     const core::IssueShortfall shortfall = core::IssueShortfallOf(world, core::kAuthorityRules);
