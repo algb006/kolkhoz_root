@@ -27,7 +27,21 @@ namespace run {
 
 class RoadHoldTally {
  public:
-  /// @brief Once a day, after the day's step: the day's plan as it ended.
+  /// @brief After every step: the carts of the plan as it stands - a re-plan drops a cart
+  ///        whose work ended, so the evening's plan alone under-counts the day's carts (r3on:
+  ///        every evening plan empty, 816 of 816 lines NOT MEASURED).
+  void CountStep(const core::WorldState& world) {
+    const core::GroomPlan& plan = world.groom_plan;
+    std::set<std::uint32_t>& drivers = drivers_by_day_[plan.day];
+    for (const core::CartPlan& cart : plan.carts) {
+      if (!cart.on_foot) {
+        drivers.insert(cart.driver.value);
+      }
+    }
+  }
+
+  /// @brief Once a day, after the day's step: the day's holds as the last plan carries them
+  ///        (a re-plan carries the day's earlier holds, road_traffic.h CarryHolds).
   void CountDay(const core::WorldState& world) {
     // EACH DAY'S PLAN ONCE, BY ITS OWN DAY: at the daily look the calendar has turned to the
     // next day, so the plan in the world is the day just ended's (the first read asked
@@ -40,10 +54,12 @@ class RoadHoldTally {
     counted_any_ = true;
     last_counted_day_ = plan.day;
     Year& row = by_year_[(plan.day / core::kDaysPerYear) + 1U];
-    std::uint32_t carts = 0;
-    for (const core::CartPlan& cart : plan.carts) {
-      carts += cart.on_foot ? 0U : 1U;
+    std::set<std::uint32_t> drivers = std::move(drivers_by_day_[plan.day]);
+    drivers_by_day_.erase(drivers_by_day_.begin(), drivers_by_day_.upper_bound(plan.day));
+    for (const core::RoadHold& hold : plan.holds) {
+      drivers.insert(hold.driver.value);
     }
+    const auto carts = static_cast<std::uint32_t>(drivers.size());
     row.cart_days += carts;
     row.plan_days += carts > 0 ? 1U : 0U;
     std::set<std::uint32_t> held_carts;
@@ -56,7 +72,7 @@ class RoadHoldTally {
       ++row.events[cause];
       row.minutes[cause] += minutes;
       row.worst_minutes = std::max(row.worst_minutes, minutes);
-      held_carts.insert(hold.cart);
+      held_carts.insert(hold.driver.value);
     }
     row.held_cart_days += static_cast<std::uint32_t>(held_carts.size());
   }
@@ -94,6 +110,7 @@ class RoadHoldTally {
   };
 
   std::map<std::uint32_t, Year> by_year_;
+  std::map<core::SimDay, std::set<std::uint32_t>> drivers_by_day_;
   bool counted_any_ = false;
   core::SimDay last_counted_day_ = 0;
 };

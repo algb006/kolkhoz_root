@@ -63,11 +63,16 @@ struct RoadObstacle {
   HerdId herd;
 };
 
-/// @brief One vehicle's lost time on the road in today's plan: saved with the plan.
+/// @brief One vehicle's lost time on the road today: saved with the plan. THE DAY'S RECORD:
+///        a re-plan keeps every hold of the legs it kept, and of a dropped cart those begun
+///        before it (road_traffic.h CarryHolds), so the evening's plan holds the whole day's.
 struct RoadHold {
-  /// The plan's cart and the leg of its day (CargoFormOfLeg's address).
+  /// The plan's cart and the leg of its day (CargoFormOfLeg's address); both kHoldOffThePlan
+  /// once a re-plan dropped the cart (its driver's work ended) - the hold happened all the same.
   std::uint32_t cart = 0;
   std::uint32_t leg = 0;
+  /// The cart's driver: the hold's lasting address, a re-plan renumbering the carts.
+  ResidentId driver;
   RoadHoldCause cause = RoadHoldCause::kFollowing;
   RoadId road;
   float chainage_m = 0.0F;
@@ -81,6 +86,8 @@ struct RoadHold {
 };
 
 inline constexpr std::uint32_t kNoCartAhead = 0xFFFFFFFFU;
+/// A cart (or the cart ahead) a re-plan dropped from the day's plan.
+inline constexpr std::uint32_t kHoldOffThePlan = 0xFFFFFFFEU;
 
 /// @brief Today's standing obstacles: a pure function of the roads' wear, the yard herds and
 ///        the day's weather. Empty while world_params `road_pig_obstacles` is 0 (the first

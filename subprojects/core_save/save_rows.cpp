@@ -629,7 +629,7 @@ static_assert(AggregateArity<CartPlan>() == 5,
               "CartPlan gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<GroomPlan>() == 5,  // save 231 (#2129): the holds
               "GroomPlan gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<RoadHold>() == 9,
+static_assert(AggregateArity<RoadHold>() == 10,
               "RoadHold gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<RoadStretch>() == 1,
               "RoadStretch gained or lost a field — update the codec and VERSION_SAVE");
@@ -2515,9 +2515,9 @@ BarterTripRow ReadBarterTripRow(LoadSource& source) {
 constexpr std::size_t kSavedCartBytes = 14;
 constexpr std::size_t kSavedLegBytes = 62;
 constexpr std::size_t kSavedRiderBytes = 4;
-// Save 231 (#2129): a hold - cart, leg (8), cause (1), road (4), chainage (4), two minutes (4),
-// the cart ahead (4), rank (2) = 27; the plan gains the holds' count (+4).
-constexpr std::size_t kSavedHoldBytes = 27;
+// Save 231 (#2129): a hold - cart, leg (8), driver (4), cause (1), road (4), chainage (4), two
+// minutes (4), the cart ahead (4), rank (2) = 31; the plan gains the holds' count (+4).
+constexpr std::size_t kSavedHoldBytes = 31;
 
 void WriteGroomPlan(SaveSink& sink, const GroomPlan& plan) {
   ByteWriter& out = sink.Out();
@@ -2557,6 +2557,7 @@ void WriteGroomPlan(SaveSink& sink, const GroomPlan& plan) {
   for (const RoadHold& hold : plan.holds) {
     out.WriteU32(hold.cart);
     out.WriteU32(hold.leg);
+    WriteEntityId(out, hold.driver);
     out.WriteU8(static_cast<std::uint8_t>(hold.cause));
     WriteEntityId(out, hold.road);
     out.WriteFloat(hold.chainage_m);
@@ -2668,6 +2669,7 @@ GroomPlan ReadGroomPlan(LoadSource& source) {
     RoadHold hold;
     hold.cart = in.ReadU32();
     hold.leg = in.ReadU32();
+    hold.driver = ReadEntityId<ResidentId>(in);
     hold.cause = static_cast<RoadHoldCause>(source.ReadEnumValue(
         0, static_cast<std::uint8_t>(kRoadHoldCauseCountValue - 1U), "a hold's cause"));
     hold.road = ReadEntityId<RoadId>(in);
@@ -2676,7 +2678,9 @@ GroomPlan ReadGroomPlan(LoadSource& source) {
     hold.to_minute = in.ReadU16();
     hold.behind_cart = in.ReadU32();
     hold.rank = in.ReadU16();
-    if (hold.cart >= plan.carts.size() || hold.leg >= plan.carts[hold.cart].legs.size()) {
+    const bool off_the_plan = hold.cart == kHoldOffThePlan && hold.leg == kHoldOffThePlan;
+    if (!off_the_plan &&
+        (hold.cart >= plan.carts.size() || hold.leg >= plan.carts[hold.cart].legs.size())) {
       source.Fail("a hold of the groom's plan names a cart or leg the plan does not hold");
       return plan;
     }
@@ -2684,7 +2688,8 @@ GroomPlan ReadGroomPlan(LoadSource& source) {
       source.Fail("a hold of the groom's plan ends before it begins, or stands off its road");
       return plan;
     }
-    if (hold.behind_cart != kNoCartAhead && hold.behind_cart >= plan.carts.size()) {
+    if (hold.behind_cart != kNoCartAhead && hold.behind_cart != kHoldOffThePlan &&
+        hold.behind_cart >= plan.carts.size()) {
       source.Fail("a hold of the groom's plan waits behind a cart the plan does not hold");
       return plan;
     }

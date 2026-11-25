@@ -111,5 +111,49 @@ int CheckTheEdgeLedger() {
     failures += Expect(holds.empty() && delays.empty() && traffic.Crossings() == 0,
                        "edge ledger: switched off it crosses and holds nothing");
   }
+  // A RE-PLAN CARRIES THE DAY'S HOLDS (r3on: every evening plan empty). The earlier plan:
+  // cart 0 (driver 10) held on its leg 1 at 300 min behind cart 1; cart 1 (driver 11) held on
+  // leg 0 at 200 and on leg 2 at 500. At 420 min the re-plan keeps driver 11 alone, now cart 0,
+  // with his first two legs.
+  {
+    core::GroomPlan earlier;
+    earlier.carts.resize(2);
+    earlier.carts[0].driver = core::ResidentId{10};
+    earlier.carts[1].driver = core::ResidentId{11};
+    const auto hold = [](std::uint32_t cart,
+                         std::uint32_t leg,
+                         std::uint16_t from,
+                         std::uint32_t driver,
+                         std::uint32_t behind) {
+      return core::RoadHold{.cart = cart,
+                            .leg = leg,
+                            .driver = core::ResidentId{driver},
+                            .cause = core::RoadHoldCause::kFollowing,
+                            .road = core::RoadId{1},
+                            .chainage_m = 0.0F,
+                            .from_minute = from,
+                            .to_minute = static_cast<std::uint16_t>(from + 10),
+                            .behind_cart = behind,
+                            .rank = 1};
+    };
+    earlier.holds = {
+        hold(0, 1, 300, 10, 1), hold(1, 0, 200, 11, core::kNoCartAhead), hold(1, 2, 500, 11, 0)};
+    core::GroomPlan plan;
+    plan.carts.resize(1);
+    plan.carts[0].driver = core::ResidentId{11};
+    plan.holds = {hold(0, 3, 600, 11, core::kNoCartAhead)};  // the re-plan's own
+    core::RoadTraffic::CarryHolds(earlier, {2}, 420, plan);
+    const bool shape = plan.holds.size() == 3;
+    failures += Expect(shape && plan.holds[0].cart == core::kHoldOffThePlan &&
+                           plan.holds[0].leg == core::kHoldOffThePlan &&
+                           plan.holds[0].driver.value == 10 && plan.holds[0].behind_cart == 0,
+                       "re-plan: a dropped cart's begun hold stays, off the plan, behind the "
+                       "cart ahead's new number");
+    failures += Expect(shape && plan.holds[1].cart == 0 && plan.holds[1].leg == 0 &&
+                           plan.holds[1].driver.value == 11,
+                       "re-plan: a kept leg's hold moves to its driver's new cart");
+    failures += Expect(shape && plan.holds[2].leg == 3 && plan.holds[2].from_minute == 600,
+                       "re-plan: a hold on a leg drawn anew is the new plan's, the old one gone");
+  }
   return failures;
 }

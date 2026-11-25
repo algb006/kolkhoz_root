@@ -63,14 +63,27 @@ class RoadTraffic {
 
   /// @brief Registers a leg beginning at `start_second` of the day: its edges are the
   ///        index's Way for `mode` from `from` to `to`, crossed at `hours_per_km` game hours a
-  ///        kilometre (the clock's own pace for the leg).
+  ///        kilometre (the clock's own pace for the leg). A `replay` leg (one a re-plan kept,
+  ///        begun before it) holds the edges for those behind it and waits behind those
+  ///        ahead, but yields no hold and no delay: both are the earlier plan's.
   void BeginLeg(std::uint32_t cart,
                 std::uint32_t leg,
                 TravelMode mode,
                 float hours_per_km,
                 Vec2 from,
                 Vec2 to,
-                std::int32_t start_second);
+                std::int32_t start_second,
+                bool replay = false);
+
+  /// @brief A re-plan's holds (#2129): the earlier plan's holds on the legs the re-plan
+  ///        kept (each cart's first `kept_legs[cart]` legs, matched by driver) go into `plan`
+  ///        re-addressed; those of a driver with no cart left in `plan` are kept with cart and
+  ///        leg kHoldOffThePlan - they happened, and the day's record (pay, prints) is by
+  ///        driver. A hold behind a cart no longer in the plan names kHoldOffThePlan behind.
+  static void CarryHolds(const GroomPlan& earlier,
+                         const std::vector<std::uint32_t>& kept_legs,
+                         std::uint16_t now_minute,
+                         GroomPlan& plan);
 
   /// @brief Processes every edge entry up to `now_second` in (time, creation sequence) order;
   ///        appends the holds it found and the delays the clock must add to the legs.
@@ -95,6 +108,7 @@ class RoadTraffic {
   struct Stream {
     std::uint32_t cart = 0;
     std::uint32_t leg = 0;
+    bool replay = false;
     std::vector<Piece> pieces;
     std::size_t next = 0;
   };

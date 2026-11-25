@@ -345,6 +345,7 @@ class BuildingChairman {
   void WatchStep(const core::WorldState& world) {
     distiller.WatchStep(world);
     district_table.WatchStep(world);  // TABLE1953: each kDistrictTable as the step raises it
+    road_holds.CountStep(world);      // HOLD2129: the day's carts, every plan of it
   }
 
   /// @brief #713'S MUST-NOT ARM (econ, boss-econ-713-1302-reads [3]): the

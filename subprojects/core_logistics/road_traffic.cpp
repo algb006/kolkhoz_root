@@ -44,12 +44,13 @@ void RoadTraffic::BeginLeg(std::uint32_t cart,
                            float hours_per_km,
                            Vec2 from,
                            Vec2 to,
-                           std::int32_t start_second) {
+                           std::int32_t start_second,
+                           bool replay) {
   if (!rules_.following_on || index_ == nullptr || !(hours_per_km > 0.0F)) {
     return;
   }
   const Route way = index_->Way(mode, from, to);
-  Stream stream{.cart = cart, .leg = leg, .pieces = {}, .next = 0};
+  Stream stream{.cart = cart, .leg = leg, .replay = replay, .pieces = {}, .next = 0};
   stream.pieces.reserve(way.legs.size());
   bool any_edge = false;
   for (const RouteLeg& part : way.legs) {
@@ -102,8 +103,13 @@ void RoadTraffic::AdvanceTo(std::int32_t now_second,
         const std::int32_t held = last.second - own_out;
         if (held >= rules_.hold_min_seconds) {
           out = last.second;
+        }
+        // A REPLAYED leg (begun before a re-plan) waits as it waited, but its hold is the
+        // earlier plan's and its time is in its arrival already: nothing new is recorded.
+        if (held >= rules_.hold_min_seconds && !stream.replay) {
           holds.push_back(RoadHold{.cart = stream.cart,
                                    .leg = stream.leg,
+                                   .driver = {},  // the clock names it (RunTheClock)
                                    .cause = RoadHoldCause::kFollowing,
                                    .road = piece.road,
                                    .chainage_m = piece.chainage_m,
@@ -122,6 +128,50 @@ void RoadTraffic::AdvanceTo(std::int32_t now_second,
       Push(entry.stream, out);
     }
   }
+}
+
+void RoadTraffic::CarryHolds(const GroomPlan& earlier,
+                             const std::vector<std::uint32_t>& kept_legs,
+                             std::uint16_t now_minute,
+                             GroomPlan& plan) {
+  // By driver: a re-plan renumbers the carts, and drops those with no work left.
+  std::unordered_map<std::uint32_t, std::uint32_t> cart_of_driver;
+  for (std::uint32_t cart = 0; cart < plan.carts.size(); ++cart) {
+    if (!plan.carts[cart].people_cart) {
+      cart_of_driver.emplace(plan.carts[cart].driver.value, cart);
+    }
+  }
+  const auto now_index = [&](std::uint32_t before) -> std::uint32_t {
+    if (before >= earlier.carts.size()) {
+      return kHoldOffThePlan;
+    }
+    const auto found = cart_of_driver.find(earlier.carts[before].driver.value);
+    return found != cart_of_driver.end() ? found->second : kHoldOffThePlan;
+  };
+  std::vector<RoadHold> carried;
+  for (const RoadHold& hold : earlier.holds) {
+    RoadHold moved = hold;
+    moved.cart = hold.cart == kHoldOffThePlan ? kHoldOffThePlan : now_index(hold.cart);
+    if (moved.cart != kHoldOffThePlan) {
+      const std::uint32_t kept = moved.cart < kept_legs.size() ? kept_legs[moved.cart] : 0;
+      if (hold.leg >= kept) {
+        continue;  // a leg not yet begun: the re-plan drew it anew, and its holds
+      }
+    } else if (hold.cart != kHoldOffThePlan) {
+      // The driver's cart left the plan; his begun legs went with it, so only a hold that
+      // began before the re-plan stood - the plan's own clock is past nothing else.
+      if (hold.from_minute > now_minute) {
+        continue;
+      }
+      moved.leg = kHoldOffThePlan;
+    }
+    if (hold.behind_cart != kNoCartAhead) {
+      moved.behind_cart = now_index(hold.behind_cart);
+    }
+    carried.push_back(moved);
+  }
+  carried.insert(carried.end(), plan.holds.begin(), plan.holds.end());
+  plan.holds = std::move(carried);
 }
 
 }  // namespace core

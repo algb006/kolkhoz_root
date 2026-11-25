@@ -779,7 +779,8 @@ void RegisterNewLegs(const WorldState& world,
                      const GroomPlan& plan,
                      const Mover& mover,
                      std::size_t& registered,
-                     RoadTraffic& traffic) {
+                     RoadTraffic& traffic,
+                     bool replay = false) {
   const std::vector<CartLeg>& legs = plan.carts[mover.cart].legs;
   for (; registered < legs.size(); ++registered) {
     const CartLeg& leg = legs[registered];
@@ -799,7 +800,8 @@ void RegisterNewLegs(const WorldState& world,
                      leg.loaded != 0 ? mover.loaded_hours_per_km : mover.hours_per_km,
                      leg.from,
                      leg.to,
-                     static_cast<std::int32_t>(leg.depart_minute) * 60);
+                     static_cast<std::int32_t>(leg.depart_minute) * 60,
+                     replay);
   }
 }
 
@@ -821,6 +823,14 @@ void RunTheClock(const LogisticsConfig& config,
     }
   }
   std::vector<LegDelay> delays;
+  // A RE-PLAN'S KEPT LEGS ride first, replayed: they hold the edges for the new legs behind
+  // them; their own holds are the earlier plan's (CarryHolds, BuildGroomPlan).
+  if (config.traffic.following_on) {
+    for (std::uint32_t at = 0; at < movers.size(); ++at) {
+      RegisterNewLegs(world, plan, movers[at], registered[at], traffic, /*replay=*/true);
+    }
+  }
+  const std::size_t holds_before = plan.holds.size();
   // THE STEP IS COUNTED, NOT SUMMED (the Fable review of 11 October 2026,
   // item 12): a sum of some 150 twelfths rounded differently under another
   // compiler's float contraction could move a leg across an hour, and a save
@@ -912,6 +922,10 @@ void RunTheClock(const LogisticsConfig& config,
       }
       GoOn(world, remaining, plan, mover, day, window.sunset, window.sunset, /*evening=*/true);
     }
+  }
+  for (std::size_t index = holds_before; index < plan.holds.size(); ++index) {
+    RoadHold& hold = plan.holds[index];
+    hold.driver = hold.cart < plan.carts.size() ? plan.carts[hold.cart].driver : ResidentId{};
   }
 }
 
@@ -1096,7 +1110,16 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
       waiting[first] = kNobody;
     }
   }
+  // The legs a re-plan kept, a cart: the replayed ones (RunTheClock), whose holds are carried.
+  std::vector<std::uint32_t> kept_legs(plan.carts.size(), 0);
+  for (std::uint32_t cart = 0; cart < plan.carts.size(); ++cart) {
+    kept_legs[cart] = static_cast<std::uint32_t>(plan.carts[cart].legs.size());
+  }
   RunTheClock(config, world, remaining, plan, movers, window);
+  if (earlier != nullptr) {
+    RoadTraffic::CarryHolds(
+        *earlier, kept_legs, static_cast<std::uint16_t>(HourFromTick(now) * 60U), plan);
+  }
   // THE RIDERS (B4b): whoever the labour hour seated this morning on a
   // driver's cart rides its first leg. ONCE (0.37.186): a re-plan keeps a
   // begun first leg with its riders (above), and until then this loop wrote

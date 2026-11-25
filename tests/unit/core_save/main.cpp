@@ -928,6 +928,7 @@ core::WorldState MakeWorld() {
   // behind cart 1, ranked 2.
   world.groom_plan.holds.push_back(core::RoadHold{.cart = 0,
                                                   .leg = 1,
+                                                  .driver = core::ResidentId{7},
                                                   .cause = core::RoadHoldCause::kFollowing,
                                                   .road = core::RoadId{3},
                                                   .chainage_m = 41.5F,
@@ -2592,8 +2593,9 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // leg now loaded) - three legs, 225 -> 228, predicted before the build and
     // held; the hash read off it.
     // Save 231 (#2129): the holds' count (4) and one hold (27) - 228 -> 259, predicted before
-    // the build and held; the hash read off t1u.
-    {"groom_plan", 259, 0xa2eb4bf7880cf511ULL},  // save 155: 2 partners, 3 legs' loads
+    // the build and held; the hash read off t1u. The hold's driver (+4, a re-plan's lasting
+    // address) - 259 -> 263, predicted before the build; the hash to be read off r4u.
+    {"groom_plan", 263, 0xa2eb4bf7880cf511ULL},  // save 155: 2 partners, 3 legs' loads
     // Save 227 (#2072): the trails - two floats and a count (12), two rows of 24; predicted
     // 60 before the build, held; the hash read off utrlb.
     // Save 228 (roads.md §3): +48 - the ground factors, twelve floats after the two; predicted
@@ -3831,6 +3833,7 @@ int main() {
             back.carts[1].legs[0].arrive_minute == 362 && back.carts[0].legs[0].loaded == 1 &&
             back.carts[0].legs[0].back_load == 1 && back.carts[0].legs[1].back_load == 0 &&
             back.holds.size() == 1 && back.holds[0].cart == 0 && back.holds[0].leg == 1 &&
+            back.holds[0].driver.value == 7 &&
             back.holds[0].cause == core::RoadHoldCause::kFollowing &&
             back.holds[0].road.value == 3 && back.holds[0].chainage_m == 41.5F &&
             back.holds[0].from_minute == 300 && back.holds[0].to_minute == 312 &&
