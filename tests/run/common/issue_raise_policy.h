@@ -1,0 +1,115 @@
+/// @file
+/// @brief The run's chairman answers a short village by raising the issue (#2164, econ [6];
+///        boss: «the canon bot must play well», the 2 Oct rule).
+/// @threading SINGLE_THREADED
+/// Test-side code, driven once a day from the thread that owns the simulation.
+///
+/// THE RULE: on any day when at least a tenth of the families ate less than 0.9 of their need
+/// over the month so far (core::IssueShortfallOf, the authority gate's first half) AND the free
+/// stock over the funds covers their shortfall in grain equivalent (its second half), he raises
+/// every food position that food.csv gives an issue norm by a quarter of its norm in force
+/// (the table's for a position under the default rule) - once a season, as the +2 is counted.
+/// A world with authority off is left as before 232: the rule does not act there.
+/// THE INSTRUMENT: IR2164 a closed year - raises ordered and positions raised.
+
+#ifndef TESTS_RUN_COMMON_ISSUE_RAISE_POLICY_H_
+#define TESTS_RUN_COMMON_ISSUE_RAISE_POLICY_H_
+
+#include <cstdint>
+#include <map>
+#include <ostream>
+#include <span>
+#include <vector>
+
+#include "core_common/authority.h"
+#include "core_common/calendar.h"
+#include "core_common/order_state.h"
+#include "core_common/world_state.h"
+#include "core_sim/step.h"
+#include "core_tables/tables.h"
+
+namespace run {
+
+class IssueRaisePolicy {
+ public:
+  explicit IssueRaisePolicy(const core::ITableSet& tables) {
+    const core::ITable* const food = tables.FindTable("food");
+    const core::ITable* const resources = tables.FindTable("resources");
+    if (food == nullptr || resources == nullptr) {
+      return;
+    }
+    const std::uint32_t norm_col = food->FindColumn("issue_kg_per_trudoden");
+    const std::uint32_t key_col = food->FindColumn("key");
+    if (norm_col == core::kNoTableColumn || key_col == core::kNoTableColumn) {
+      return;
+    }
+    for (std::uint32_t row = 0; row < food->RowCount(); ++row) {
+      const float kg = food->CellReal(row, norm_col).value_or(0.0F);
+      const std::uint32_t resource = resources->FindRowByKey(food->CellText(row, key_col));
+      if (kg > 0.0F && resource != core::kNoTableRow) {
+        table_grams_[resource] = static_cast<core::Grams>(kg * kGramsPerKg);
+      }
+    }
+  }
+
+  void RunDay(core::ISimulation& simulation) {
+    const core::WorldState& world = simulation.CompletedState();
+    const std::uint32_t year = (world.calendar.day / core::kDaysPerYear) + 1U;
+    const std::uint32_t season = core::AuthoritySeasonOf(world.calendar.day);
+    if (world.chairman.authority_live == 0 || season == last_season_ || table_grams_.empty()) {
+      return;
+    }
+    const core::IssueShortfall shortfall = core::IssueShortfallOf(world, core::kAuthorityRules);
+    if (!core::FamiliesShort(shortfall, core::kAuthorityRules)) {
+      return;
+    }
+    const core::FreeStockView free = simulation.FreeStockToday();
+    const double gap_grams = static_cast<double>(shortfall.shortfall_kcal) /
+                             static_cast<double>(core::kAuthorityRules.grain_kcal_per_gram);
+    if (!free.measured || static_cast<double>(free.free_grain_eq_grams) < gap_grams) {
+      return;
+    }
+    std::vector<core::OrderRow> orders;
+    for (const auto& [resource, table] : table_grams_) {
+      const bool explicit_norm = resource < world.issue_norms.size() &&
+                                 world.issue_norms[resource] != core::kIssueNormByDefault &&
+                                 world.issue_norms[resource] > 0;
+      const core::Grams in_force = explicit_norm ? world.issue_norms[resource] : table;
+      core::OrderRow order;
+      order.kind = core::OrderKind::kSetIssueNorm;
+      order.resource = core::ResourceId{static_cast<std::uint16_t>(resource)};
+      order.amount = in_force + (in_force / kRaiseQuarter);
+      orders.push_back(order);
+    }
+    simulation.StageOrders(std::span<const core::OrderRow>(orders), {});
+    last_season_ = season;
+    Year& row = by_year_[year];
+    ++row.raises;
+    row.positions += static_cast<std::uint32_t>(orders.size());
+  }
+
+  void Print(std::ostream& out, std::uint64_t seed) const {
+    for (const auto& [year, row] : by_year_) {
+      out << "population_curve: IR2164 seed " << seed << " year " << year
+          << " ground=issue_raised_when_a_tenth_short_and_the_free_stock_covers_it raises "
+          << row.raises << " positions " << row.positions << '\n';
+    }
+  }
+
+ private:
+  static constexpr float kGramsPerKg = 1000.0F;
+  static constexpr core::Grams kRaiseQuarter = 4;
+
+  struct Year {
+    std::uint32_t raises = 0;
+    std::uint32_t positions = 0;
+  };
+
+  std::map<std::uint32_t, core::Grams> table_grams_;
+  std::uint32_t last_season_ = 0;
+  std::map<std::uint32_t, Year> by_year_;
+};
+
+}  // namespace run
+
+#endif  // TESTS_RUN_COMMON_ISSUE_RAISE_POLICY_H_

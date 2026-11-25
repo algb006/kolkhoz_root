@@ -594,9 +594,10 @@ class ResidentsSystem final : public IResidentsSystem {
     }
     // THE MONTH'S ISSUE JUDGED (#2164): families at the line while the store holds free food
     // over its funds, and the chairman changed nothing - «месяц под чертой при полном складе».
-    {
+    // The free stock is read on the month's last day only (econ [6]: once a month, CPU).
+    if ((current.calendar.day + 1U) % kDaysPerMonth == 0 && current.chairman.authority_live != 0) {
       const FreeStockView free = FreeStockOf(current);
-      JudgeIssueMonth(current, kAuthorityRules, free.measured && free.days > 0.0F);
+      JudgeIssueMonth(current, kAuthorityRules, free.measured ? free.free_grain_eq_grams : 0);
     }
     // THE HUNGER FORECAST'S MEMORY CLOSES YESTERDAY (#1046; family_food_watch.h):
     // its own food folds into the mean.

@@ -37,6 +37,7 @@
 #include <cstdint>
 
 #include "core_common/ids.h"
+#include "core_common/quantities.h"
 
 namespace core {
 
@@ -88,6 +89,12 @@ struct AuthorityRules {
   float complaint_reputation = -2.0F;
   /// The plan's deadline reason: within this many days of the turn with the plan short.
   std::uint32_t deadline_days = 4;
+  /// The issue gate (econ [6]): a family is short below this share of its month's need, and
+  /// the row fires from this share of families short.
+  float short_eaten_share = 0.9F;
+  float short_share = 0.10F;
+  /// A shortfall's kilocalories in grain-equivalent grams (food.csv's grain, 3.3 kcal a gram).
+  float grain_kcal_per_gram = 3.3F;
 };
 
 /// @brief The rules every reader uses: econ's STUB numbers, one home. world_params for them come
@@ -126,15 +133,32 @@ float EffectiveAttitude(float personal, float authority);
 ///        forecast lamp is the session's and not read inside a step).
 bool FamiliesAtRationLine(const WorldState& world);
 
-/// @brief The chairman raised a food issue norm or opened a food reserve: with families at the
-///        ration line, once a month, AuthorityDeed::kRaisedIssueAtLine; the month is marked
-///        (issue_raised_month) so it is not judged «unfair».
+/// @brief The issue's hungry share (econ [6]): the families that ate less than
+///        `short_eaten_share` of their need over the month so far (FamilyRow::month_*), their
+///        share of all families with a need, and their shortfall to the full need, kcal.
+struct IssueShortfall {
+  std::uint32_t short_families = 0;
+  std::uint32_t families = 0;
+  float share = 0.0F;
+  float shortfall_kcal = 0.0F;
+};
+
+IssueShortfall IssueShortfallOf(const WorldState& world, const AuthorityRules& rules);
+
+/// @brief The issue gate's first half: at least `short_share` of the families short.
+bool FamiliesShort(const IssueShortfall& shortfall, const AuthorityRules& rules);
+
+/// @brief The chairman raised a food issue norm or opened a food reserve. The month is marked
+///        (issue_raised_month: it is not judged unfair); with the families short (the gate's
+///        first half; the free stock is not read here - spending food is not a pump), once a
+///        season, AuthorityDeed::kRaisedIssueAtLine.
 void SayIssueRaised(WorldState& world, const AuthorityRules& rules);
 
-/// @brief The month's judgement, on its last day (phase 3): families at the ration line, food
-///        in store (`store_holds_food`, the caller's free-stock read) and no raise this month -
-///        AuthorityDeed::kUnfairIssueMonth. A no-op on any other day.
-void JudgeIssueMonth(WorldState& world, const AuthorityRules& rules, bool store_holds_food);
+/// @brief The month's judgement, on its last day: the families short, the free stock over the
+///        funds (`free_grain_eq_grams`, the caller's FreeStock read) at least their shortfall in
+///        grain equivalent, no raise this month - and once a season - AuthorityDeed::
+///        kUnfairIssueMonth. A no-op on any other day.
+void JudgeIssueMonth(WorldState& world, const AuthorityRules& rules, Grams free_grain_eq_grams);
 
 /// @brief Whether today's cancelled day off is understood (SpendUnderstoodDay spent today).
 bool UnderstoodToday(const WorldState& world);

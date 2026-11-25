@@ -184,6 +184,8 @@ core::WorldState MakeWorld() {
   world.chairman.complaint_season = 7;
   world.chairman.issue_raised_month = 8;
   world.chairman.understood_day = 9;
+  world.chairman.unfair_season = 10;  // econ [6]'s season marks
+  world.chairman.raise_season = 11;
   world.chairman.authority_live = 0;
   world.chairman.last_talk_season = 5;  // save 69: a talk had, not nought
   // Save 77: away on a summons, a trip of his own before, a trade had.
@@ -339,6 +341,8 @@ core::WorldState MakeWorld() {
   // need; `bare` keeps the noughts.
   rich.season_category_kcal = {9100.5F, 820.25F, 77.0F, 640.0F, 12.5F, 0.0F, 3.75F, 150.0F, 1.0F};
   rich.season_need_kcal = 20625.0F;
+  rich.month_need_kcal = 7125.0F;  // save 232 (#2164): the month's table
+  rich.month_eaten_kcal = 6250.0F;
   // Save 159 (#170): the new household's advance, five unlike values; `bare`
   // keeps «not formed in play» and the noughts.
   rich.formed_day = 131;
@@ -1465,6 +1469,8 @@ core::WorldState MakeWitnessWorld() {
   witness.chairman.complaint_season = 4;
   witness.chairman.issue_raised_month = 5;
   witness.chairman.understood_day = 6;
+  witness.chairman.unfair_season = 7;
+  witness.chairman.raise_season = 8;
   witness.chairman.authority_live = 0;
 
   witness.traction_ration = 0.75F;
@@ -1692,6 +1698,8 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"chairman.complaint_season", U32(world.chairman.complaint_season)});
   chunks.push_back({"chairman.issue_raised_month", U32(world.chairman.issue_raised_month)});
   chunks.push_back({"chairman.understood_day", U32(world.chairman.understood_day)});
+  chunks.push_back({"chairman.unfair_season", U32(world.chairman.unfair_season)});
+  chunks.push_back({"chairman.raise_season", U32(world.chairman.raise_season)});
   chunks.push_back({"chairman.authority_live", U8(world.chairman.authority_live)});
 
   chunks.push_back({"traction_ration", F32(world.traction_ration)});
@@ -2225,7 +2233,8 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // 1537 -> 1539 before the build, held; the hash read off uclk.
     // Save 232 (#2164): the chairman's understanding, complaint, issue month, understood day and
     // the switch, +18 - predicted 1539 -> 1557 before the build and held; the hash read off au2u.
-    {"world", 1557, 0xf4ef1c1a96b56ee8ULL},
+    // And econ [6]'s two season marks, +8 - predicted 1557 -> 1565; the hash re-read owed.
+    {"world", 1565, 0xf4ef1c1a96b56ee8ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2316,7 +2325,9 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // build, held; the hash read off it (s1630b2).
     // Save 224: yard_herd_trudodni and plot_ratio_without_sum struck (#1442), -8 a family, two
     // - predicted 458 -> 442 before the build, held; the hash read off ufarm.
-    {"families", 442, 0xc246ad3bbe70ebbbULL},
+    // Save 232 (#2164): the month's table, two floats a family, two - predicted 442 -> 458; the
+    // hash re-read owed.
+    {"families", 458, 0xc246ad3bbe70ebbbULL},
     // Save 84: +36 — the harvest by parts' laid share (4) and grams (8), 12
     // a row, three rows; predicted before the build and held. Then the first
     // row given non-zero values: the size held at 305, the hash moved.
@@ -3301,6 +3312,7 @@ int main() {
           loaded.chairman.sugar_complaint_season == 9 && loaded.chairman.understood_season == 6 &&
           loaded.chairman.understood_used == 2 && loaded.chairman.complaint_season == 7 &&
           loaded.chairman.issue_raised_month == 8 && loaded.chairman.understood_day == 9 &&
+          loaded.chairman.unfair_season == 10 && loaded.chairman.raise_season == 11 &&
           loaded.chairman.authority_live == 0 && loaded.families.rows[1].advance_turns == 0 &&
           loaded.ledger.current.advance_written_off_ended == 0 &&
           loaded.families.rows[1].formed_day == core::kNotFormedInPlay &&
@@ -3616,6 +3628,8 @@ int main() {
       loaded.families.rows[0].season_category_kcal == world.families.rows[0].season_category_kcal &&
           loaded.families.rows[0].season_category_kcal[8] == 1.0F &&
           loaded.families.rows[0].season_need_kcal == 20625.0F &&
+          loaded.families.rows[0].month_need_kcal == 7125.0F &&
+          loaded.families.rows[0].month_eaten_kcal == 6250.0F &&
           loaded.families.rows[1].season_need_kcal == 0.0F &&
           loaded.families.rows[1].season_category_kcal == std::array<float, 9>{},
       "a family's season table by category and its season's need come back, each in its place "

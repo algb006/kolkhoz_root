@@ -45,6 +45,7 @@
 #include "house_policy.h"
 #include "houses_first_policy.h"
 #include "insulation_policy.h"
+#include "issue_raise_policy.h"
 #include "limit_policy.h"
 #include "low_earners_tally.h"
 #include "milkmaid_policy.h"
@@ -123,7 +124,8 @@ class BuildingChairman {
         plan_over(tables),
         sport_talk(tables),
         distiller(tables),
-        emptying(tables) {
+        emptying(tables),
+        issue_raise(tables) {
     if (const core::ITable* const types = tables.FindTable("unit_types")) {
       decomp.SetSawmill(types->FindRowByKey("sawmill"));  // DECOMP2072's sawyer-days
     }
@@ -450,6 +452,8 @@ class BuildingChairman {
     // The church store and the clamps emptied into the guarded food yard
     // (#1254; store_emptying_policy.h): the leak's only close by design.
     emptying.RunDay(simulation);
+    // A short village's issue raised (#2164, econ [6]; issue_raise_policy.h).
+    issue_raise.RunDay(simulation);
     // The audit's remark answered by a write-off (#1568; write_off_policy.h).
     write_off.RunDay(simulation);
     sawmill.RunDay(simulation);
@@ -671,6 +675,8 @@ class BuildingChairman {
   /// The unguarded stores emptied (#1254); `emptying.Enable` is the control
   /// arm's switch.
   StoreEmptyingPolicy emptying;
+  /// The issue raised for a short village (#2164; issue_raise_policy.h).
+  IssueRaisePolicy issue_raise;
   /// The book's shortage written off after the audit's remark (#1568);
   /// `write_off.Enable(false)` is the arm without it.
   WriteOffPolicy write_off;

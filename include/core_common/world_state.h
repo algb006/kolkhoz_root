@@ -697,6 +697,11 @@ struct ChairmanState {
   /// cost of that day is waived (SpendUnderstoodDay / UnderstoodToday; #2164).
   std::uint32_t understood_day = 0;
 
+  /// The talk season (plus one; 0 none) of the last unfair-issue judgement and of the last
+  /// raise's +2: each row at most once a season (#2164, econ [6]).
+  std::uint32_t unfair_season = 0;
+  std::uint32_t raise_season = 0;
+
   /// 1: authority is live (#2164). 0 (world_params `authority_live` 0 at genesis, the paired
   /// arm's door): A stays 50, no deed moves it, no day is understood, no complaint is made -
   /// the world as before 232.

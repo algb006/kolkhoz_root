@@ -276,6 +276,12 @@ struct FamilyRow {
   /// The family's need over the season so far, kilocalories (see above).
   float season_need_kcal = 0.0F;
 
+  /// THE MONTH'S TABLE (#2164, econ [6]; save 232): the need and what was eaten of it since
+  /// the month's first meal, kilocalories - the unfair-issue row reads «ate < 0.9 of need over
+  /// the month» off these, not off the hunger alarm. Reset at the month's first meal.
+  float month_need_kcal = 0.0F;
+  float month_eaten_kcal = 0.0F;
+
   // -- the new household's advance (labor-payment design, «Аванс новосёлу»;
   // #170, save 159; core_residents/household_advance.h) -----------------------
   /// THE DAY THE ROW WAS FORMED IN PLAY: an arrival's, a wedding's, a

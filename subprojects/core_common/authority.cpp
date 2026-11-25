@@ -121,28 +121,66 @@ bool FamiliesAtRationLine(const WorldState& world) {
   return false;
 }
 
+IssueShortfall IssueShortfallOf(const WorldState& world, const AuthorityRules& rules) {
+  IssueShortfall result;
+  for (const FamilyRow& family : world.families.rows) {
+    if (!(family.month_need_kcal > 0.0F)) {
+      continue;  // nobody in it eats from the pantry: no need, no shortfall
+    }
+    ++result.families;
+    if (family.month_eaten_kcal < rules.short_eaten_share * family.month_need_kcal) {
+      ++result.short_families;
+      result.shortfall_kcal += family.month_need_kcal - family.month_eaten_kcal;
+    }
+  }
+  result.share = result.families > 0 ? static_cast<float>(result.short_families) /
+                                           static_cast<float>(result.families)
+                                     : 0.0F;
+  return result;
+}
+
+bool FamiliesShort(const IssueShortfall& shortfall, const AuthorityRules& rules) {
+  return shortfall.short_families > 0 && shortfall.share >= rules.short_share;
+}
+
 void SayIssueRaised(WorldState& world, const AuthorityRules& rules) {
-  if (world.chairman.authority_live == 0 || !FamiliesAtRationLine(world)) {
-    return;  // raising it with nobody hungry earns nothing (econ's pump check)
+  ChairmanState& chairman = world.chairman;
+  if (chairman.authority_live == 0) {
+    return;
   }
-  const std::uint32_t month = (world.calendar.day / kDaysPerMonth) + 1U;
-  if (world.chairman.issue_raised_month == month) {
-    return;  // once a month
+  // The month is the chairman's who raised it, hungry or not: it is not judged unfair.
+  chairman.issue_raised_month = (world.calendar.day / kDaysPerMonth) + 1U;
+  // The +2 only when the village is short (raising it with nobody short earns nothing, econ's
+  // pump check) and once a season (econ [6]).
+  const std::uint32_t season = AuthoritySeasonOf(world.calendar.day);
+  if (chairman.raise_season == season || !FamiliesShort(IssueShortfallOf(world, rules), rules)) {
+    return;
   }
-  world.chairman.issue_raised_month = month;
+  chairman.raise_season = season;
   MoveAuthority(world, rules, AuthorityDeed::kRaisedIssueAtLine);
 }
 
-void JudgeIssueMonth(WorldState& world, const AuthorityRules& rules, bool store_holds_food) {
+void JudgeIssueMonth(WorldState& world, const AuthorityRules& rules, Grams free_grain_eq_grams) {
   const std::uint32_t day = world.calendar.day;
   if ((day + 1U) % kDaysPerMonth != 0) {
     return;  // the month's last day only
   }
+  ChairmanState& chairman = world.chairman;
   const std::uint32_t month = (day / kDaysPerMonth) + 1U;
-  if (store_holds_food && world.chairman.issue_raised_month != month &&
-      FamiliesAtRationLine(world)) {
-    MoveAuthority(world, rules, AuthorityDeed::kUnfairIssueMonth);
+  const std::uint32_t season = AuthoritySeasonOf(day);
+  if (chairman.issue_raised_month == month || chairman.unfair_season == season) {
+    return;
   }
+  const IssueShortfall shortfall = IssueShortfallOf(world, rules);
+  // «МЕСЯЦ ПОД ЧЕРТОЙ ПРИ ПОЛНОМ СКЛАДЕ» (econ [6]): a tenth of the families short of 0.9 of
+  // their need over the month, AND the free stock over the funds could have closed their gap.
+  const auto gap_grams = static_cast<double>(shortfall.shortfall_kcal) /
+                         static_cast<double>(rules.grain_kcal_per_gram);
+  if (!FamiliesShort(shortfall, rules) || static_cast<double>(free_grain_eq_grams) < gap_grams) {
+    return;
+  }
+  chairman.unfair_season = season;
+  MoveAuthority(world, rules, AuthorityDeed::kUnfairIssueMonth);
 }
 
 bool UnderstoodToday(const WorldState& world) {

@@ -456,6 +456,12 @@ void RunFamilyMeal(const FoodConfig& config,
   const float need_kcal = FamilyNeedKcal(config, life_speedup, previous, current, members, day);
   const float eaten_kcal = EatFromPantry(config, family, need_kcal, current.calendar.date);
   family.season_need_kcal += need_kcal;
+  if (day % kDaysPerMonth == 0) {
+    family.month_need_kcal = 0.0F;  // the month's first meal starts its table (#2164)
+    family.month_eaten_kcal = 0.0F;
+  }
+  family.month_need_kcal += need_kcal;
+  family.month_eaten_kcal += eaten_kcal;
   family.food_variety_mask = VarietyMaskOf(config, family);
   family.first_meal_eaten = 1;  // the variety ceiling applies from now on
   // A household that owes nobody anything — nobody in it old enough to eat

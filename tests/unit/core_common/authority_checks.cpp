@@ -91,6 +91,38 @@ int TestAuthority() {
     failures += Expect(first && again && !next && new_season,
                        "authority: one understood day a season at A 60, given back next season");
   }
+  // THE UNFAIR MONTH (econ [6]): of ten families one ate 0.8 of its need (short), nine ate it
+  // all - a tenth short, 200 kcal short. On the month's last day it fires with free grain over
+  // the gap (200 / 3.3 g), not under it, not twice a season, and not in a month with a raise.
+  {
+    const auto village = [](float authority) {
+      core::WorldState world = WorldAt(authority);
+      for (int family = 0; family < 10; ++family) {
+        core::FamilyRow row;
+        row.month_need_kcal = 1000.0F;
+        row.month_eaten_kcal = family == 0 ? 800.0F : 1000.0F;
+        core::AppendRow(world.families, row);
+      }
+      world.calendar.day = core::kDaysPerMonth - 1U;  // the first month's last day
+      return world;
+    };
+    const core::IssueShortfall shortfall = core::IssueShortfallOf(village(50.0F), rules);
+    core::WorldState poor = village(50.0F);
+    core::JudgeIssueMonth(poor, rules, 50);
+    core::WorldState full = village(50.0F);
+    core::JudgeIssueMonth(full, rules, 100);
+    const float after_once = full.chairman.authority;
+    full.calendar.day += core::kDaysPerMonth;  // the next month, the same season
+    core::JudgeIssueMonth(full, rules, 100);
+    core::WorldState raised = village(50.0F);
+    core::SayIssueRaised(raised, rules);
+    core::JudgeIssueMonth(raised, rules, 100);
+    failures += Expect(shortfall.short_families == 1 && shortfall.shortfall_kcal == 200.0F &&
+                           poor.chairman.authority == 50.0F && after_once == 48.0F &&
+                           full.chairman.authority == 48.0F && raised.chairman.authority == 52.0F,
+                       "authority: the unfair month needs a tenth short and the stock to cover "
+                       "them, once a season, and a raise answers it (+2 instead)");
+  }
   // THE THEFT FACTOR: exactly 1 at 50 (the world before 232), 0.25 at 100, 1.75 at 0.
   failures += Expect(core::TheftAuthorityFactor(rules, 50.0F) == 1.0F &&
                          core::TheftAuthorityFactor(rules, 100.0F) == 0.25F &&

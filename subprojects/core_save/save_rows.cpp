@@ -156,7 +156,7 @@ static_assert(AggregateArity<ResidentRow>() == 60,
 // Save 208 (#1630 (B)): salt_hunger_days (float) and salt_step (u8) at the
 // tail - predicted 200 -> 208 + amounts and 48 fields before the build; on
 // the wire +5 a family.
-static_assert(sizeof(FamilyRow) == 200 + kAmountsSize,
+static_assert(sizeof(FamilyRow) == 208 + kAmountsSize,  // 232 (#2164): +8, measured
               "FamilyRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 57: ration_granted, the yard's ration decision — 19 fields;
 // the size is read off the build below, not guessed.
@@ -169,7 +169,9 @@ static_assert(sizeof(FamilyRow) == 200 + kAmountsSize,
 // Save 224: yard_herd_trudodni and plot_ratio_without_sum struck with the yards' strada help
 // (#1442) - 48 -> 46 fields, 208 -> 200 + amounts read off a probe before the build; the wire
 // -8 a family.
-static_assert(AggregateArity<FamilyRow>() == 46,
+// Save 232 (#2164): month_need_kcal and month_eaten_kcal, two floats after season_need_kcal -
+// 46 -> 48 fields, the size read off the build; the wire +8 a family.
+static_assert(AggregateArity<FamilyRow>() == 48,
               "FamilyRow gained or lost a field — update the codec and VERSION_SAVE");
 // FieldRow took LandKind into a padding byte it already had, so sizeof did
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
@@ -1114,6 +1116,8 @@ void WriteFamilyRow(SaveSink& sink, const FamilyRow& row) {
     out.WriteFloat(kcal);
   }
   out.WriteFloat(row.season_need_kcal);
+  out.WriteFloat(row.month_need_kcal);  // save 232 (#2164): the month's table
+  out.WriteFloat(row.month_eaten_kcal);
   // Save 159 (#170): the new household's advance.
   out.WriteU32(row.formed_day);
   out.WriteI32(row.earned_since_formed);
@@ -1193,6 +1197,11 @@ FamilyRow ReadFamilyRow(LoadSource& source) {
   row.season_need_kcal = in.ReadFloat();
   if (!(row.season_need_kcal >= 0.0F)) {
     source.Fail("a family's need over the season is negative or unreadable");
+  }
+  row.month_need_kcal = in.ReadFloat();  // save 232 (#2164)
+  row.month_eaten_kcal = in.ReadFloat();
+  if (!(row.month_need_kcal >= 0.0F) || !(row.month_eaten_kcal >= 0.0F)) {
+    source.Fail("a family's month table is negative or unreadable");
   }
   // Save 159 (#170). A debt or a sum below nought is a file no world wrote.
   row.formed_day = in.ReadU32();
