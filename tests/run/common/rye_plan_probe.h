@@ -93,6 +93,8 @@ class RyePlanProbe {
     int church_emptying = 0;
     int food_yard = 0;
     int granary = 0;
+    int granary_site_phase = -1;  // -1: no granary site going up
+    float granary_site_left = 0.0F;
     for (const core::UnitRow& unit : world.units.rows) {
       const bool built =
           unit.level >= 1 && unit.construction.phase == core::ConstructionPhase::kNone;
@@ -102,9 +104,15 @@ class RyePlanProbe {
       }
       food_yard += built && unit.type.value == food_yard_ ? 1 : 0;
       granary += built && unit.type.value == granary_ ? 1 : 0;
+      // #2188: the granary's site, while it goes up - its phase and the labour left.
+      if (unit.type.value == granary_ && !built) {
+        granary_site_phase = static_cast<int>(unit.construction.phase);
+        granary_site_left = unit.construction.labor_days_remaining;
+      }
     }
     line << " church_rye " << Kg(church_rye) << " church_emptying " << church_emptying
-         << " food_yards " << food_yard << " granaries " << granary;
+         << " food_yards " << food_yard << " granaries " << granary << " granary_site_phase "
+         << granary_site_phase << " granary_site_labor_left " << granary_site_left;
     lines_.push_back(line.str());
   }
 
