@@ -123,12 +123,19 @@ int TestAuthority() {
                        "authority: the unfair month needs a tenth short and the stock to cover "
                        "them, once a season, and a raise answers it (+2 instead)");
   }
-  // THE TWO PLUS DOORS (econ [8]): a plan year met with no hard ask is +2, with one it is
-  // nothing; the first of a social kind is +2, the second of it nothing.
+  // THE TWO PLUS DOORS (econ [8]): a plan year met with no hard ask is +2 - IN A YEAR UNDER
+  // PRESSURE (econ [9]; a calm year earns nothing) - with one it is nothing; the first of a
+  // social kind is +2, the second of it nothing.
   {
     core::WorldState fair = WorldAt(50.0F);
+    fair.chairman.year_under_pressure = 1;
     core::SayPlanYearMet(fair, rules, true);
+    core::WorldState calm = WorldAt(50.0F);
+    core::SayPlanYearMet(calm, rules, true);
+    failures += Expect(calm.chairman.authority == 50.0F,
+                       "authority: a plan met in a calm year earns nothing (econ [9])");
     core::WorldState driven = WorldAt(50.0F);
+    driven.chairman.year_under_pressure = 1;
     core::CountHardAsk(driven);
     core::SayPlanYearMet(driven, rules, true);
     core::WorldState social = WorldAt(50.0F);

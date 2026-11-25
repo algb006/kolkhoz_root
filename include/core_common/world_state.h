@@ -710,6 +710,9 @@ struct ChairmanState {
   std::uint32_t authority_season = 0;
   std::uint8_t authority_fell = 0;
   std::uint16_t year_hard_asks = 0;
+  /// 1 once the year came under pressure (econ [9]): a month's families short (the issue gate's
+  /// first half) or the plan's turn near with a position short; reset at the plan's judgement.
+  std::uint8_t year_under_pressure = 0;
   std::uint8_t social_kinds_built = 0;
 
   /// 1: authority is live (#2164). 0 (world_params `authority_live` 0 at genesis, the paired

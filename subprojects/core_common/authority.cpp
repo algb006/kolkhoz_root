@@ -22,6 +22,16 @@ constexpr float kAuthorityMid = 50.0F;
 constexpr float kTenths = 10.0F;
 constexpr int kDeedBits = 8;
 
+bool PlanPositionShort(const WorldState& world) {
+  for (std::size_t at = 0; at < world.plan.due.size(); ++at) {
+    const Grams sent = at < world.plan.delivered.size() ? world.plan.delivered[at] : 0;
+    if (world.plan.due[at] > sent) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool IsStubDeed(AuthorityDeed deed) {
   return deed == AuthorityDeed::kHolidayWorked || deed == AuthorityDeed::kHolidayHalfWorked;
 }
@@ -176,10 +186,19 @@ void JudgeIssueMonth(WorldState& world, const AuthorityRules& rules, Grams free_
   ChairmanState& chairman = world.chairman;
   const std::uint32_t month = (day / kDaysPerMonth) + 1U;
   const std::uint32_t season = AuthoritySeasonOf(day);
+  const IssueShortfall shortfall = IssueShortfallOf(world, rules);
+  // THE YEAR'S PRESSURE (econ [9]), read monthly with the shortfall it shares: a month with the
+  // families short, or the plan's turn within `deadline_days` with a position short.
+  // The plan's part stands in for the «план под угрозой» lamp, which is #2190's and not built:
+  // named, not the lamp.
+  if (FamiliesShort(shortfall, rules) ||
+      (world.plan.announced != 0 && DaysToPlanTurn(world) <= rules.deadline_days &&
+       PlanPositionShort(world))) {
+    chairman.year_under_pressure = 1;
+  }
   if (chairman.issue_raised_month == month || chairman.unfair_season == season) {
     return;
   }
-  const IssueShortfall shortfall = IssueShortfallOf(world, rules);
   // «МЕСЯЦ ПОД ЧЕРТОЙ ПРИ ПОЛНОМ СКЛАДЕ» (econ [6]): a tenth of the families short of 0.9 of
   // their need over the month, AND the free stock over the funds could have closed their gap.
   const auto gap_grams = static_cast<double>(shortfall.shortfall_kcal) /
@@ -198,11 +217,15 @@ void CountHardAsk(WorldState& world) {
 }
 
 void SayPlanYearMet(WorldState& world, const AuthorityRules& rules, bool met) {
-  // THE PLAN MET WITHOUT DRIVING THE PEOPLE (econ [8]): no rush and no cancelled day off.
-  if (met && world.chairman.year_hard_asks == 0) {
+  // THE PLAN MET WITHOUT DRIVING THE PEOPLE (econ [8]): no rush and no cancelled day off - IN A
+  // YEAR UNDER PRESSURE (econ [9]; au6: +2 in 74 % of canon years drove A to 80). The third of
+  // econ's pressures, a position's harvest below its expected yield, is a STUB: the core keeps
+  // no expected yield a position can be compared with.
+  if (met && world.chairman.year_hard_asks == 0 && world.chairman.year_under_pressure != 0) {
     MoveAuthority(world, rules, AuthorityDeed::kPlanMetFairly);
   }
   world.chairman.year_hard_asks = 0;
+  world.chairman.year_under_pressure = 0;
 }
 
 void SaySocialBuilt(WorldState& world, const AuthorityRules& rules, std::uint32_t kind) {

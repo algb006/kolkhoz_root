@@ -109,7 +109,8 @@ static_assert(sizeof(ChairmanState) == 176, "ChairmanState changed — update th
 // Save 225 («Стол для района»): district_table_declined, a byte after raikom_reputation - 136
 // unmoved (the float's padding, a probe read before the build) and 44 fields; one byte in the
 // codec.
-static_assert(AggregateArity<ChairmanState>() == 57,
+// econ [9]'s year_under_pressure, a byte: measured 176 unmoved (padding), 58 fields, 39 bytes.
+static_assert(AggregateArity<ChairmanState>() == 58,
               "ChairmanState gained or lost a field — update the codec and VERSION_SAVE");
 // PLANSTATE HAD NO TRIPWIRE AT ALL until 2026-09-12, and it was the only
 // serialized block without one: six blocks go into the save, five were
@@ -628,6 +629,7 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU32(world.chairman.authority_season);
   out.WriteU8(world.chairman.authority_fell);
   out.WriteU16(world.chairman.year_hard_asks);
+  out.WriteU8(world.chairman.year_under_pressure);  // econ [9]
   out.WriteU8(world.chairman.social_kinds_built);
   out.WriteU8(world.chairman.authority_live);
 
@@ -994,6 +996,7 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->chairman.authority_season = in.ReadU32();
   world->chairman.authority_fell = in.ReadU8();
   world->chairman.year_hard_asks = in.ReadU16();
+  world->chairman.year_under_pressure = in.ReadU8();  // econ [9]
   world->chairman.social_kinds_built = in.ReadU8();
   world->chairman.authority_live = in.ReadU8();
 

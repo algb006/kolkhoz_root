@@ -186,6 +186,7 @@ core::WorldState MakeWorld() {
   world.chairman.authority_season = 12;
   world.chairman.authority_fell = 1;
   world.chairman.year_hard_asks = 3;
+  world.chairman.year_under_pressure = 1;  // econ [9]
   world.chairman.social_kinds_built = 5;
   world.chairman.issue_raised_month = 8;
   world.chairman.understood_day = 9;
@@ -1476,6 +1477,7 @@ core::WorldState MakeWitnessWorld() {
   witness.chairman.authority_season = 9;
   witness.chairman.authority_fell = 1;
   witness.chairman.year_hard_asks = 2;
+  witness.chairman.year_under_pressure = 1;
   witness.chairman.social_kinds_built = 3;
   witness.chairman.issue_raised_month = 5;
   witness.chairman.understood_day = 6;
@@ -1715,6 +1717,7 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"chairman.authority_season", U32(world.chairman.authority_season)});
   chunks.push_back({"chairman.authority_fell", U8(world.chairman.authority_fell)});
   chunks.push_back({"chairman.year_hard_asks", U16(world.chairman.year_hard_asks)});
+  chunks.push_back({"chairman.year_under_pressure", U8(world.chairman.year_under_pressure)});
   chunks.push_back({"chairman.social_kinds_built", U8(world.chairman.social_kinds_built)});
   chunks.push_back({"chairman.authority_live", U8(world.chairman.authority_live)});
 
@@ -2251,7 +2254,8 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // the switch, +18 - predicted 1539 -> 1557 before the build and held; the hash read off au2u.
     // And econ [6]'s two season marks, +8 - predicted 1557 -> 1565; the hash re-read owed.
     // And econ [8]'s five fields, +12 - predicted 1565 -> 1577, held; the hash read off au6u.
-    {"world", 1577, 0x87d6a83d67cec626ULL},
+    // And econ [9]'s year_under_pressure, +1 - predicted 1577 -> 1578; the hash owed.
+    {"world", 1578, 0x87d6a83d67cec626ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -3331,9 +3335,10 @@ int main() {
           loaded.chairman.authority_at_season_start == 33.5F &&
           loaded.chairman.authority_season == 12 && loaded.chairman.authority_fell == 1 &&
           loaded.chairman.year_hard_asks == 3 && loaded.chairman.social_kinds_built == 5 &&
-          loaded.chairman.issue_raised_month == 8 && loaded.chairman.understood_day == 9 &&
-          loaded.chairman.unfair_season == 10 && loaded.chairman.raise_season == 11 &&
-          loaded.chairman.authority_live == 0 && loaded.families.rows[1].advance_turns == 0 &&
+          loaded.chairman.year_under_pressure == 1 && loaded.chairman.issue_raised_month == 8 &&
+          loaded.chairman.understood_day == 9 && loaded.chairman.unfair_season == 10 &&
+          loaded.chairman.raise_season == 11 && loaded.chairman.authority_live == 0 &&
+          loaded.families.rows[1].advance_turns == 0 &&
           loaded.ledger.current.advance_written_off_ended == 0 &&
           loaded.families.rows[1].formed_day == core::kNotFormedInPlay &&
           loaded.families.rows[1].advance_debt == 0 &&

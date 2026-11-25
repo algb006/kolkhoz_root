@@ -23,6 +23,7 @@
 
 #include "core_common/authority.h"
 #include "core_common/calendar.h"
+#include "core_common/issue_norm_view.h"
 #include "core_common/order_state.h"
 #include "core_common/world_state.h"
 #include "core_sim/step.h"
@@ -60,6 +61,19 @@ class IssueRaisePolicy {
     if (world.calendar.day % core::kDaysPerYear == 0) {
       const core::FreeStockView turn = simulation.FreeStockToday();
       by_year_[year].free_days_at_turn = turn.measured ? turn.days : -1.0F;
+      // A RAISE IS A SEASON'S ACT, NOT A NEW RULE: at the turn the raised positions go back
+      // under the default rule (a frozen explicit norm would outlast the harvest it was set on).
+      if (!raised_.empty()) {
+        std::vector<core::OrderRow> resets;
+        for (const std::uint32_t resource : raised_) {
+          core::OrderRow reset;
+          reset.kind = core::OrderKind::kResetIssueNorm;
+          reset.resource = core::ResourceId{static_cast<std::uint16_t>(resource)};
+          resets.push_back(reset);
+        }
+        simulation.StageOrders(std::span<const core::OrderRow>(resets), {});
+        raised_.clear();
+      }
     }
     if (world.chairman.authority_live == 0 || season == last_season_ || table_grams_.empty()) {
       return;
@@ -79,17 +93,29 @@ class IssueRaisePolicy {
     if (!free.measured || static_cast<double>(free.free_grain_eq_grams) < gap_grams) {
       return;
     }
+    // THE NORM IN FORCE, as the core resolves it (ISimulation::IssueNorms): under the default
+    // rule a harvest's position is a SHARE OF ITS REMAINDER, far above the table's floor. The
+    // first cut raised the table's floor by a quarter - an explicit norm below the share in
+    // force, i.e. a CUT that froze the issue for good (au6's worst village: issued 123 t
+    // against the base's 252 t in year 9, hunger family-days 148 against 10, the free stock
+    // at 0 every turn).
+    std::map<std::uint32_t, core::Grams> in_force_of;
+    for (const core::IssueNormLine& line : simulation.IssueNorms()) {
+      in_force_of[line.resource.value] = line.grams_per_trudoden;
+    }
     std::vector<core::OrderRow> orders;
     for (const auto& [resource, table] : table_grams_) {
-      const bool explicit_norm = resource < world.issue_norms.size() &&
-                                 world.issue_norms[resource] != core::kIssueNormByDefault &&
-                                 world.issue_norms[resource] > 0;
-      const core::Grams in_force = explicit_norm ? world.issue_norms[resource] : table;
+      const auto found = in_force_of.find(resource);
+      const core::Grams in_force = found != in_force_of.end() ? found->second : table;
+      if (in_force <= 0) {
+        continue;
+      }
       core::OrderRow order;
       order.kind = core::OrderKind::kSetIssueNorm;
       order.resource = core::ResourceId{static_cast<std::uint16_t>(resource)};
       order.amount = in_force + (in_force / kRaiseQuarter);
       orders.push_back(order);
+      raised_.push_back(resource);
     }
     simulation.StageOrders(std::span<const core::OrderRow>(orders), {});
     last_season_ = season;
@@ -127,6 +153,7 @@ class IssueRaisePolicy {
 
   std::map<std::uint32_t, core::Grams> table_grams_;
   std::uint32_t last_season_ = 0;
+  std::vector<std::uint32_t> raised_;  ///< positions raised this year, reset at the turn
   std::map<std::uint32_t, Year> by_year_;
 };
 
