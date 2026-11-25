@@ -52,6 +52,7 @@
 #include "planting_policy.h"
 #include "repair_policy.h"
 #include "reputation_tally.h"
+#include "road_hold_tally.h"
 #include "sawmill_policy.h"
 #include "scale_tally.h"
 #include "school_policy.h"
@@ -413,6 +414,7 @@ class BuildingChairman {
       trail_legs.CountDay(simulation.CompletedState());  // #2072's LEGS2072 (--trail-legs)
     }
     decomp.CountDay(simulation.CompletedState());      // #2072's DECOMP2072
+    road_holds.CountDay(simulation.CompletedState());  // #2129's HOLD2129
     winter_felling.CountDay(simulation);               // WFELL2072
     winter_horses.CountDay(simulation);                // WHORSE2072
     plan_years.CountDay(simulation.CompletedState());  // PLANY2072
@@ -621,6 +623,8 @@ class BuildingChairman {
   bool count_trail_legs = false;
   /// #2072's DECOMP2072: what the walking time could move, by village-year (decomp_tally.h).
   DecompTally decomp;
+  /// #2129's HOLD2129: the road's lost time by cause (road_hold_tally.h).
+  RoadHoldTally road_holds;
   /// #2118's SCALE2118: a day's CPU against the village's size (scale_tally.h).
   ScaleTally scale;
   /// WFELL2072 (boss 24 Nov, the null winter stock): a marked stand's days - offered or

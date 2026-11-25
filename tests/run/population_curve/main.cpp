@@ -1706,6 +1706,7 @@ bool Walk(std::uint64_t seed,
       builder.trails.Print(std::cout, seed);                // #2072's TRAIL2072
       builder.trail_legs.Print(std::cout, seed);            // #2072's LEGS2072
       builder.decomp.Print(std::cout, seed);                // #2072's DECOMP2072
+      builder.road_holds.Print(std::cout, seed);            // #2129's HOLD2129
       builder.winter_felling.Print(std::cout, seed);        // WFELL2072
       builder.winter_horses.Print(std::cout, seed);         // WHORSE2072
       builder.plan_years.Print(std::cout, seed);            // PLANY2072

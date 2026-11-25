@@ -20,6 +20,7 @@
 #include "logistics_config.h"
 #include "logistics_plan.h"
 #include "logistics_tasks.h"
+#include "road_traffic_checks.h"
 
 namespace {
 
@@ -2353,6 +2354,7 @@ int main() {
   failures += TestTheDayOffHeldTheLoad();
   failures += TestThePortersPlan();
   failures += TestAWalkedLegIsNoCartsLoad();
+  failures += CheckTheEdgeLedger();  // #2129
   if (failures == 0) {
     std::cout << "unit_core_logistics: all checks passed\n";
   }

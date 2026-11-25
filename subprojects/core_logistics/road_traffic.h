@@ -2,26 +2,31 @@
 /// @brief THE EDGE LEDGER (#2129, model B of the design, boss [2]): the groom plan's vehicles
 ///        cross the road's edges in global time order, and each directed edge remembers the
 ///        exit time of its last entrant - so on dirt and gravel nobody leaves an edge before the
-///        one ahead of him (roads.md «Обгон только на асфальте»; on asphalt no clamp), and a
-///        standing obstacle releases its queue in arrival order. No pair of vehicles is ever
-///        enumerated: one compare per crossing, T crossings a plan build, O(T log V) for the
-///        time-ordered merge of V vehicles' streams (a vehicle starting later can reach a far
-///        edge earlier from a side road). T is linear in the plan's vehicles and independent of
-///        the residents and the stretches. CONTRACT ONLY (core §12а): bodies in the next task.
-///        Private to core_logistics.
+///        one ahead of him (roads.md «Обгон только на асфальте»; on asphalt no clamp). No pair
+///        of vehicles is ever enumerated: one compare per crossing, T crossings a plan build,
+///        O(T log V) for the time-ordered merge of V vehicles' streams (a vehicle starting later
+///        can reach a far edge earlier from a side road). T is linear in the plan's vehicles
+///        and independent of the residents and the stretches. Private to core_logistics.
 /// @threading SINGLE_THREADED
 /// Runs inside the groom plan's clock (logistics_plan.cpp RunTheClock), phase 3, sequential.
 ///
 /// TIME IN WHOLE GAME SECONDS: the clock's own minutes are floats whose sums round by the
 /// compiler; the ledger keeps integers so 1 and N workers, and two compilers, agree.
-/// THE NULL CASE IS EXACT: the ledger only ever ADDS a delay, and only above
-/// road_hold_min_seconds; with no obstacle and no speed mix nothing changes.
+/// THE NULL CASE IS EXACT: the ledger only ever ADDS a delay, and only from hold_min_seconds
+/// on; with no slower vehicle ahead nothing changes. THE FIRST SLICE: following only; a
+/// standing obstacle (the pig) is off (boss [2] q1) and RoadObstaclesToday is empty.
+/// APPROXIMATIONS, NAMED: a leg's off-road parts and its loading pauses carry no hold; a leg's
+/// edges are crossed at its own free pace from its start, so its edge times are the ledger's,
+/// not the clock's float sum; only a leg still on its way takes a delay.
 
 #ifndef CORE_LOGISTICS_ROAD_TRAFFIC_H_
 #define CORE_LOGISTICS_ROAD_TRAFFIC_H_
 
 #include <cstdint>
+#include <memory>
+#include <queue>
 #include <span>
+#include <unordered_map>
 #include <vector>
 
 #include "core_common/geometry.h"
@@ -31,11 +36,13 @@
 
 namespace core {
 
-/// @brief The ledger's numbers (world_params `road_*`; STUB values until the implementation).
+/// @brief The ledger's numbers (world_params `road_*`).
 struct RoadTrafficRules {
+  /// The ledger on (world_params `road_following`, 1) or off (0: the plan as before 231).
+  bool following_on = true;
   /// A delay below this is no hold (the null case's guard), game seconds.
   std::int32_t hold_min_seconds = 60;
-  /// 1: standing obstacles are read (RoadObstaclesToday); 0 in the first slice (boss [2] q1).
+  /// 1: standing obstacles are read (RoadObstaclesToday); off in the first slice (boss [2] q1).
   bool obstacles_on = false;
 };
 
@@ -55,11 +62,12 @@ class RoadTraffic {
               const RoadTrafficRules& rules);
 
   /// @brief Registers a leg beginning at `start_second` of the day: its edges are the
-  ///        index's Way for `mode` from `from` to `to`, crossed at the free pace `km_per_hour`.
+  ///        index's Way for `mode` from `from` to `to`, crossed at `hours_per_km` game hours a
+  ///        kilometre (the clock's own pace for the leg).
   void BeginLeg(std::uint32_t cart,
                 std::uint32_t leg,
                 TravelMode mode,
-                float km_per_hour,
+                float hours_per_km,
                 Vec2 from,
                 Vec2 to,
                 std::int32_t start_second);
@@ -70,8 +78,52 @@ class RoadTraffic {
                  std::vector<RoadHold>& holds,
                  std::vector<LegDelay>& delays);
 
-  /// @brief The edge crossings registered so far (the CPU instrument's count).
-  std::uint64_t Crossings() const;
+  /// @brief The edge crossings processed so far (the CPU instrument's count).
+  std::uint64_t Crossings() const { return crossings_; }
+
+ private:
+  /// One piece of a leg: an edge crossed in one direction, or open ground (edge kNoRoadEdge).
+  struct Piece {
+    RoadEdgeIndex edge = kNoRoadEdge;
+    bool forward = true;
+    bool clamps = false;  ///< dirt or gravel: no overtaking
+    std::int32_t free_seconds = 0;
+    RoadId road;
+    float chainage_m = 0.0F;
+  };
+
+  struct Stream {
+    std::uint32_t cart = 0;
+    std::uint32_t leg = 0;
+    std::vector<Piece> pieces;
+    std::size_t next = 0;
+  };
+
+  struct Entry {
+    std::int32_t second = 0;
+    std::uint64_t sequence = 0;
+    std::uint32_t stream = 0;
+
+    bool operator>(const Entry& other) const {
+      return second != other.second ? second > other.second : sequence > other.sequence;
+    }
+  };
+
+  struct LastOut {
+    std::int32_t second = 0;
+    std::uint32_t cart = 0;
+  };
+
+  void Push(std::uint32_t stream, std::int32_t second);
+
+  RoadTrafficRules rules_;
+  std::shared_ptr<const RoadIndex> index_;
+  const RoadTable* roads_ = nullptr;
+  std::vector<Stream> streams_;
+  std::priority_queue<Entry, std::vector<Entry>, std::greater<>> queue_;
+  std::unordered_map<std::uint64_t, LastOut> last_out_;  ///< by edge x 2 + direction
+  std::uint64_t sequence_ = 0;
+  std::uint64_t crossings_ = 0;
 };
 
 }  // namespace core

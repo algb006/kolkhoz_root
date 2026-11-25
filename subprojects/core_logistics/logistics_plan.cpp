@@ -30,6 +30,7 @@
 #include "core_common/world_state.h"
 #include "leg_loads.h"
 #include "porter_pairs.h"
+#include "road_traffic.h"
 #include "trip_pricing.h"
 
 namespace core {
@@ -756,6 +757,52 @@ void StepTrips(const LogisticsConfig& config,
 /// the evening — the ride home no longer fits the light — sends it home from
 /// where it is. The seam itself is not touched: this is the estimate the legs'
 /// ticks are written from (logistics_state.h).
+/// The second of the day at `hours`, whole (road_traffic.h keeps integer time).
+std::int32_t SecondOfDay(float hours) {
+  return static_cast<std::int32_t>(std::lround(hours * 3600.0F));
+}
+
+/// A hold of the edge ledger lengthens the way the mover is on (#2129): its ride to a load, or
+/// the half-trip it drives. A mover standing at a load, done, or not out takes none.
+void Lengthen(Mover& mover, float hours) {
+  if (mover.phase == Mover::Phase::kRiding) {
+    mover.ride_left += hours;
+  } else if (mover.phase == Mover::Phase::kCarting && mover.trips) {
+    mover.half_left += hours;
+  }
+}
+
+/// The legs the mover began since the last look go into the edge ledger (#2129): a cart's ways
+/// only (a carrier on foot walks the shoulder), at the leg's own pace - the loaded half at the
+/// loaded one - by the log cart's way for logs, from the leg's own minute.
+void RegisterNewLegs(const WorldState& world,
+                     const GroomPlan& plan,
+                     const Mover& mover,
+                     std::size_t& registered,
+                     RoadTraffic& traffic) {
+  const std::vector<CartLeg>& legs = plan.carts[mover.cart].legs;
+  for (; registered < legs.size(); ++registered) {
+    const CartLeg& leg = legs[registered];
+    if (mover.on_foot || (leg.from.x == leg.to.x && leg.from.y == leg.to.y)) {
+      continue;
+    }
+    TravelMode mode = TravelMode::kCart;
+    if (leg.task.value != kInvalidEntityIdValue) {
+      const std::uint32_t row = FindRow(world.logistics_tasks, leg.task);
+      if (row != kNoRow && IsLogs(world, world.logistics_tasks.rows[row])) {
+        mode = TravelMode::kLogCart;
+      }
+    }
+    traffic.BeginLeg(static_cast<std::uint32_t>(mover.cart),
+                     static_cast<std::uint32_t>(registered),
+                     mode,
+                     leg.loaded != 0 ? mover.loaded_hours_per_km : mover.hours_per_km,
+                     leg.from,
+                     leg.to,
+                     static_cast<std::int32_t>(leg.depart_minute) * 60);
+  }
+}
+
 void RunTheClock(const LogisticsConfig& config,
                  const WorldState& world,
                  std::vector<float> remaining,
@@ -763,6 +810,17 @@ void RunTheClock(const LogisticsConfig& config,
                  std::vector<Mover>& movers,
                  const DayWindow& window) {
   const SimDay day = world.calendar.day;
+  // THE ROAD'S LOST TIME (#2129; road_traffic.h): every new leg a cart begins goes into the
+  // edge ledger, and each step's holds lengthen the legs still on their way.
+  RoadTraffic traffic(world, {}, config.traffic);
+  std::vector<std::size_t> registered(movers.size(), 0);
+  std::vector<std::uint32_t> mover_of_cart(plan.carts.size(), kNoRow);
+  for (std::uint32_t at = 0; at < movers.size(); ++at) {
+    if (movers[at].cart < mover_of_cart.size()) {
+      mover_of_cart[movers[at].cart] = at;
+    }
+  }
+  std::vector<LegDelay> delays;
   // THE STEP IS COUNTED, NOT SUMMED (the Fable review of 11 October 2026,
   // item 12): a sum of some 150 twelfths rounded differently under another
   // compiler's float contraction could move a leg across an hour, and a save
@@ -773,7 +831,19 @@ void RunTheClock(const LogisticsConfig& config,
     if (!(hours < window.sunset)) {
       break;
     }
-    for (Mover& mover : movers) {
+    if (config.traffic.following_on) {
+      delays.clear();
+      traffic.AdvanceTo(SecondOfDay(hours), plan.holds, delays);
+      for (const LegDelay& delay : delays) {
+        const std::uint32_t at =
+            delay.cart < mover_of_cart.size() ? mover_of_cart[delay.cart] : kNoRow;
+        if (at != kNoRow) {
+          Lengthen(movers[at], static_cast<float>(delay.seconds) / 3600.0F);
+        }
+      }
+    }
+    for (std::uint32_t at = 0; at < movers.size(); ++at) {
+      Mover& mover = movers[at];
       std::vector<CartLeg>& legs = plan.carts[mover.cart].legs;
       switch (mover.phase) {
         case Mover::Phase::kNotOut:
@@ -823,6 +893,9 @@ void RunTheClock(const LogisticsConfig& config,
           break;
         case Mover::Phase::kDone:
           break;
+      }
+      if (config.traffic.following_on) {
+        RegisterNewLegs(world, plan, mover, registered[at], traffic);
       }
     }
   }

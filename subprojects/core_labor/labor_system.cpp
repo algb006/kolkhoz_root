@@ -3869,6 +3869,18 @@ class LaborSystem final : public ILaborSystem {
   /// seam must always drain it in the same order.
   void RunHour(WorldState& current, std::uint32_t hour) const {
     const DayWindow window = SolarWindow(current.weather.daylight_hours);
+    // THE ROAD'S LOST TIME IS THE CARTER'S, NOT PAID (#2129; econ, boss [3]): today's plan's
+    // holds, by the cart's driver, shorten his day as travel does - fewer trips, and his
+    // trudodni follow what he carted.
+    std::unordered_map<std::uint32_t, float> held_hours;
+    if (current.groom_plan.day == current.calendar.day) {
+      for (const RoadHold& hold : current.groom_plan.holds) {
+        if (hold.cart < current.groom_plan.carts.size()) {
+          held_hours[current.groom_plan.carts[hold.cart].driver.value] +=
+              static_cast<float>(hold.to_minute - hold.from_minute) / 60.0F;
+        }
+      }
+    }
     // THE HOUR GOES BY ID (#1347): the workers drain one seam each, and the
     // last one is clamped to what is left, so the order decides whose hour is
     // short (kj1347: two carters' rest parted on day 2 at noon).
@@ -3983,7 +3995,10 @@ class LaborSystem final : public ILaborSystem {
       // way home is the way there, as before.
       const float written_home = current.residents.rows[row].work.travel_home_hours;
       const float road_home = written_home >= 0.0F ? written_home : road;
-      const float worked = HoursInside(hour, window.sunrise + road, window.sunset - road_home);
+      const auto held = held_hours.find(current.residents.row_ids[row].value);
+      const float lost = held != held_hours.end() ? held->second : 0.0F;
+      const float worked =
+          HoursInside(hour, window.sunrise + road, window.sunset - road_home - lost);
       if (worked <= 0.0F) {
         continue;
       }

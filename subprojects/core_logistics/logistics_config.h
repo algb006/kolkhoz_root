@@ -23,6 +23,7 @@
 #include "core_common/logistics_state.h"
 #include "core_common/site_supply_floor.h"
 #include "core_tables/tables.h"
+#include "road_traffic.h"
 
 namespace core {
 
@@ -92,6 +93,10 @@ struct LogisticsConfig {
   /// meadow's heap takes the days to the flood as its shelf and is urgent the day before.
   /// world_params `flood_heap_deadline` (optional, absent = on); 0 is the arm without it.
   bool flood_heap_deadline = true;
+
+  /// #2129: the edge ledger's rules (road_traffic.h); world_params `road_following` (absent =
+  /// on), the pig off (boss [2] q1).
+  RoadTrafficRules traffic;
 
   /// THE PLAN'S REACH (B3): the harness pace, real km/h (transport.csv
   /// horse_trot `speed_kmh`), and the accountant's road limit, game hours

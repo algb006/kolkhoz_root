@@ -751,8 +751,7 @@ class RoadIndexImpl final : public RoadIndex {
     if (segments_.empty()) {
       return found;
     }
-    // THE NEAR TABLE FIRST; a place beyond its reach falls back to the ring
-    // search below.
+    // THE NEAR TABLE FIRST; a place beyond its reach falls back to the ring search below.
     const auto near_x =
         static_cast<std::int32_t>(std::floor((place.x - near_origin_.x) / kGridCell));
     const auto near_y =
@@ -871,6 +870,7 @@ class RoadIndexImpl final : public RoadIndex {
     RouteLeg leg;
     leg.on_road = true;
     leg.road = edge.road;
+    leg.edge = edge_index;  // #2129's ledger keys on it
     leg.from_chainage_m = from_chainage;
     leg.to_chainage_m = to_chainage;
     leg.length_m = std::abs(to_chainage - from_chainage);

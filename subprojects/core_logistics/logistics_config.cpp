@@ -256,6 +256,14 @@ bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std:
       return false;
     }
     config.flood_heap_deadline = flood_deadline >= 0.5F;
+    // #2129: the road's following rule (road_traffic.h) on 1 / off 0 - a paired arm's door; an
+    // absent row leaves it on.
+    float following = config.traffic.following_on ? 1.0F : 0.0F;
+    if (!OptionalValue(*world, "road_following", Range::Unit(), following, error)) {
+      PrefixError("world_params", "road_following", error);
+      return false;
+    }
+    config.traffic.following_on = following >= 0.5F;
   }
   // THE HAY's NIGHTLY LOSS (#1056 C3, the third lever): production's cells
   // and ranges (production_config.cpp, hay_weathering_*). One cell, two readers.
