@@ -62,6 +62,7 @@ void RoadTraffic::BeginLeg(std::uint32_t cart,
       piece.forward = part.to_chainage_m >= part.from_chainage_m;
       piece.road = part.road;
       piece.chainage_m = part.from_chainage_m;
+      piece.to_chainage_m = part.to_chainage_m;
       const std::uint32_t row = FindRow(*roads_, part.road);
       piece.clamps = row != kNoRow && !Overtakes(roads_->rows[row].surface);
       any_edge = true;
@@ -93,16 +94,44 @@ void RoadTraffic::AdvanceTo(std::int32_t now_second,
     ++stream.next;
     const std::int32_t own_out = entry.second + piece.free_seconds;
     std::int32_t out = own_out;
-    if (piece.edge != kNoRoadEdge) {
+    // A piece of no length (a way that touches the edge at a point) passes nobody.
+    if (piece.edge != kNoRoadEdge && piece.to_chainage_m != piece.chainage_m) {
       ++crossings_;
       const std::uint64_t key =
           (static_cast<std::uint64_t>(piece.edge) * 2U) + (piece.forward ? 1U : 0U);
-      LastOut& last = last_out_[key];
-      // FOLLOWING: on dirt and gravel nobody leaves the edge before the one ahead of him.
-      if (piece.clamps && last.second > own_out && last.cart != stream.cart) {
-        const std::int32_t held = last.second - own_out;
+      Recent& recent = recent_[key];
+      const float sign = piece.forward ? 1.0F : -1.0F;
+      Passage own{.cart = stream.cart,
+                  .from_m = sign * piece.chainage_m,
+                  .to_m = sign * piece.to_chainage_m,
+                  .in_second = entry.second,
+                  .out_second = own_out};
+      // FOLLOWING: on dirt and gravel nobody passes the one ahead of him. Ahead means ON THE
+      // STRETCH BOTH TRAVEL: behind him where it begins, and reaching its end before him.
+      // The wait is what it takes to reach that end with him; the rest of the piece is at the
+      // own pace (named: he then follows at the leader's pace only on the shared stretch).
+      std::int32_t held = 0;
+      std::uint32_t ahead = kNoCartAhead;
+      for (std::size_t at = 0; piece.clamps && at < recent.count; ++at) {
+        const Passage& other = recent.passages[at];
+        const float low = std::max(own.from_m, other.from_m);
+        const float high = std::min(own.to_m, other.to_m);
+        if (other.cart == stream.cart || !(high > low)) {
+          continue;
+        }
+        if (own.SecondAt(low) < other.SecondAt(low)) {
+          continue;  // he is ahead where they meet: nobody to follow
+        }
+        const auto wait =
+            static_cast<std::int32_t>(std::lround(other.SecondAt(high) - own.SecondAt(high)));
+        if (wait > held) {
+          held = wait;
+          ahead = other.cart;
+        }
+      }
+      {
         if (held >= rules_.hold_min_seconds) {
-          out = last.second;
+          out = own_out + held;
         }
         // A REPLAYED leg (begun before a re-plan) waits as it waited, but its hold is the
         // earlier plan's and its time is in its arrival already: nothing new is recorded.
@@ -115,14 +144,15 @@ void RoadTraffic::AdvanceTo(std::int32_t now_second,
                                    .chainage_m = piece.chainage_m,
                                    .from_minute = MinuteOf(own_out),
                                    .to_minute = MinuteOf(out),
-                                   .behind_cart = last.cart,
+                                   .behind_cart = ahead,
                                    .rank = 1});
           delays.push_back(LegDelay{.cart = stream.cart, .leg = stream.leg, .seconds = held});
         }
       }
-      if (out >= last.second) {
-        last = LastOut{.second = out, .cart = stream.cart};
-      }
+      own.out_second = out;
+      recent.passages[recent.next] = own;
+      recent.next = (recent.next + 1) % kRecentPassages;
+      recent.count = std::min(recent.count + 1, kRecentPassages);
     }
     if (stream.next < stream.pieces.size()) {
       Push(entry.stream, out);

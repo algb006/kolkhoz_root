@@ -111,6 +111,33 @@ int CheckTheEdgeLedger() {
     failures += Expect(holds.empty() && delays.empty() && traffic.Crossings() == 0,
                        "edge ledger: switched off it crosses and holds nothing");
   }
+  // ONLY ON THE STRETCH BOTH TRAVEL (the PAIR2129 probe: 90 % of the held time between carts of
+  // one pace). Cart 1 joins the edge at 1.5 km at minute 0 and goes to its end; cart 0 drives
+  // the whole edge at the same pace from minute 0 - cart 1 is ahead where they meet, and
+  // nobody waits. The first ledger held it, comparing its exit to cart 0's from another point.
+  {
+    const core::WorldState world = RoadWorld(core::RoadSurface::kDirt);
+    core::RoadTraffic traffic(world, {}, core::RoadTrafficRules{});
+    traffic.BeginLeg(0, 0, core::TravelMode::kCart, 1.0F, {0.0F, 0.0F}, {2000.0F, 0.0F}, 0);
+    traffic.BeginLeg(1, 0, core::TravelMode::kCart, 1.0F, {1500.0F, 0.0F}, {2000.0F, 0.0F}, 0);
+    std::vector<core::RoadHold> holds;
+    std::vector<core::LegDelay> delays;
+    traffic.AdvanceTo(24 * 3600, holds, delays);
+    failures += Expect(holds.empty() && delays.empty(),
+                       "edge ledger: a cart joining mid-edge ahead of the one on it is not held");
+  }
+  // AND ONE PACE BEHIND ONE PACE never closes up: nobody waits.
+  {
+    const core::WorldState world = RoadWorld(core::RoadSurface::kDirt);
+    core::RoadTraffic traffic(world, {}, core::RoadTrafficRules{});
+    traffic.BeginLeg(0, 0, core::TravelMode::kCart, 1.5F, {0.0F, 0.0F}, {2000.0F, 0.0F}, 0);
+    traffic.BeginLeg(1, 0, core::TravelMode::kCart, 1.5F, {0.0F, 0.0F}, {2000.0F, 0.0F}, 120);
+    std::vector<core::RoadHold> holds;
+    std::vector<core::LegDelay> delays;
+    traffic.AdvanceTo(24 * 3600, holds, delays);
+    failures += Expect(holds.empty() && delays.empty(),
+                       "edge ledger: a cart behind one of its own pace waits for nobody");
+  }
   // A RE-PLAN CARRIES THE DAY'S HOLDS (r3on: every evening plan empty). The earlier plan:
   // cart 0 (driver 10) held on its leg 1 at 300 min behind cart 1; cart 1 (driver 11) held on
   // leg 0 at 200 and on leg 2 at 500. At 420 min the re-plan keeps driver 11 alone, now cart 0,

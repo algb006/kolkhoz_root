@@ -22,6 +22,7 @@
 #ifndef CORE_LOGISTICS_ROAD_TRAFFIC_H_
 #define CORE_LOGISTICS_ROAD_TRAFFIC_H_
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <queue>
@@ -102,7 +103,40 @@ class RoadTraffic {
     bool clamps = false;  ///< dirt or gravel: no overtaking
     std::int32_t free_seconds = 0;
     RoadId road;
-    float chainage_m = 0.0F;
+    float chainage_m = 0.0F;     ///< where the piece joins the edge, along the road's axis
+    float to_chainage_m = 0.0F;  ///< where it leaves it
+  };
+
+  /// One vehicle's passage of a directed edge: where on it and when, the position counted in
+  /// the direction of travel (so «ahead» is the larger number either way).
+  struct Passage {
+    std::uint32_t cart = 0;
+    float from_m = 0.0F;
+    float to_m = 0.0F;
+    std::int32_t in_second = 0;
+    std::int32_t out_second = 0;
+
+    /// The game second it is at position `at` (from_m <= at <= to_m), at its own steady pace.
+    double SecondAt(float at) const {
+      const double span = static_cast<double>(to_m) - static_cast<double>(from_m);
+      const double into = static_cast<double>(at) - static_cast<double>(from_m);
+      const double took = static_cast<double>(out_second) - static_cast<double>(in_second);
+      return static_cast<double>(in_second) + (into / span * took);
+    }
+  };
+
+  /// THE RECENT PASSAGES OF AN EDGE (the four latest entrants): a cart joining the road
+  /// mid-edge, or leaving it there, shares only part of it with the one ahead - the first
+  /// ledger compared their exits from different points and held same-pace carts that never
+  /// met (the PAIR2129 probe: 90 % of the held time between carts of one pace, 75 % on pieces
+  /// of no length). Four, not one, so a short passage does not hide a slow one from those
+  /// behind it.
+  static constexpr std::size_t kRecentPassages = 4;
+
+  struct Recent {
+    std::array<Passage, kRecentPassages> passages{};
+    std::size_t count = 0;
+    std::size_t next = 0;
   };
 
   struct Stream {
@@ -123,11 +157,6 @@ class RoadTraffic {
     }
   };
 
-  struct LastOut {
-    std::int32_t second = 0;
-    std::uint32_t cart = 0;
-  };
-
   void Push(std::uint32_t stream, std::int32_t second);
 
   RoadTrafficRules rules_;
@@ -135,7 +164,7 @@ class RoadTraffic {
   const RoadTable* roads_ = nullptr;
   std::vector<Stream> streams_;
   std::priority_queue<Entry, std::vector<Entry>, std::greater<>> queue_;
-  std::unordered_map<std::uint64_t, LastOut> last_out_;  ///< by edge x 2 + direction
+  std::unordered_map<std::uint64_t, Recent> recent_;  ///< by edge x 2 + direction
   std::uint64_t sequence_ = 0;
   std::uint64_t crossings_ = 0;
 };
