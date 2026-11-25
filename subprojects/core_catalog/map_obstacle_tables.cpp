@@ -64,7 +64,11 @@ std::optional<MapLineMark> LineMarkOf(std::string_view word) {
   if (word == "arch") {
     return MapLineMark::kArch;
   }
-  if (word == "mouth" || word == "pond" || word == "pool" || word == "spring" || word == "fall") {
+  // «inflow» (map.db's river seq 600, exported with 0.37.423): where a brook enters the river -
+  // a place like the mouth, not a crossing. Until it was named here the world refused to
+  // assemble on it.
+  if (word == "mouth" || word == "pond" || word == "pool" || word == "spring" || word == "fall" ||
+      word == "inflow") {
     return MapLineMark::kOther;
   }
   return std::nullopt;

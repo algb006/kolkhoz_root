@@ -76,7 +76,7 @@ enum class MapLineMark : std::uint8_t {
   kFord,              ///< A road may cross the river here.
   kDam,               ///< On a brook (fordable anyway).
   kArch,              ///< The stone arch under a map road.
-  kOther,             ///< mouth, pond, pool, spring, fall: places, not crossings.
+  kOther,             ///< mouth, pond, pool, spring, fall, inflow: places, not crossings.
   kMapLineMarkCount,  ///< NOT A MARK: the count, for mirrors.
 };
 
