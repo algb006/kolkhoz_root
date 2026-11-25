@@ -32,17 +32,25 @@ class RoadHoldTally {
   ///        every evening plan empty, 816 of 816 lines NOT MEASURED).
   void CountStep(const core::WorldState& world) {
     const core::GroomPlan& plan = world.groom_plan;
-    std::map<std::uint32_t, std::uint32_t>& drivers = drivers_by_day_[plan.day];
+    std::map<std::uint32_t, CartDay>& drivers = drivers_by_day_[plan.day];
     for (const core::CartPlan& cart : plan.carts) {
       if (cart.on_foot) {
         continue;
       }
-      std::uint32_t loaded = 0;
+      CartDay day;
       for (const core::CartLeg& leg : cart.legs) {
-        loaded += leg.loaded != 0 ? 1U : 0U;
+        day.loaded_legs += leg.loaded != 0 ? 1U : 0U;
+        // ON THE ROAD: a leg that goes somewhere (a load carted standing is not on the road).
+        const bool moves = leg.from.x != leg.to.x || leg.from.y != leg.to.y;
+        if (moves && leg.arrive_minute > leg.depart_minute) {
+          day.road_minutes += static_cast<std::uint32_t>(leg.arrive_minute - leg.depart_minute);
+        }
       }
-      std::uint32_t& most = drivers[cart.driver.value];
-      most = std::max(most, loaded);  // a re-plan keeps the begun legs: the day's is the most
+      // A re-plan keeps the begun legs and draws the rest anew: the day's is the plan's that
+      // gave the most (an upper bound when a later plan shortened the day).
+      CartDay& most = drivers[cart.driver.value];
+      most.loaded_legs = std::max(most.loaded_legs, day.loaded_legs);
+      most.road_minutes = std::max(most.road_minutes, day.road_minutes);
     }
   }
 
@@ -60,10 +68,10 @@ class RoadHoldTally {
     counted_any_ = true;
     last_counted_day_ = plan.day;
     Year& row = by_year_[(plan.day / core::kDaysPerYear) + 1U];
-    std::map<std::uint32_t, std::uint32_t> drivers = std::move(drivers_by_day_[plan.day]);
+    std::map<std::uint32_t, CartDay> drivers = std::move(drivers_by_day_[plan.day]);
     drivers_by_day_.erase(drivers_by_day_.begin(), drivers_by_day_.upper_bound(plan.day));
     for (const core::RoadHold& hold : plan.holds) {
-      drivers.emplace(hold.driver.value, 0U);
+      drivers.emplace(hold.driver.value, CartDay{});
     }
     const auto carts = static_cast<std::uint32_t>(drivers.size());
     row.cart_days += carts;
@@ -82,9 +90,10 @@ class RoadHoldTally {
     }
     row.held_cart_days += static_cast<std::uint32_t>(held_carts.size());
     // econ's print (boss [2]): the loads carted on a held carter-day against an unheld one.
-    for (const auto& [driver, loaded] : drivers) {
+    for (const auto& [driver, day] : drivers) {
       const bool held = held_carts.contains(driver);
-      (held ? row.loaded_legs_held : row.loaded_legs_unheld) += loaded;
+      (held ? row.loaded_legs_held : row.loaded_legs_unheld) += day.loaded_legs;
+      row.road_minutes += day.road_minutes;
     }
   }
 
@@ -102,7 +111,8 @@ class RoadHoldTally {
           << " loaded_legs_a_cart_day(held/unheld;proxy_for_norm_days:the_leg_not_its_price) "
           << Ratio(row.loaded_legs_held, row.held_cart_days) << '/'
           << Ratio(row.loaded_legs_unheld, row.cart_days - row.held_cart_days)
-          << " by_cause(events/cart_hours)";
+          << " road_cart_hours(moving_legs,depart_to_arrive,most_of_the_day's_plans) "
+          << static_cast<double>(row.road_minutes) / 60.0 << " by_cause(events/cart_hours)";
       static constexpr std::array<const char*, core::kRoadHoldCauseCountValue> kNames = {
           "following", "pig_in_puddle", "herd_passing"};
       for (std::size_t cause = 0; cause < kNames.size(); ++cause) {
@@ -118,7 +128,13 @@ class RoadHoldTally {
     return whole == 0 ? 0.0 : static_cast<double>(part) / static_cast<double>(whole);
   }
 
+  struct CartDay {
+    std::uint32_t loaded_legs = 0;
+    std::uint32_t road_minutes = 0;
+  };
+
   struct Year {
+    std::uint64_t road_minutes = 0;
     std::uint64_t loaded_legs_held = 0;
     std::uint64_t loaded_legs_unheld = 0;
     std::uint32_t plan_days = 0;
@@ -131,7 +147,7 @@ class RoadHoldTally {
 
   std::map<std::uint32_t, Year> by_year_;
   /// By day, each plan cart's driver and the most loaded legs any plan of the day gave him.
-  std::map<core::SimDay, std::map<std::uint32_t, std::uint32_t>> drivers_by_day_;
+  std::map<core::SimDay, std::map<std::uint32_t, CartDay>> drivers_by_day_;
   bool counted_any_ = false;
   core::SimDay last_counted_day_ = 0;
 };
