@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <iostream>
 #include <span>
 #include <utility>
 #include <vector>
@@ -50,7 +51,8 @@ void RoadTraffic::BeginLeg(std::uint32_t cart,
     return;
   }
   const Route way = index_->Way(mode, from, to);
-  Stream stream{.cart = cart, .leg = leg, .replay = replay, .pieces = {}, .next = 0};
+  Stream stream{
+      .cart = cart, .leg = leg, .replay = replay, .pace = hours_per_km, .pieces = {}, .next = 0};
   stream.pieces.reserve(way.legs.size());
   bool any_edge = false;
   for (const RouteLeg& part : way.legs) {
@@ -142,6 +144,7 @@ void RoadTraffic::AdvanceTo(std::int32_t now_second,
       float shared_low = 0.0F;
       float shared_high = 0.0F;
       double leader_leaves = 0.0;
+      double probe_lead_mps = 0.0;  // PROBE
       for (std::size_t at = 0; piece.clamps && at < recent.count; ++at) {
         const Passage& other = recent.passages[at];
         const float low = std::max(own.from_m, other.from_m);
@@ -160,14 +163,31 @@ void RoadTraffic::AdvanceTo(std::int32_t now_second,
           shared_low = low;
           shared_high = high;
           leader_leaves = other.SecondAt(high);
+          probe_lead_mps = static_cast<double>(other.to_m - other.from_m) /
+                           static_cast<double>(std::max(1, other.out_second - other.in_second));
         }
       }
+      const std::int32_t probe_before = held;
       // OVERTAKING (roads §8, Alex #2443): where the road allows it, a cart that has been behind
       // the slower one overtake_after_seconds passes him if the oncoming lane on the shared
       // stretch is free while it is there; on a bridge it waits him out.
       if (held > rules_.overtake_after_seconds && piece.no_pass == RoadNoPass::kNone &&
           OncomingFree(piece, shared_low, shared_high, own.SecondAt(shared_low), leader_leaves)) {
         held = rules_.overtake_after_seconds;
+      }
+      // PROBE (wip/probe-2129-pairs3, not for release): each hold's place and pair speeds.
+      {
+        thread_local std::uint32_t printed = 0;
+        if (held >= rules_.hold_min_seconds && !stream.replay && printed < 20000) {
+          ++printed;
+          const double own_mps = static_cast<double>(own.to_m - own.from_m) /
+                                 static_cast<double>(std::max(1, own_out - entry.second));
+          std::cerr << "PAIRC2129 road " << piece.road.value << " chainage "
+                    << static_cast<std::int32_t>(piece.chainage_m) << " shared_m "
+                    << static_cast<std::int32_t>(shared_high - shared_low) << " no_pass "
+                    << static_cast<int>(piece.no_pass) << " own_mps " << own_mps << " lead_mps "
+                    << probe_lead_mps << " wait_s " << probe_before << " held_s " << held << '\n';
+        }
       }
       {
         if (held >= rules_.hold_min_seconds) {
