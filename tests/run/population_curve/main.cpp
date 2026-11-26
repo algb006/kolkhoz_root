@@ -619,6 +619,9 @@ bool g_beach_off = false;
 /// chairman fights no crime (the wiring in Walk says what is off). The
 /// environment form is the one host's harness and the node scripts pass.
 bool g_no_anticrime = false;
+/// `--catch-arm=X` (#2191's CATCH2191 arm; boss and econ 26 Nov): the run's chairman patrols
+/// and judges by X - L lapse, C constable, E close eyes, F find the still, R rotate. 0 off.
+char g_catch_arm = 0;
 
 /// `--anticrime-from-year=N` (#1893's harm arm, boss GO 19 Nov 2026): THE LATE
 /// FIGHTER - careless (as --no-anticrime) until the first day of year N, then
@@ -943,6 +946,12 @@ bool Walk(std::uint64_t seed,
   // arm drank LESS than the canon - no sugar in the village, nothing to steal,
   // samogon 0 from y3 - since the sugar is the distillers' supply, not a
   // lever against them; the spec had misfiled it.
+  if (g_catch_arm != 0) {
+    builder.catches.SetArm(g_catch_arm);
+    std::cout << "population_curve: ARM - --catch-arm=" << g_catch_arm
+              << " (#2191): the chairman patrols the night's most-robbed store and judges by "
+                 "the arm\n";
+  }
   if (g_no_anticrime || g_anticrime_from_year > 0) {
     builder.distiller.Enable(false);
     builder.sport_talk_on = false;
@@ -1717,6 +1726,7 @@ bool Walk(std::uint64_t seed,
       builder.winter_horses.Print(std::cout, seed);         // WHORSE2072
       builder.econ_side.Print(std::cout, seed);             // S2072
       builder.plan_years.Print(std::cout, seed);            // PLANY2072
+      builder.catches.Print(std::cout, seed);               // CATCH2191 (#2191's arm)
       if (g_winter_log_stock || g_season_stand_order) {     // the levers' own ground
         builder.felling.Report(("population_curve (seed " + std::to_string(seed) + ")").c_str(),
                                simulation->CompletedState());
@@ -1928,6 +1938,8 @@ int main(int argc, char** argv) {
           std::string(argument.substr(std::string_view("--anticrime-from-year=").size()))));
     } else if (argument == "--no-anticrime") {
       g_no_anticrime = true;
+    } else if (argument.starts_with("--catch-arm=") && argument.size() > 12) {
+      g_catch_arm = argument[12];  // #2191's CATCH2191: L, C, E, F or R
     } else if (argument == "--district-table=plain") {
       g_district_table_plain = true;  // the plain penalty's one measurement (boss, 23 Nov)
     } else if (argument == "--trail-legs") {

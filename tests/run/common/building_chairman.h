@@ -24,6 +24,7 @@
 #include "authority_tally.h"
 #include "barrack_policy.h"
 #include "beach_policy.h"
+#include "catch_policy.h"
 #include "cemetery_policy.h"
 #include "clerk_tally.h"
 #include "core_tables/tables.h"
@@ -351,6 +352,7 @@ class BuildingChairman {
   /// hears them, and its distiller rule takes nobody (its DT line says so).
   void WatchStep(const core::WorldState& world) {
     distiller.WatchStep(world);
+    catches.WatchStep(world);         // CATCH2191 (#2191's arm; off unless --catch-arm)
     district_table.WatchStep(world);  // TABLE1953: each kDistrictTable as the step raises it
     road_holds.CountStep(world);      // HOLD2129: the day's carts, every plan of it
     authority.CountStep(world);       // AUTH2164: the step's deeds and complaints
@@ -455,6 +457,8 @@ class BuildingChairman {
     // The church store and the clamps emptied into the guarded food yard
     // (#1254; store_emptying_policy.h): the leak's only close by design.
     emptying.RunDay(simulation);
+    // #2191's arm: the patrol and the judgement (catch_policy.h; off unless --catch-arm).
+    catches.RunDay(simulation);
     // A short village's issue raised (#2164, econ [6]; issue_raise_policy.h).
     issue_raise.RunDay(simulation);
     // The audit's remark answered by a write-off (#1568; write_off_policy.h).
@@ -654,6 +658,8 @@ class BuildingChairman {
   /// PLANY2072 (econ's #2072 gate, boss 25 Nov): each year's verdict and every short position's
   /// book and named cause (plan_year_tally.h).
   PlanYearTally plan_years;
+  /// CATCH2191 (#2191's arm; catch_policy.h): off unless the run names an arm.
+  CatchPolicy catches;
   /// #2264's print: M1-M4 of the field-work coordinator, y1-y3 (field_work_tally.h).
   FieldWorkTally field_work;
   /// #589's print: the clerk's post and his family's satiety (clerk_tally.h).

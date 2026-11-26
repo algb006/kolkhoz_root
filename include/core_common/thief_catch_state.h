@@ -37,6 +37,12 @@ struct NightSack {
   SimDay day = 0;    ///< the night's day
 };
 
+/// @brief A culprit the Детектив was raised for, and the season (DetectiveCredit's days) of it.
+struct DetectiveCredit {
+  ResidentId thief;
+  std::uint32_t season = 0;
+};
+
 /// @brief A thief «talked to» (ThiefChoice::kTalk) and the last day of his season.
 struct TalkedThief {
   ResidentId thief;
@@ -72,6 +78,9 @@ struct ThiefCatchRules {
       0.0F, 0.0F, 1.0F, 1.0F, 2.0F, 0.0F, 1.0F};
   /// «Любая поимка растит шкалу Детектив»: the step of a catch.
   float detective_step = 1.0F;
+  /// The season a culprit counts once in for the Детектив (econ: «per culprit per season»;
+  /// three game months).
+  std::uint32_t detective_season_days = 3 * kDaysPerMonth;
   /// The scales' start until the avatar layout (metrics, avatar_scales) reaches the core: STUB.
   float scale_start = 50.0F;
   /// «Чем ниже шкала, тем больше даёт ей поступок»: below this, a step times the factor.
@@ -110,6 +119,9 @@ struct ThiefCatchState {
   /// them while the day is at or before it). Not ResidentRow::talk_until_day - that is the
   /// sport talk's (kTalkToSport), another door.
   std::vector<TalkedThief> talked;
+  /// The culprits the Детектив was raised for this season (econ's no-pump read): a second catch
+  /// of one of them in the same season raises nothing. Save 235.
+  std::vector<DetectiveCredit> credited;
 };
 
 }  // namespace core

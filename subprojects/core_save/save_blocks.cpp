@@ -755,6 +755,12 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
     out.WriteU32(talked.thief.value);
     out.WriteU32(talked.until_day);
   }
+  // The Детектив's culprits of the season (save 235).
+  out.WriteU32(static_cast<std::uint32_t>(world.thief_catch.credited.size()));
+  for (const DetectiveCredit& credit : world.thief_catch.credited) {
+    out.WriteU32(credit.thief.value);
+    out.WriteU32(credit.season);
+  }
   // The tally clerk's post record (#589, save 219).
   out.WriteU32(world.clerk.since_day);
   out.WriteU8(static_cast<std::uint8_t>(world.clerk.vacancy));
@@ -1175,6 +1181,14 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
     row.thief = ResidentId{in.ReadU32()};
     row.until_day = in.ReadU32();
     world->thief_catch.talked.push_back(row);
+  }
+  world->thief_catch.credited.clear();
+  const std::uint32_t credited = in.ReadU32();  // save 235
+  for (std::uint32_t index = 0; index < credited && in.Valid(); ++index) {
+    DetectiveCredit credit;
+    credit.thief = ResidentId{in.ReadU32()};
+    credit.season = in.ReadU32();
+    world->thief_catch.credited.push_back(credit);
   }
   world->clerk.since_day = in.ReadU32();  // save 219 (#589)
   world->clerk.vacancy = static_cast<ClerkVacancy>(source.ReadEnumValue(

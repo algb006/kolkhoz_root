@@ -57,7 +57,18 @@ void OpenCatch(WorldState& current, const NightSack& sack, bool by_chairman) {
   state.open_catch = sack;
   state.caught_day = current.calendar.day;
   state.by_chairman = by_chairman ? 1U : 0U;
-  RaiseScale(kThiefCatchRules, current.chairman.detective, kThiefCatchRules.detective_step);
+  // A CULPRIT COUNTS ONCE A SEASON (econ's no-pump read): catching the same man again in the
+  // same season gives no Детектив - otherwise a patrol at his store each moonlit night farms it.
+  const std::uint32_t season = current.calendar.day / kThiefCatchRules.detective_season_days;
+  const bool credited = std::ranges::any_of(state.credited, [&](const DetectiveCredit& credit) {
+    return credit.thief.value == sack.thief.value && credit.season == season;
+  });
+  if (!credited) {
+    std::erase_if(state.credited,
+                  [season](const DetectiveCredit& credit) { return credit.season != season; });
+    state.credited.push_back(DetectiveCredit{.thief = sack.thief, .season = season});
+    RaiseScale(kThiefCatchRules, current.chairman.detective, kThiefCatchRules.detective_step);
+  }
   SimEvent& uncovered =
       EmitEvent(current, EventKind::kTheftUncovered, EventSeverity::kInterrupting);
   uncovered.resident = sack.thief;
@@ -136,7 +147,12 @@ void Judge(const NightTradeConfig& night, WorldState& current, ThiefChoice choic
   const ThiefCatchRules& rules = kThiefCatchRules;
   const FamilyId moved = choice == ThiefChoice::kFindStill ? FamilyOf(current, sack.still)
                                                            : FamilyOf(current, sack.thief);
-  MoveFamilyAttitude(current, moved, rules.attitude[index]);
+  // A LAPSE IS NOBODY'S CHOICE (econ's no-pump read): it stays «закрыть глаза» for the theft,
+  // but no family is rewarded or punished for a judgement nobody gave.
+  const bool lapsed = order.value == kInvalidEntityIdValue;
+  if (!lapsed) {
+    MoveFamilyAttitude(current, moved, rules.attitude[index]);
+  }
   RaiseScale(rules, current.chairman.discipline, rules.discipline[index]);
   switch (choice) {
     case ThiefChoice::kCloseEyes:

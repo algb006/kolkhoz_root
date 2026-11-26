@@ -216,9 +216,17 @@ int CheckThiefCatch(const core::NightTradeConfig& night,
                       event.amount == static_cast<std::int64_t>(core::ThiefChoice::kCloseEyes) &&
                       event.order.value == core::kInvalidEntityIdValue);
     }
-    failures += Expect(said && lapsed.residents.rows[0].attitude_to_chairman == 52.0F,
-                       "judge: unjudged past the window - lapses as «закрыть глаза», attitude "
-                       "+2, and kThiefJudged with no order says so");
+    // DESIGN CHANGE (econ's no-pump read): a lapse moves no family's attitude - it was +2.
+    failures += Expect(said && lapsed.residents.rows[0].attitude_to_chairman == 50.0F,
+                       "judge: unjudged past the window - lapses as «закрыть глаза», no "
+                       "attitude moved, and kThiefJudged with no order says so");
+    // DETECTIVE FARMING (econ): the same man caught again in the same season counts nothing.
+    const float detective = lapsed.chairman.detective;
+    Order(lapsed, core::OrderKind::kCatchThief).unit = lapsed.units.row_ids[0];
+    core::ConsumeThiefCatchOrders(night, lapsed);
+    failures += Expect(lapsed.thief_catch.open_catch.thief == lapsed.residents.row_ids[0] &&
+                           lapsed.chairman.detective == detective,
+                       "catch: the same culprit again in the same season - no Детектив");
   }
   return failures;
 }

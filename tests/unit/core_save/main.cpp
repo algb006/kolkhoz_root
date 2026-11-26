@@ -202,6 +202,8 @@ core::WorldState MakeWorld() {
   world.thief_catch.under_wing_count = 2;
   world.thief_catch.talked.push_back(
       core::TalkedThief{.thief = core::ResidentId{6}, .until_day = 51});
+  world.thief_catch.credited.push_back(
+      core::DetectiveCredit{.thief = core::ResidentId{4}, .season = 3});  // save 235
   world.chairman.issue_raised_month = 8;
   world.chairman.understood_day = 9;
   world.chairman.unfair_season = 10;  // econ [6]'s season marks
@@ -1855,6 +1857,12 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
     chunks.push_back({"thief_catch.talked", U32(talked.thief.value)});
     chunks.push_back({"thief_catch.talked", U32(talked.until_day)});
   }
+  chunks.push_back({"thief_catch.credited count",
+                    U32(static_cast<std::uint32_t>(world.thief_catch.credited.size()))});
+  for (const core::DetectiveCredit& credit : world.thief_catch.credited) {
+    chunks.push_back({"thief_catch.credited", U32(credit.thief.value)});
+    chunks.push_back({"thief_catch.credited", U32(credit.season)});
+  }
   // The tally clerk's record (#589, save 219).
   chunks.push_back({"clerk.since_day", U32(world.clerk.since_day)});
   chunks.push_back({"clerk.vacancy", U8(static_cast<std::uint8_t>(world.clerk.vacancy))});
@@ -2302,6 +2310,8 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // Save 234 (#2191): detective and discipline (+8) and the thief catch with one sack and one
     // talked man (+77: 4 + 26 + 26 + 4 + 1 + 4 + 4 + 8) - 1578 -> 1663, as counted; the hash
     // read off cu2191b.
+    // Save 235 (#2191's no-pump fix): the Детектив's credited culprits, a count and one
+    // (8) - predicted 1663 -> 1675 before the build.
     {"world", 1663, 0xcff8410c9a8393e8ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
@@ -3392,6 +3402,7 @@ int main() {
           loaded.thief_catch.open_catch.thief.value == 4 && loaded.thief_catch.caught_day == 39 &&
           loaded.thief_catch.by_chairman == 1 && loaded.thief_catch.under_wing_count == 2 &&
           loaded.thief_catch.talked.size() == 1 && loaded.thief_catch.talked[0].until_day == 51 &&
+          loaded.thief_catch.credited.size() == 1 && loaded.thief_catch.credited[0].season == 3 &&
           loaded.chairman.year_under_pressure == 1 && loaded.chairman.issue_raised_month == 8 &&
           loaded.chairman.understood_day == 9 && loaded.chairman.unfair_season == 10 &&
           loaded.chairman.raise_season == 11 && loaded.chairman.authority_live == 0 &&
