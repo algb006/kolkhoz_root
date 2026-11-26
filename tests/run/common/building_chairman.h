@@ -64,6 +64,7 @@
 #include "social_objects_policy.h"
 #include "sport_talk_policy.h"
 #include "stand_renewal_policy.h"
+#include "still_supply_probe.h"
 #include "store_emptying_policy.h"
 #include "suggested_roads_policy.h"
 #include "supply_policy.h"
@@ -121,6 +122,7 @@ class BuildingChairman {
         winter_horses(tables),
         econ_side(tables),
         plan_years(tables),
+        still_supply(tables),
         field_work(tables),
         plan_over(tables),
         sport_talk(tables),
@@ -353,6 +355,7 @@ class BuildingChairman {
     distiller.WatchStep(world);
     district_table.WatchStep(world);  // TABLE1953: each kDistrictTable as the step raises it
     road_holds.CountStep(world);      // HOLD2129: the day's carts, every plan of it
+    still_supply.CountStep(world);    // STILL2189 (probe)
     authority.CountStep(world);       // AUTH2164: the step's deeds and complaints
   }
 
@@ -422,17 +425,18 @@ class BuildingChairman {
     if (count_trail_legs) {
       trail_legs.CountDay(simulation.CompletedState());  // #2072's LEGS2072 (--trail-legs)
     }
-    decomp.CountDay(simulation.CompletedState());      // #2072's DECOMP2072
-    road_holds.CountDay(simulation.CompletedState());  // #2129's HOLD2129
-    authority.CountDay(simulation.CompletedState());   // #2164's AUTH2164
-    pressure.CountDay(simulation.CompletedState());    // #2164's PRESS2164 (econ [10])
-    winter_felling.CountDay(simulation);               // WFELL2072
-    winter_horses.CountDay(simulation);                // WHORSE2072
-    econ_side.CountDay(simulation.CompletedState());   // S2072
-    plan_years.CountDay(simulation.CompletedState());  // PLANY2072
-    clerk.CountDay(simulation);                        // #589's print
-    reputation.CountDay(simulation.CompletedState());  // #1897's REP1897
-    plan_over.CountDay(simulation.CompletedState());   // #1946's OVER1946
+    decomp.CountDay(simulation.CompletedState());        // #2072's DECOMP2072
+    road_holds.CountDay(simulation.CompletedState());    // #2129's HOLD2129
+    authority.CountDay(simulation.CompletedState());     // #2164's AUTH2164
+    pressure.CountDay(simulation.CompletedState());      // #2164's PRESS2164 (econ [10])
+    winter_felling.CountDay(simulation);                 // WFELL2072
+    winter_horses.CountDay(simulation);                  // WHORSE2072
+    econ_side.CountDay(simulation.CompletedState());     // S2072
+    plan_years.CountDay(simulation.CompletedState());    // PLANY2072
+    still_supply.CountDay(simulation.CompletedState());  // STILL2189 (probe)
+    clerk.CountDay(simulation);                          // #589's print
+    reputation.CountDay(simulation.CompletedState());    // #1897's REP1897
+    plan_over.CountDay(simulation.CompletedState());     // #1946's OVER1946
     // The season's talk to the drinker (#1238; sport_talk_policy.h).
     if (sport_talk_on) {
       sport_talk.RunDay(simulation);
@@ -654,6 +658,8 @@ class BuildingChairman {
   /// PLANY2072 (econ's #2072 gate, boss 25 Nov): each year's verdict and every short position's
   /// book and named cause (plan_year_tally.h).
   PlanYearTally plan_years;
+  /// STILL2189 (#2189's probe; still_supply_probe.h).
+  StillSupplyProbe still_supply;
   /// #2264's print: M1-M4 of the field-work coordinator, y1-y3 (field_work_tally.h).
   FieldWorkTally field_work;
   /// #589's print: the clerk's post and his family's satiety (clerk_tally.h).
