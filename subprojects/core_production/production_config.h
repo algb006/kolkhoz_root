@@ -1318,6 +1318,11 @@ struct ProductionConfig {
   /// names (#1005).
   UnitTypeId vegetable_store_type;
 
+  /// unit_types.csv "granary" and "food_yard" (#2190's guarded_store_open: a guarded store the
+  /// plan's grain can go to - the granary, or its yard from year 2).
+  UnitTypeId granary_type;
+  UnitTypeId food_yard_type;
+
   /// resources.csv `theft`, dense by ResourceId: 2 eager, 1 some, 0 none or
   /// not yet written. The perevalka carries what is stolen more readily
   /// before the rest (start §5, «сначала то что портится и то что

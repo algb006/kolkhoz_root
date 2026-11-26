@@ -1269,6 +1269,14 @@ struct Alarm {
   /// @note Not in the save, as `lamp`.
   SimDay advice_day = 0;
 
+  /// kPlanPositionThreatened (#2190, boss's definition): 1 when a GUARDED STORE the grain can go
+  /// to is available in this village - a granary or a vegetable store built, or the food yard
+  /// built and the year 2 or later (in year 1 the yard's granary module cannot stand in time);
+  /// the line's «Доступно хранение под охраной, в том числе в амбаре» shows only then. 0 for
+  /// every other kind.
+  /// @note Not in the save, as `lamp`.
+  std::uint8_t guarded_store_open = 0;
+
   /// kHerdHayShortAhead (0.37.250): THE ROW OF THE FEEDING ORDER FOUND EMPTY
   /// FIRST for the herd underfed first - what `resource` held until 0.37.250.
   /// `resource` is now THE HAY whenever the lamp is lit: the shortage is the

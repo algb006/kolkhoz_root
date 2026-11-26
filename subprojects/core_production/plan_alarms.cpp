@@ -857,6 +857,19 @@ void CollectPlanThreatAlarms(const ProductionConfig& config,
     return;
   }
   const ResourceAmounts to_come = HarvestToComeThisYearOf(config, world);
+  // A GUARDED STORE THE GRAIN CAN GO TO (boss's definition): a granary or a vegetable store
+  // built, or the food yard built from year 2 (in year 1 its granary cannot stand in time).
+  const bool year_two = world.calendar.day >= kDaysPerYear;
+  bool guarded = false;
+  for (const UnitRow& unit : world.units.rows) {
+    if (unit.level == 0 || unit.dead != 0 || unit.construction.phase != ConstructionPhase::kNone) {
+      continue;
+    }
+    const std::uint16_t type = unit.type.value;
+    guarded = guarded || type == config.granary_type.value ||
+              type == config.vegetable_store_type.value ||
+              (year_two && type == config.food_yard_type.value);
+  }
   for (std::uint32_t index = 0; index < world.plan.due.size(); ++index) {
     const PlanThreat threat = PlanPositionThreat(config, world, index, to_come);
     if (!threat.threatened) {
@@ -867,6 +880,7 @@ void CollectPlanThreatAlarms(const ProductionConfig& config,
     alarm.resource = DefIdFromIndex<ResourceIdTag>(index);
     alarm.amount = threat.short_grams;
     alarm.short_grams = threat.loss_grams;
+    alarm.guarded_store_open = guarded ? 1U : 0U;
     alarm.days_to_loss = DaysToLossOf(DaysToPlanTurn(world));
     alarms.push_back(alarm);
   }

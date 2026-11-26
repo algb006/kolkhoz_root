@@ -1855,6 +1855,8 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   config.church_store_type = UnitTypeByKey(unit_types, "church_store");
   config.clamp_type = UnitTypeByKey(unit_types, "clamp");
   config.vegetable_store_type = UnitTypeByKey(unit_types, "vegetable_store");
+  config.granary_type = UnitTypeByKey(unit_types, "granary");
+  config.food_yard_type = UnitTypeByKey(unit_types, "food_yard");
   // The stable is not a unit of its own: it is the SECOND step of the
   // kolkhoz yard (boss 2026-08-30), and foals come only under its roof
   // (livestock design §5). The type is resolved here; whether one is BUILT

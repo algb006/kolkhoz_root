@@ -17771,6 +17771,31 @@ int CheckThePlanThreatCountsTheftAndRot() {
                      "8 - lit 0.4 t short, the 2.4 t named");
   failures += Expect(core::PlanPositionThreat(config, world, 0, {}).threatened,
                      "plan threat: the pressure's reader (MarkPlanPressure) reads the same rule");
+  // guarded_store_open (boss's definition): a barn of another type is no guarded store; a food
+  // yard is one only from year 2; a granary is one at once.
+  config.granary_type = core::UnitTypeId{1};
+  config.food_yard_type = core::UnitTypeId{2};
+  config.unit_types.resize(3);
+  const core::WorldState before_stores = world;
+  failures += Expect(threat_of().guarded_store_open == 0,
+                     "plan threat: no granary, vegetable store or yard - no guarded store open");
+  core::UnitRow yard;
+  yard.type = core::UnitTypeId{2};
+  yard.level = 1;
+  core::AppendRow(world.units, yard);
+  failures += Expect(threat_of().guarded_store_open == 0,
+                     "plan threat: a food yard in year 1 - its granary cannot stand in time, 0");
+  world.calendar.day = core::kDaysPerYear + (core::kDaysPerYear / 2);
+  failures += Expect(threat_of().guarded_store_open == 1,
+                     "plan threat: the same yard in year 2 - its granary can be staked, 1");
+  world.calendar.day = core::kDaysPerYear / 2;
+  core::UnitRow granary;
+  granary.type = core::UnitTypeId{1};
+  granary.level = 1;
+  core::AppendRow(world.units, granary);
+  failures += Expect(threat_of().guarded_store_open == 1,
+                     "plan threat: a built granary in year 1 - open, 1");
+  world = before_stores;
   world.ledger.current.stolen = {600 * kKg};
   world.ledger.current.spoiled = {400 * kKg};
   failures += Expect(threat_of().kind == core::AlarmKind::kNone,
