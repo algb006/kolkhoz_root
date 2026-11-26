@@ -13,9 +13,11 @@
 
 #include <array>
 #include <cstdint>
+#include <map>
 #include <ostream>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "core_common/calendar.h"
@@ -57,12 +59,32 @@ class HelpFundProbe {
       return;  // the month's table is read on its last day, after the day's meals
     }
     const std::uint32_t month = (day % core::kDaysPerYear) / core::kDaysPerMonth + 1U;
-    for (const core::FamilyRow& family : world.families.rows) {
+    std::map<std::uint32_t, double> short_now;
+    for (std::uint32_t row = 0; row < world.families.rows.size(); ++row) {
+      const core::FamilyRow& family = world.families.rows[row];
       if (!(family.month_need_kcal > 0.0F)) {
         continue;
       }
       const double eaten = static_cast<double>(family.month_eaten_kcal) /
                            static_cast<double>(family.month_need_kcal);
+      // THE MONTH AFTER (econ's reading rule A/B/C): a family short last month - topped on
+      // this month's first hour - how much it ate this month, whether short again, and the
+      // grain and potato left in its pantry now (any source: the fund's is not told apart).
+      const std::uint32_t id = world.families.row_ids[row].value;
+      if (previous_short_.contains(id)) {
+        ++followed_;
+        followed_eaten_ += eaten;
+        short_again_ += eaten < kLine ? 1U : 0U;
+        double pantry_g = 0.0;
+        for (const std::uint32_t food : foods_) {
+          pantry_g += food < family.pantry.size() ? static_cast<double>(family.pantry[food]) : 0.0;
+        }
+        followed_pantry_g_ += pantry_g;
+        pantry_left_with_short_ += eaten < kLine && pantry_g >= kPantryLeftG ? 1U : 0U;
+      }
+      if (eaten < kLine) {
+        short_now[id] = eaten;
+      }
       if (family.ration_granted != 0) {
         ++ration_months_;
         ration_eaten_ += eaten;
@@ -87,6 +109,7 @@ class HelpFundProbe {
         }
       }
     }
+    previous_short_ = std::move(short_now);
   }
 
   void Print(std::ostream& out, std::uint64_t seed) const {
@@ -111,7 +134,17 @@ class HelpFundProbe {
            << dry_month_[share];
     }
     line << " ration_family_months " << ration_months_ << " ration_eaten_share "
-         << (ration_months_ > 0 ? ration_eaten_ / ration_months_ : -1.0);
+         << (ration_months_ > 0 ? ration_eaten_ / ration_months_ : -1.0)
+         << " after(short_last_month:followed/eaten_next/short_again/pantry_kg_next/"
+            "short_with_pantry_ge_5kg) "
+         << followed_ << ' ' << (followed_ > 0 ? followed_eaten_ / followed_ : -1.0) << ' '
+         << short_again_ << ' ' << (followed_ > 0 ? followed_pantry_g_ / followed_ / 1000.0 : -1.0)
+         << ' ' << pantry_left_with_short_;
+    followed_ = 0;
+    followed_eaten_ = 0.0;
+    short_again_ = 0;
+    followed_pantry_g_ = 0.0;
+    pantry_left_with_short_ = 0;
     lines_.push_back(line.str());
     short_months_ = 0;
     ration_months_ = 0;
@@ -128,6 +161,13 @@ class HelpFundProbe {
   std::array<std::uint32_t, 2> draws_{};
   std::array<std::uint32_t, 2> dry_month_{};
   std::uint32_t short_months_ = 0;
+  static constexpr double kPantryLeftG = 5000.0;  // «grain still in the pantry»: 5 kg or more
+  std::map<std::uint32_t, double> previous_short_;
+  std::uint32_t followed_ = 0;
+  double followed_eaten_ = 0.0;
+  std::uint32_t short_again_ = 0;
+  double followed_pantry_g_ = 0.0;
+  std::uint32_t pantry_left_with_short_ = 0;
   std::uint32_t ration_months_ = 0;
   double ration_eaten_ = 0.0;
   std::vector<std::string> lines_;
