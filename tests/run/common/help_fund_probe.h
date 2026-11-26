@@ -14,6 +14,7 @@
 #include <array>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -40,6 +41,19 @@ class HelpFundProbe {
       for (std::uint32_t row = 0; row < resources->RowCount(); ++row) {
         keys_.emplace_back(key != core::kNoTableColumn ? resources->CellText(row, key) : "?");
       }
+      // The food's kcal by resource (food.csv), 0 for every row the table does not name.
+      kcal_.assign(resources->RowCount(), 0.0);
+      if (const core::ITable* const food = tables.FindTable("food")) {
+        const std::uint32_t kcal = food->FindColumn("kcal_per_gram");
+        for (std::uint32_t row = 0; row < resources->RowCount(); ++row) {
+          const std::uint32_t at = food->FindRowByKey(keys_[row]);
+          if (at != core::kNoTableRow && kcal != core::kNoTableColumn) {
+            if (const std::optional<float> value = food->CellReal(at, kcal)) {
+              kcal_[row] = static_cast<double>(*value);
+            }
+          }
+        }
+      }
     }
   }
 
@@ -59,6 +73,7 @@ class HelpFundProbe {
         start_[share] = funds_[share];
       }
     }
+    TrackDays(world);  // #2199b's timing (econ's T / M / N)
     if (day % core::kDaysPerMonth != core::kDaysPerMonth - 1U) {
       return;  // the month's table is read on its last day, after the day's meals
     }
@@ -108,6 +123,25 @@ class HelpFundProbe {
           for (std::size_t index = 0; index < family.pantry.size(); ++index) {
             pantry_by_row_[index] += static_cast<double>(family.pantry[index]);
           }
+          // #2199b's timing: T - the short day's pantry could not cover that day's need (and
+          // food came later); M - it could; N - no short day read (the month's table only).
+          const Day& track = days_[id];
+          if (track.short_day == 0) {
+            ++timing_n_;
+          } else if (track.short_day_pantry < track.short_day_need) {
+            ++timing_t_;
+          } else {
+            ++timing_m_;
+          }
+          if (track.short_day > 0 && track.short_day <= short_day_hist_.size()) {
+            ++short_day_hist_[track.short_day - 1U];
+          }
+          if (track.short_day_need > 0.0) {
+            first_days_ += track.first_day_pantry / track.short_day_need;
+            short_days_ += track.short_day_pantry / track.short_day_need;
+            end_days_ += track.end_pantry / track.short_day_need;
+            ++day_reads_;
+          }
         }
       }
       if (eaten < kLine) {
@@ -138,6 +172,38 @@ class HelpFundProbe {
       }
     }
     previous_short_ = std::move(short_now);
+  }
+
+  /// #2199b THE TIMING (econ): each family's day - its eaten and need off the month's table's
+  /// growth, its pantry's food kcal after the day (hay and every row of no kcal out) - the
+  /// month's first day's pantry and the first day it ate under 0.9 of its day's need.
+  void TrackDays(const core::WorldState& world) {
+    const std::uint32_t day = world.calendar.day;
+    const std::uint32_t day_in_month = day % core::kDaysPerMonth;
+    for (std::uint32_t row = 0; row < world.families.rows.size(); ++row) {
+      const core::FamilyRow& family = world.families.rows[row];
+      Day& track = days_[world.families.row_ids[row].value];
+      if (day_in_month == 0) {
+        track = Day{};
+      }
+      const double need = static_cast<double>(family.month_need_kcal) - track.need_so_far;
+      const double eaten = static_cast<double>(family.month_eaten_kcal) - track.eaten_so_far;
+      track.need_so_far = static_cast<double>(family.month_need_kcal);
+      track.eaten_so_far = static_cast<double>(family.month_eaten_kcal);
+      double pantry_kcal = 0.0;
+      for (std::size_t index = 0; index < family.pantry.size() && index < kcal_.size(); ++index) {
+        pantry_kcal += static_cast<double>(family.pantry[index]) * kcal_[index];
+      }
+      if (day_in_month == 0) {
+        track.first_day_pantry = pantry_kcal;
+      }
+      if (track.short_day == 0 && need > 0.0 && eaten < kLine * need) {
+        track.short_day = day_in_month + 1U;
+        track.short_day_pantry = pantry_kcal;
+        track.short_day_need = need;
+      }
+      track.end_pantry = pantry_kcal;
+    }
   }
 
   void Print(std::ostream& out, std::uint64_t seed) const {
@@ -179,6 +245,18 @@ class HelpFundProbe {
       }
     }
     pantry_by_row_.clear();
+    line << " timing(T/M/N) " << timing_t_ << ' ' << timing_m_ << ' ' << timing_n_
+         << " short_day_1_4";
+    for (const std::uint32_t count : short_day_hist_) {
+      line << ' ' << count;
+    }
+    line << " pantry_in_days_of_need(first_hour/short_day/month_end) "
+         << (day_reads_ > 0 ? first_days_ / day_reads_ : -1.0) << ' '
+         << (day_reads_ > 0 ? short_days_ / day_reads_ : -1.0) << ' '
+         << (day_reads_ > 0 ? end_days_ / day_reads_ : -1.0);
+    timing_t_ = timing_m_ = timing_n_ = day_reads_ = 0;
+    short_day_hist_ = {};
+    first_days_ = short_days_ = end_days_ = 0.0;
     split_g_ = {};
     split_other_g_ = 0.0;
     followed_ = 0;
@@ -212,6 +290,27 @@ class HelpFundProbe {
   std::array<double, 5> split_g_{};
   double split_other_g_ = 0.0;
   std::vector<double> pantry_by_row_;
+
+  struct Day {
+    double need_so_far = 0.0;
+    double eaten_so_far = 0.0;
+    double first_day_pantry = 0.0;
+    double short_day_pantry = 0.0;
+    double short_day_need = 0.0;
+    double end_pantry = 0.0;
+    std::uint32_t short_day = 0;
+  };
+
+  std::map<std::uint32_t, Day> days_;
+  std::vector<double> kcal_;
+  std::uint32_t timing_t_ = 0;
+  std::uint32_t timing_m_ = 0;
+  std::uint32_t timing_n_ = 0;
+  std::uint32_t day_reads_ = 0;
+  std::array<std::uint32_t, 4> short_day_hist_{};
+  double first_days_ = 0.0;
+  double short_days_ = 0.0;
+  double end_days_ = 0.0;
   std::vector<std::string> keys_;
   std::uint32_t ration_months_ = 0;
   double ration_eaten_ = 0.0;
