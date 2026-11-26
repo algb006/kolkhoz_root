@@ -2326,7 +2326,9 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // (8) - predicted 1663 -> 1675 before the build, held; the hash read off cu2191d.
     // And the constable's district count (econ): a u16 year and a u8 count - predicted
     // 1675 -> 1678 before the build, held; the hash read off cu2191f.
-    {"world", 1678, 0x309085d614f97fbdULL},
+    // Save 236 (#2199): the help fund - a u16 share, the held amounts (one entry), a byte:
+    // 1678 -> 1691, read off hu2199a (not predicted: the amounts' header measured, 10 bytes).
+    {"world", 1691, 0x4c3913e26bd54b56ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2636,7 +2638,8 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // Save 225: same length, new hash - the fixture's «last order kind» is now
     // kSetDistrictTable; the hash read off utbl.
     // Save 234 (#2191): same length, new hash - the «last order kind» is now kJudgeThief.
-    {"orders", 842, 0x1a735d8baeb9c8bdULL},
+    // Save 236: same length, the top kind is kSetHelpFundShare.
+    {"orders", 842, 0x947d3fa33a10ff10ULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
@@ -2913,7 +2916,8 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // Save 230 (boss 24 Nov): JobShortfall::kTooFarOnFoot widens short_job_days by a column,
     // thirteen kinds x a u32, two books - predicted 4074 -> 4178 before the build, held; the
     // hash read off s230u.
-    {"ledger", 4178, 0xa25aac2dfc984a81ULL},
+    // Save 236 (#2199): help_issued, an empty amounts block in each of the two books - +4.
+    {"ledger", 4182, 0xbb2317a2d8c75251ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 

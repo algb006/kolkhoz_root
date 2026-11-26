@@ -225,6 +225,12 @@ int CheckHelpFund() {
   core::IssueFromHelpFund(config, core::ReserveBelowHelpFund(config, world), world);
   const core::FamilyRow& fed = world.families.rows[FindRow(world.families, short_id)];
   const core::Grams four_kg = 4 * core::kGramsPerKilogram;
+  std::cout << "  help fund: pantry " << (fed.pantry.empty() ? -1 : fed.pantry[0]) << " g, book "
+            << (world.ledger.current.help_issued.empty() ? -1 : world.ledger.current.help_issued[0])
+            << " g, held " << world.help_fund.held[0] << " g, free "
+            << core::FreeFoodStock(
+                   config, world, core::ReserveBelowHelpFund(config, world), core::ResourceId{0})
+            << " g\n";
   failures += Expect(fed.pantry.size() > 0 && fed.pantry[0] == four_kg &&
                          world.ledger.current.help_issued.size() == 1 &&
                          world.ledger.current.help_issued[0] == four_kg &&
