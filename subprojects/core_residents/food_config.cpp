@@ -533,6 +533,14 @@ FoodConfig ParseFoodConfig(const ITableSet& tables, std::string* error) {
     if (milk_row != kNoTableRow) {
       config.carted_daily = DefIdFromRow<ResourceIdTag>(milk_row);
     }
+    // #2199: the help fund's foods, in the order it gives them.
+    config.help_fund_foods.clear();
+    for (const char* key : {"rye", "wheat", "barley", "oat", "potato"}) {
+      const std::uint32_t row = resources->FindRowByKey(key);
+      if (row != kNoTableRow) {
+        config.help_fund_foods.push_back(DefIdFromRow<ResourceIdTag>(row));
+      }
+    }
   }
   // campaign.csv's plan positions are no longer read here: "first the plan"
   // held them whole before the spring (boss, parcel 440) until 0.34.42, and

@@ -368,7 +368,9 @@ static_assert(AggregateArity<ClampRotYear>() == 2,
 // Save 234 (#2191): the thief catch, the sixty-seventh - in the section «world», after the
 // audit's clean_in_a_row: the night's sacks (a count and 26 + the resource's id a sack), the
 // open catch, its day and its patrol flag, the under-wing count, the talked (a count, 8 each).
-static_assert(AggregateArity<WorldState>() == 67,
+// Save 236 (#2199): the help fund, the sixty-eighth - in «world» after the thief catch: a u16
+// share, its held amounts and a byte.
+static_assert(AggregateArity<WorldState>() == 68,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -763,6 +765,10 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   }
   out.WriteU16(world.thief_catch.constable_year);           // save 235
   out.WriteU8(world.thief_catch.constable_district_count);  // save 235
+  // #2199 «фонд помощи» (save 236): the share, what it holds, «empty» said.
+  out.WriteU16(world.help_fund.share_permille);
+  sink.WriteAmounts(DefKind::kResource, world.help_fund.held);
+  out.WriteU8(world.help_fund.empty_said);
   // The tally clerk's post record (#589, save 219).
   out.WriteU32(world.clerk.since_day);
   out.WriteU8(static_cast<std::uint8_t>(world.clerk.vacancy));
@@ -1194,6 +1200,9 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   }
   world->thief_catch.constable_year = in.ReadU16();
   world->thief_catch.constable_district_count = in.ReadU8();
+  world->help_fund.share_permille = in.ReadU16();  // save 236 (#2199)
+  world->help_fund.held = source.ReadAmounts(DefKind::kResource);
+  world->help_fund.empty_said = in.ReadU8();
   world->clerk.since_day = in.ReadU32();  // save 219 (#589)
   world->clerk.vacancy = static_cast<ClerkVacancy>(source.ReadEnumValue(
       0, static_cast<std::uint8_t>(ClerkVacancy::kUnitGone), "the clerk's vacancy"));

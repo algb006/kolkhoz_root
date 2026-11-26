@@ -441,6 +441,10 @@ struct FoodConfig {
   /// without a milk row. Meat and eggs join it when their cart is built.
   ResourceId carted_daily;
 
+  /// #2199's help fund: the foods it holds and gives, in that order - rye, wheat, barley, oat,
+  /// potato by resources.csv key (an absent one skipped).
+  std::vector<ResourceId> help_fund_foods;
+
   /// Game days a resource keeps, dense by ResourceId — resources.csv
   /// `spoil_days`, zero for what does not go bad (task A4; transport design
   /// §10). Read here for the FAMILIES' LARDERS; core_production reads the

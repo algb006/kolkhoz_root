@@ -46,6 +46,7 @@
 #include "core_common/family_state.h"
 #include "core_common/flood_state.h"
 #include "core_common/funeral_state.h"
+#include "core_common/help_fund_state.h"
 #include "core_common/herd_state.h"
 #include "core_common/horse_lamp_memory.h"
 #include "core_common/land_state.h"
@@ -1273,6 +1274,10 @@ struct WorldState {
   /// #2191 «застал вора»: the last moonlit night's sacks and the catch open to the chairman's
   /// judgement; SAVED (save 234). thief_catch_state.h.
   ThiefCatchState thief_catch;
+
+  /// #2199 «фонд помощи»: the share and what the fund holds; SAVED (save 236).
+  /// help_fund_state.h.
+  HelpFundState help_fund;
 
   /// The tally clerk's post record (#589; clerk_post_view.h): since when, or why and since
   /// when vacant. SAVED (save 219). The holder himself is on his ResidentRow::post.

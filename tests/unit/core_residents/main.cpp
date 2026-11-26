@@ -48,6 +48,7 @@
 #include "food_config.h"
 #include "food_theft_checks.h"
 #include "funeral_checks.h"
+#include "help_fund.h"
 #include "household_plot.h"
 #include "housing.h"
 #include "housing_ladder.h"
@@ -192,6 +193,60 @@ core::WorldState MakeExchangeWorld(float grain_kg,
   adult.satiety = satiety;
   AppendRow(world.residents, adult);
   return world;
+}
+
+/// #2199 «ФОНД ПОМОЩИ»: year 2 opens with 100 t of grain closed in the book - the 2 % fund
+/// holds 2 t; a family that ate 0.5 of its 33 000 kcal month is topped to 0.9 (13 200 kcal =
+/// 4 kg of grain at 3.3) on the month's first hour, booked «из фонда помощи»; a family at 0.95
+/// gets nothing; the share's order to 0 empties the fund at once, and a share of 31 ‰ is
+/// refused.
+int CheckHelpFund() {
+  int failures = 0;
+  core::FoodConfig config = MakeExchangeConfig();
+  config.help_fund_foods = {core::ResourceId{0}};
+  core::WorldState world = MakeExchangeWorld(5'000.0F, 0.0F, 0, 80.0F);
+  world.ledger.closed.harvest = {100'000 * core::kGramsPerKilogram};
+  world.calendar.tick = (static_cast<core::Tick>(core::kDaysPerYear) * core::kTicksPerDay) +
+                        core::kHelpFundRules.turn_hour;
+  core::RefreshCalendarCaches(world.calendar);
+  core::TopUpHelpFund(config, world);
+  failures += Expect(world.help_fund.held.size() == 1 &&
+                         world.help_fund.held[0] == 2'000 * core::kGramsPerKilogram,
+                     "help fund: the turn sets it to 2 % of the closed harvest - 2 t");
+  core::FamilyRow short_yard;
+  short_yard.month_need_kcal = 33'000.0F;
+  short_yard.month_eaten_kcal = 16'500.0F;
+  const core::FamilyId short_id = AppendRow(world.families, short_yard);
+  world.families.rows[0].month_need_kcal = 33'000.0F;
+  world.families.rows[0].month_eaten_kcal = 31'350.0F;  // 0.95: above the line
+  world.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear + core::kDaysPerMonth) *
+                        core::kTicksPerDay;  // the next month's first hour
+  core::RefreshCalendarCaches(world.calendar);
+  core::IssueFromHelpFund(config, core::ReserveBelowHelpFund(config, world), world);
+  const core::FamilyRow& fed = world.families.rows[FindRow(world.families, short_id)];
+  const core::Grams four_kg = 4 * core::kGramsPerKilogram;
+  failures += Expect(fed.pantry.size() > 0 && fed.pantry[0] == four_kg &&
+                         world.ledger.current.help_issued.size() == 1 &&
+                         world.ledger.current.help_issued[0] == four_kg &&
+                         world.help_fund.held[0] == (2'000 * core::kGramsPerKilogram) - four_kg,
+                     "help fund: the family at 0.5 topped to 0.9 - 4 kg of grain, booked, off "
+                     "the fund");
+  failures += Expect(world.families.rows[0].pantry.empty() || world.families.rows[0].pantry[0] == 0,
+                     "help fund: the family at 0.95 gets nothing");
+  core::OrderRow zero;
+  zero.kind = core::OrderKind::kSetHelpFundShare;
+  zero.status = core::OrderStatus::kPending;
+  zero.amount = 0;
+  AppendRow(world.orders, zero);
+  core::OrderRow too_much = zero;
+  too_much.amount = 31;
+  AppendRow(world.orders, too_much);
+  core::ConsumeHelpFundOrders(config, world);
+  failures += Expect(world.help_fund.share_permille == 0 && world.help_fund.held[0] == 0 &&
+                         world.orders.rows[0].status == core::OrderStatus::kDone &&
+                         world.orders.rows[1].refusal == core::OrderRefusal::kNotEligible,
+                     "help fund: the share to 0 empties it at once; 31 ‰ is refused");
+  return failures;
 }
 
 /// THE WINTER'S FOOD COUNTS THE HEAP ABOVE THE PLAN'S TAKE (0.37.15; boss-
@@ -5322,6 +5377,7 @@ int main() {
   failures += CheckTheLooksMemory();
   failures += CheckTakeNightTrader();
   failures += CheckFoodTheft();  // #1568 link 2
+  failures += CheckHelpFund();   // #2199
   failures += CheckTheHungerForecast();
   if (system != nullptr) {
     failures += CheckOldAgeTakesTheOld(*system);

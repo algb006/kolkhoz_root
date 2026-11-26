@@ -1005,6 +1005,17 @@ enum class EventKind : std::uint8_t {
   /// and the no-pump check see it). kNotable. Seam key `thief_judged`.
   kThiefJudged,
 
+  /// THE HELP FUND FED THE SHORT FAMILIES (#2199, «из фонда помощи»): one a month, when the
+  /// clerk topped anyone up - `amount` the grams given, all foods together; the families it
+  /// reached are counted in the book's month line, not here (one event a month, not one a
+  /// family: the distribution's own rule). kNotable. Seam key `help_fund_issued`.
+  kHelpFundIssued,
+
+  /// THE HELP FUND IS EMPTY (#2199): the month's issue took its last gram while a family
+  /// stayed short - the moment of the chairman's decision (econ §2: «фонд помощи исчерпан»).
+  /// Once until the next top-up. kNotable. Seam key `help_fund_empty`.
+  kHelpFundEmpty,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.
@@ -1073,7 +1084,8 @@ inline constexpr std::array<EventKind, 3> kEndingConditionEventKinds = {
 // kAuthorityMoved (128), kComplaintToDistrict (129): not an ending's condition.
 // kTheftUncovered (130), kThiefJudged (131): not an ending's condition («Под суд» is the
 // audit's trial, not a thief handed to the constable).
-static_assert(static_cast<std::size_t>(EventKind::kEventKindCount) == 131,
+// kHelpFundIssued (132), kHelpFundEmpty (133): not an ending's condition.
+static_assert(static_cast<std::size_t>(EventKind::kEventKindCount) == 133,
               "a new EventKind: classify it in kEndingConditionEventKinds, then raise this count");
 
 /// @brief One thing that happened. Plain data, no text: the presentation

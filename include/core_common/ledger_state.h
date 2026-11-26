@@ -209,6 +209,8 @@ struct YearLedger {
   ResourceAmounts issued;  ///< Distribution against trudodni.
 
   ResourceAmounts ration;  ///< The safety ration handed out below the floor.
+  /// #2199 «из фонда помощи»: what the help fund topped the short families up with (save 236).
+  ResourceAmounts help_issued;
 
   /// THE NEW HOUSEHOLD'S ADVANCE (#170, save 159; labor-payment design,
   /// «Аванс новосёлу»; core_residents/household_advance.h): what the stores

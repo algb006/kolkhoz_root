@@ -184,6 +184,10 @@ const char* KindName(core::EventKind kind) {
       return "theft_uncovered";
     case core::EventKind::kThiefJudged:
       return "thief_judged";
+    case core::EventKind::kHelpFundIssued:
+      return "help_fund_issued";
+    case core::EventKind::kHelpFundEmpty:
+      return "help_fund_empty";
     case core::EventKind::kElectrificationUnlocked:
       return "electrification_unlocked";
     case core::EventKind::kFireBroke:

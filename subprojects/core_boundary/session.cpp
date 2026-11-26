@@ -265,6 +265,10 @@ bool ShapeIsValid(const OrderRow& order) {
       // The man, and nothing else. Whether he keeps a trade changes at every
       // year's turn — the consumer's verdict (order_state.h).
       return has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site;
+    case OrderKind::kSetHelpFundShare:
+      // The help fund's share (#2199): a number in `amount` and nothing named; its range is
+      // the consumer's verdict.
+      return !has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site;
     case OrderKind::kCatchThief:
       // «Застал вора» (#2191): the unit he stood at, and nothing else - who stole there is the
       // core's answer from the night's sacks.

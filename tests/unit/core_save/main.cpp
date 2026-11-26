@@ -206,6 +206,9 @@ core::WorldState MakeWorld() {
       core::DetectiveCredit{.thief = core::ResidentId{4}, .season = 3});  // save 235
   world.thief_catch.constable_year = 1;
   world.thief_catch.constable_district_count = 2;
+  world.help_fund.share_permille = 25;  // save 236 (#2199)
+  world.help_fund.held = {40'000};
+  world.help_fund.empty_said = 1;
   world.chairman.issue_raised_month = 8;
   world.chairman.understood_day = 9;
   world.chairman.unfair_season = 10;  // econ [6]'s season marks
@@ -1868,6 +1871,10 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"thief_catch.constable_year", U16(world.thief_catch.constable_year)});
   chunks.push_back(
       {"thief_catch.constable_district_count", U8(world.thief_catch.constable_district_count)});
+  // The help fund (#2199, save 236).
+  chunks.push_back({"help_fund.share_permille", U16(world.help_fund.share_permille)});
+  AppendAmounts(chunks, "help_fund.held", world.help_fund.held);
+  chunks.push_back({"help_fund.empty_said", U8(world.help_fund.empty_said)});
   // The tally clerk's record (#589, save 219).
   chunks.push_back({"clerk.since_day", U32(world.clerk.since_day)});
   chunks.push_back({"clerk.vacancy", U8(static_cast<std::uint8_t>(world.clerk.vacancy))});
@@ -3412,6 +3419,8 @@ int main() {
           loaded.thief_catch.credited.size() == 1 && loaded.thief_catch.credited[0].season == 3 &&
           loaded.thief_catch.constable_year == 1 &&
           loaded.thief_catch.constable_district_count == 2 &&
+          loaded.help_fund.share_permille == 25 && loaded.help_fund.held.size() == 1 &&
+          loaded.help_fund.held[0] == 40'000 && loaded.help_fund.empty_said == 1 &&
           loaded.chairman.year_under_pressure == 1 && loaded.chairman.issue_raised_month == 8 &&
           loaded.chairman.understood_day == 9 && loaded.chairman.unfair_season == 10 &&
           loaded.chairman.raise_season == 11 && loaded.chairman.authority_live == 0 &&

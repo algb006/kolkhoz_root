@@ -169,7 +169,7 @@ std::uint32_t EaterCount(const FoodConfig& config,
 ///     first year there is no closed book and nothing is held back — which
 ///     is right, because the first year's fodder is the start stock, and
 ///     that was measured from the first cut for exactly this reason.
-std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& world) {
+std::vector<Grams> ReserveWithoutHelpFund(const FoodConfig& config, const WorldState& world) {
   // THE SEED FUND AND THE PLAN RESERVE, AND THE UNSEALINGS OFF BOTH, live in
   // core_common/fund_ladder.h since 2026-09-13, because the herds must stay
   // below the same ladder (both rungs since 0.35.1: the herd_system caller
@@ -291,6 +291,17 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
   // Not opened by a fund's release: it is the district's grain, not a fund.
   for (std::size_t index = 0; index < reserve.size(); ++index) {
     reserve[index] += AmountOf(world.plan.goods_loan_owed, DefIdFromIndex<ResourceIdTag>(index));
+  }
+  return reserve;
+}
+
+/// THE HELP FUND IS THE LADDER'S LAST RUNG (#2199): sealed like the others - the issue, the
+/// ration and the night theft stay above what it holds.
+std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& world) {
+  std::vector<Grams> reserve = ReserveWithoutHelpFund(config, world);
+  const ResourceAmounts& held = world.help_fund.held;
+  for (std::size_t index = 0; index < held.size() && index < reserve.size(); ++index) {
+    reserve[index] += held[index];
   }
   return reserve;
 }
@@ -1025,6 +1036,30 @@ void ConsumeIssueNormOrders(const FoodConfig& config, WorldState& current) {
       SayIssueRaised(current, kAuthorityRules);
     }
   }
+}
+
+// The stores' two doors for the help fund (#2199; help_fund.cpp): the same take and free
+// stock the issue and the ration use, so the fund cannot draw by another rule.
+Grams TakeFoodFromStores(const FoodConfig& config,
+                         WorldState& world,
+                         ResourceId resource,
+                         Grams wanted) {
+  return TakeFromUnits(config, world, resource, wanted);
+}
+
+Grams FreeFoodStock(const FoodConfig& config,
+                    const WorldState& world,
+                    const std::vector<Grams>& reserve,
+                    ResourceId resource) {
+  return FreeStock(config, world, reserve, resource);
+}
+
+void AddFoodToPantry(FamilyRow& family, ResourceId resource, Grams amount) {
+  AddToPantry(family, resource, amount);
+}
+
+std::vector<Grams> ReserveBelowHelpFund(const FoodConfig& config, const WorldState& world) {
+  return ReserveWithoutHelpFund(config, world);
 }
 
 }  // namespace core

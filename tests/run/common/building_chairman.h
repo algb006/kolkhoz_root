@@ -42,6 +42,7 @@
 #include "fixture_policy.h"
 #include "funeral_policy.h"
 #include "hay_arm_policy.h"
+#include "help_fund_policy.h"
 #include "herd_plan_policy.h"
 #include "house_policy.h"
 #include "houses_first_policy.h"
@@ -353,6 +354,7 @@ class BuildingChairman {
   void WatchStep(const core::WorldState& world) {
     distiller.WatchStep(world);
     catches.WatchStep(world);         // CATCH2191 (#2191's arm; off unless --catch-arm)
+    help_fund.WatchStep(world);       // #2199: «фонд помощи исчерпан»
     district_table.WatchStep(world);  // TABLE1953: each kDistrictTable as the step raises it
     road_holds.CountStep(world);      // HOLD2129: the day's carts, every plan of it
     authority.CountStep(world);       // AUTH2164: the step's deeds and complaints
@@ -459,6 +461,8 @@ class BuildingChairman {
     emptying.RunDay(simulation);
     // #2191's arm: the patrol and the judgement (catch_policy.h; off unless --catch-arm).
     catches.RunDay(simulation);
+    // #2199: the help fund's share raised when it runs dry (help_fund_policy.h).
+    help_fund.RunDay(simulation);
     // A short village's issue raised (#2164, econ [6]; issue_raise_policy.h).
     issue_raise.RunDay(simulation);
     // The audit's remark answered by a write-off (#1568; write_off_policy.h).
@@ -660,6 +664,8 @@ class BuildingChairman {
   PlanYearTally plan_years;
   /// CATCH2191 (#2191's arm; catch_policy.h): off unless the run names an arm.
   CatchPolicy catches;
+  /// #2199: the help fund's share, raised when the core says it is empty (help_fund_policy.h).
+  HelpFundPolicy help_fund;
   /// #2264's print: M1-M4 of the field-work coordinator, y1-y3 (field_work_tally.h).
   FieldWorkTally field_work;
   /// #589's print: the clerk's post and his family's satiety (clerk_tally.h).

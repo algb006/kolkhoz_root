@@ -1064,6 +1064,14 @@ enum class OrderKind : std::uint8_t {
   /// CONTRACT ONLY until #2191's body: no consumer reads it yet.
   kJudgeThief,
 
+  /// «ФОНД ПОМОЩИ»: THE CHAIRMAN'S SHARE (#2199; econ's help-fund §1): `amount` the share of the
+  /// year's grain and potato harvest set aside for the help fund, PER MILLE, 0..30 (default
+  /// 20), at the turn or any month. Writes HelpFundState::share_permille and tops the fund (or
+  /// trims it) to the new share of the last closed harvest at once - raised, it draws from the
+  /// stores' free stock above the other funds. Refusals: kNotEligible (an amount outside 0..30).
+  /// Seam key `set_help_fund_share`. Consumer: core_residents (help_fund.h).
+  kSetHelpFundShare,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).

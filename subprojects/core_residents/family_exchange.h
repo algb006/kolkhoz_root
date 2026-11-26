@@ -51,6 +51,26 @@ void RunFamilyExchange(const FoodConfig& config, float life_speedup, WorldState&
 /// @return Sized to the resource roster; empty when there is none.
 std::vector<Grams> SealedFunds(const FoodConfig& config, const WorldState& world);
 
+/// @brief The issue's own door to the stores (#2199's help fund reads it): takes up to
+///        `wanted` of `resource` off the units as the issue does; returns what it took.
+Grams TakeFoodFromStores(const FoodConfig& config,
+                         WorldState& world,
+                         ResourceId resource,
+                         Grams wanted);
+
+/// @brief What of `resource` lies in the stores above `reserve` (the issue's FreeStock).
+Grams FreeFoodStock(const FoodConfig& config,
+                    const WorldState& world,
+                    const std::vector<Grams>& reserve,
+                    ResourceId resource);
+
+/// @brief Adds `amount` of `resource` to the family's pantry (the issue's own door).
+void AddFoodToPantry(FamilyRow& family, ResourceId resource, Grams amount);
+
+/// @brief IssueReserve without the help fund's rung (#2199): what the help fund itself stays
+///        above when it gives.
+std::vector<Grams> ReserveBelowHelpFund(const FoodConfig& config, const WorldState& world);
+
 /// @brief The ration positions whose FREE stock is nought while the sealed
 /// funds (seed, plan reserve, fodder — the distribution's own reserve) hold
 /// some: the position and the grams in the funds. The half of

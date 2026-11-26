@@ -50,6 +50,7 @@
 #include "family_meal.h"
 #include "family_members.h"
 #include "food_config.h"
+#include "help_fund.h"
 #include "household_plot.h"
 #include "housing.h"
 #include "housing_ladder.h"
@@ -571,6 +572,14 @@ class ResidentsSystem final : public IResidentsSystem {
     // given this hour is the rule of this day's ration.
     ConsumeRationOrders(current);
     ConsumeIssueNormOrders(food_, current);
+    // #2199 «фонд помощи» (help_fund.h): the share's order, the turn's top-up, and on a
+    // month's first hour - the closed month's table still standing - the short families fed
+    // from it.
+    ConsumeHelpFundOrders(food_, current);
+    TopUpHelpFund(food_, current);
+    if (current.calendar.day % kDaysPerMonth == 0 && HourFromTick(current.calendar.tick) == 0) {
+      IssueFromHelpFund(food_, ReserveBelowHelpFund(food_, current), current);
+    }
     // The night trades go out and come back in their own hours, not at the
     // day's turn (night_trade.h).
     RunNightOutings(config_.night_trade, food_, current);

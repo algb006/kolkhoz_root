@@ -230,9 +230,11 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // predicted 1456 -> 1508, a MISS: read off a probe, 1512 (the 52 bytes round to the struct's
 // 8-byte alignment); fields unchanged; the guard fired on the first build, as it should; the
 // codec writes the array by its size, so on the wire +52 a book.
-static_assert(sizeof(YearLedger) == 1512 + (48 * kAmountsSize) + kBuiltInRowsSize,
+// Save 236 (#2199): help_issued, one more amounts vector after the ration - 48 -> 49 amounts
+// and 171 -> 172 fields, predicted before the build; on the wire one amounts block a book.
+static_assert(sizeof(YearLedger) == 1512 + (49 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 171,
+static_assert(AggregateArity<YearLedger>() == 172,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -295,7 +297,8 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
 
   sink.WriteAmounts(DefKind::kResource, book.issued);
   sink.WriteAmounts(DefKind::kResource, book.ration);
-  sink.WriteAmounts(DefKind::kResource, book.advance);  // save 159 (#170)
+  sink.WriteAmounts(DefKind::kResource, book.help_issued);  // save 236 (#2199)
+  sink.WriteAmounts(DefKind::kResource, book.advance);      // save 159 (#170)
   sink.Out().WriteI64(book.advance_repaid);
   sink.Out().WriteI64(book.advance_written_off_ended);
   sink.Out().WriteI64(book.advance_written_off_turns);  // save 160
@@ -520,7 +523,8 @@ YearLedger ReadYearLedger(LoadSource& source) {
 
   book.issued = source.ReadAmounts(DefKind::kResource);
   book.ration = source.ReadAmounts(DefKind::kResource);
-  book.advance = source.ReadAmounts(DefKind::kResource);  // save 159 (#170)
+  book.help_issued = source.ReadAmounts(DefKind::kResource);  // save 236 (#2199)
+  book.advance = source.ReadAmounts(DefKind::kResource);      // save 159 (#170)
   book.advance_repaid = in.ReadI64();
   book.advance_written_off_ended = in.ReadI64();
   book.advance_written_off_turns = in.ReadI64();  // save 160
