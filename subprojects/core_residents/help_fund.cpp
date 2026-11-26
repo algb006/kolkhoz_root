@@ -83,11 +83,24 @@ void IssueFromHelpFund(const FoodConfig& config,
     if (!(family.month_need_kcal > 0.0F)) {
       continue;
     }
-    double gap_kcal =
-        (static_cast<double>(kHelpFundRules.line) * static_cast<double>(family.month_need_kcal)) -
-        static_cast<double>(family.month_eaten_kcal);
+    const double line_kcal =
+        static_cast<double>(kHelpFundRules.line) * static_cast<double>(family.month_need_kcal);
+    if (!(static_cast<double>(family.month_eaten_kcal) < line_kcal)) {
+      continue;  // the month closed at the line or above: no help
+    }
+    // THE PANTRY FORM (econ's yes after the month-after probe): the coming month's pantry
+    // topped to 0.9 of a month's need, COUNTING WHAT IT HOLDS. The first form gave last
+    // month's gap, and 40 % of the families were short again the month after - their own
+    // intake swings with the issue's periods, and a gap read backwards undershot (hf2199c).
+    double pantry_kcal = 0.0;
+    for (std::size_t food = 0; food < family.pantry.size() && food < config.resources.size();
+         ++food) {
+      pantry_kcal += static_cast<double>(family.pantry[food]) *
+                     static_cast<double>(config.resources[food].kcal_per_gram);
+    }
+    double gap_kcal = line_kcal - pantry_kcal;
     if (!(gap_kcal > 0.0)) {
-      continue;
+      continue;  // the pantry holds a month at the line already
     }
     for (const ResourceId food : config.help_fund_foods) {
       if (!(gap_kcal > 0.0) || food.value >= config.resources.size()) {

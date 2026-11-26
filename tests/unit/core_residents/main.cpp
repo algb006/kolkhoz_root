@@ -196,8 +196,10 @@ core::WorldState MakeExchangeWorld(float grain_kg,
 }
 
 /// #2199 «ФОНД ПОМОЩИ»: year 2 opens with 100 t of grain closed in the book - the 2 % fund
-/// holds 2 t; a family that ate 0.5 of its 33 000 kcal month is topped to 0.9 (13 200 kcal =
-/// 4 kg of grain at 3.3) on the month's first hour, booked «из фонда помощи»; a family at 0.95
+/// holds 2 t; a family that ate 0.5 of its 33 000 kcal month and holds 5 kg of grain (16 500
+/// kcal) gets its pantry topped to 0.9 of a month (29 700 kcal) - 13 200 kcal = 4 kg - on the
+/// month's first hour (DESIGN CHANGE, econ's pantry form: the pantry counted; the first form
+/// gave last month's gap and ignored the pantry), booked «из фонда помощи»; a family at 0.95
 /// gets nothing; the share's order to 0 empties the fund at once, and a share of 31 ‰ is
 /// refused.
 int CheckHelpFund() {
@@ -216,6 +218,7 @@ int CheckHelpFund() {
   core::FamilyRow short_yard;
   short_yard.month_need_kcal = 33'000.0F;
   short_yard.month_eaten_kcal = 16'500.0F;
+  short_yard.pantry = {5 * core::kGramsPerKilogram};  // 16 500 kcal held
   const core::FamilyId short_id = AppendRow(world.families, short_yard);
   world.families.rows[0].month_need_kcal = 33'000.0F;
   world.families.rows[0].month_eaten_kcal = 31'350.0F;  // 0.95: above the line
@@ -231,12 +234,13 @@ int CheckHelpFund() {
             << core::FreeFoodStock(
                    config, world, core::ReserveBelowHelpFund(config, world), core::ResourceId{0})
             << " g\n";
-  failures += Expect(fed.pantry.size() > 0 && fed.pantry[0] == four_kg &&
-                         world.ledger.current.help_issued.size() == 1 &&
-                         world.ledger.current.help_issued[0] == four_kg &&
-                         world.help_fund.held[0] == (2'000 * core::kGramsPerKilogram) - four_kg,
-                     "help fund: the family at 0.5 topped to 0.9 - 4 kg of grain, booked, off "
-                     "the fund");
+  failures +=
+      Expect(fed.pantry.size() > 0 && fed.pantry[0] == (5 * core::kGramsPerKilogram) + four_kg &&
+                 world.ledger.current.help_issued.size() == 1 &&
+                 world.ledger.current.help_issued[0] == four_kg &&
+                 world.help_fund.held[0] == (2'000 * core::kGramsPerKilogram) - four_kg,
+             "help fund: the family at 0.5 topped to 0.9 - 4 kg of grain, booked, off "
+             "the fund");
   failures += Expect(world.families.rows[0].pantry.empty() || world.families.rows[0].pantry[0] == 0,
                      "help fund: the family at 0.95 gets nothing");
   core::OrderRow zero;
