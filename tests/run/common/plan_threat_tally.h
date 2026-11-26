@@ -15,6 +15,7 @@
 #ifndef TESTS_RUN_COMMON_PLAN_THREAT_TALLY_H_
 #define TESTS_RUN_COMMON_PLAN_THREAT_TALLY_H_
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <optional>
@@ -67,6 +68,12 @@ class PlanThreatTally {
       }
       lit_[at].months[month] = 1;
       lit_[at].early = lit_[at].early || early;
+      // The deepest the forecast went this year, as a share of the due (#2190 (b)'s read).
+      const core::Grams due = at < world.plan.due.size() ? world.plan.due[at] : 0;
+      if (due > 0 && early) {
+        lit_[at].worst_share = std::max(
+            lit_[at].worst_share, static_cast<double>(alarm.amount) / static_cast<double>(due));
+      }
     }
     if (day % core::kDaysPerYear == core::kDaysPerYear - 1U) {
       under_pressure_ = world.chairman.year_under_pressure;
@@ -86,6 +93,7 @@ class PlanThreatTally {
   struct Lit {
     std::array<std::uint8_t, core::kMonthsPerYear> months{};
     bool early = false;
+    double worst_share = 0.0;  ///< the deepest early shortfall over the due
   };
 
   void CloseYear(const core::WorldState& world, std::uint32_t year) {
@@ -94,6 +102,7 @@ class PlanThreatTally {
     std::array<std::uint8_t, core::kMonthsPerYear> on_missed{};
     std::uint32_t missed = 0;
     std::uint32_t missed_early = 0;
+    std::ostringstream depths;  // each early-lit position: its outcome and deepest share
     for (std::size_t at = 0; at < book.plan_due.size(); ++at) {
       const core::Grams due = book.plan_due[at];
       const core::Grams delivered = at < book.plan_delivered.size() ? book.plan_delivered[at] : 0;
@@ -106,6 +115,9 @@ class PlanThreatTally {
       }
       missed += miss ? 1U : 0U;
       missed_early += miss && lit.early ? 1U : 0U;
+      if (lit.early) {
+        depths << ' ' << (miss ? "miss:" : "met:") << lit.worst_share;
+      }
     }
     std::uint32_t lit_months = 0;
     std::uint32_t lit_on_missed = 0;
@@ -119,7 +131,8 @@ class PlanThreatTally {
          << " lit_months " << lit_months << " of " << core::kMonthsPerYear
          << " lit_months_on_a_missed_position " << lit_on_missed << " positions_missed " << missed
          << " missed_lit_early " << missed_early << " under_pressure "
-         << static_cast<int>(under_pressure_);
+         << static_cast<int>(under_pressure_) << " early_depths(outcome:worst_short_over_due)"
+         << (depths.str().empty() ? std::string(" none") : depths.str());
     lines_.push_back(line.str());
     lit_.clear();
     under_pressure_ = 0;
