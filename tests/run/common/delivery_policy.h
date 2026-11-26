@@ -125,7 +125,7 @@ class DeliveryPolicy {
       if (!YieldedByACrop(index) || (!Unasked(world, index) && !take_over)) {
         continue;
       }
-      if (!HarvestIn(world, index)) {
+      if (!HarvestIn(world, index) && GrowsThisYear(world, index)) {
         ++held_days_;
         continue;
       }
@@ -157,7 +157,8 @@ class DeliveryPolicy {
     std::cout << run
               << ": FIXTURE DIFFERS FROM 0.37.257 - the run's chairman ORDERS THE PLAN'S "
                  "DELIVERY of each position some crop yields, owed beyond what is asked, once "
-                 "that crop's harvest of the year is in (stage В5; econ's 1.1; milk keeps its "
+                 "that crop's harvest of the year is in, or AT ONCE from the stock when no field "
+                 "grows the crop this year (#2188) (stage В5; econ's 1.1; milk keeps its "
                  "own cart), "
               << ModeWords(kRunDeliveryMode) << '\n';
   }
@@ -240,6 +241,39 @@ class DeliveryPolicy {
   }
 
   /// econ's 1.1: this year's harvest of the resource is in the stores.
+  /// A POSITION NO FIELD GROWS THIS YEAR IS ORDERED FROM THE STOCK AT ONCE (#2188; econ,
+  /// accepted by boss, 26 November 2026 - replaces rule 1.1 for such positions): «its harvest
+  /// is in» never comes for a crop with no field this year, so until then the position waited
+  /// in the church for the turn - year 1 reaps no rye, and its plan's 1.6 t stood there while
+  /// 2.2 t (median of 64 villages) were stolen around it. The order asks what is owed; the
+  /// core's DeliverableForPlan holds the seed fund, so the stock never goes below the seed.
+  /// True when some field of this crop is sown, growing, at harvest or lies reaped this year,
+  /// or the year's harvest of it is already counted.
+  bool GrowsThisYear(const core::WorldState& world, std::size_t index) const {
+    if (index < world.ledger.current.harvest.size() && world.ledger.current.harvest[index] > 0) {
+      return true;
+    }
+    for (const core::FieldRow& field : world.fields.rows) {
+      const CropRule* const rule = RuleOf(field.crop);
+      if (rule == nullptr || rule->resource != index) {
+        continue;
+      }
+      // A field being ploughed or harrowed for the crop will be sown: it counts as growing.
+      const bool this_years = field.phase == core::FieldPhase::kPlowing ||
+                              field.phase == core::FieldPhase::kHarrowing ||
+                              field.phase == core::FieldPhase::kSowing ||
+                              field.phase == core::FieldPhase::kGrowing ||
+                              field.phase == core::FieldPhase::kHarvest || field.reaped_grams > 0;
+      const bool next_years =
+          rule->winter && field.sown_day != core::kNeverSownDay &&
+          field.sown_day / core::kDaysPerYear == world.calendar.day / core::kDaysPerYear;
+      if (this_years && !next_years) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   bool HarvestIn(const core::WorldState& world, std::size_t index) const {
     if (index >= world.ledger.current.harvest.size() || world.ledger.current.harvest[index] <= 0) {
       return false;  // nothing of it harvested yet this year
