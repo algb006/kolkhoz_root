@@ -2299,7 +2299,10 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // And econ [8]'s five fields, +12 - predicted 1565 -> 1577, held; the hash read off au6u.
     // And econ [9]'s year_under_pressure, +1 - predicted 1577 -> 1578, held; the hash read off
     // au7u.
-    {"world", 1578, 0x1ab2a8d1854672d5ULL},
+    // Save 234 (#2191): detective and discipline (+8) and the thief catch with one sack and one
+    // talked man (+77: 4 + 26 + 26 + 4 + 1 + 4 + 4 + 8) - 1578 -> 1663, as counted; the hash
+    // read off cu2191b.
+    {"world", 1663, 0xcff8410c9a8393e8ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2608,7 +2611,8 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // build, held, every other section unmoved; the hash read off u1818b.
     // Save 225: same length, new hash - the fixture's «last order kind» is now
     // kSetDistrictTable; the hash read off utbl.
-    {"orders", 842, 0x218da82a9f7514ebULL},
+    // Save 234 (#2191): same length, new hash - the «last order kind» is now kJudgeThief.
+    {"orders", 842, 0x1a735d8baeb9c8bdULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
