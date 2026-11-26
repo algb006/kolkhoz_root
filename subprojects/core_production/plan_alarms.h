@@ -40,7 +40,9 @@ namespace core {
 /// first season is read by the year its first slot is grown in. From the
 /// eleventh month's last day (one district collection before the deadline's,
 /// stage В5) to the year's last day, also kPlanPositionShort for every position that
-/// delivered plus takeable (TakeableGrams) will not bring to the met share.
+/// delivered plus takeable (TakeableGrams) will not bring to the met share. From the
+/// plan's announcement, kPlanPositionThreatened for every position PlanPositionThreat
+/// reads threatened (#2190).
 /// @param alarms Appended to; never cleared.
 void CollectPlanAlarms(const ProductionConfig& config,
                        const WorldState& world,
@@ -128,6 +130,28 @@ ResourceAmounts TurnPlanSealOf(const ProductionConfig& config, const WorldState&
 /// below nought — the plan and the seed are not paid by the same grain.
 /// Dense by ResourceId.
 ResourceAmounts HarvestToComeThisYearOf(const ProductionConfig& config, const WorldState& world);
+
+/// What PlanPositionThreat reads of one position.
+struct PlanThreat {
+  bool threatened = false;
+  Grams short_grams = 0;  ///< due less what the forecast ships at the turn, ≥ 1 when threatened
+  Grams loss_grams = 0;   ///< the theft and rot to the turn the forecast took off
+};
+
+/// @brief #2190 «ПЛАН ПОД УГРОЗОЙ: ХИЩЕНИЯ И ПОРЧА» (econ's theft-grain-store-consolidated §7,
+///        his five yeses, boss's word): is position `index` (milk aside: its cart ships it
+///        daily) short at the turn by the forecast - delivered plus the least of owed and
+///        [the stores above the seed (DeliverableFromStores, as of today) + this year's harvest
+///        still to come at its expected yield (`to_come`, HarvestToComeThisYearOf) - the theft
+///        and rot to the turn at this year's pace (ledger stolen + spoiled of it over the days
+///        settled, times the days left; 0 in the year's first month; capped at the stock)]
+///        below the met share (PositionDelivered)? ONE RULE, TWO READERS: the lamp
+///        (kPlanPositionThreatened) and the year's pressure (MarkPlanPressure, #2164).
+/// @param to_come HarvestToComeThisYearOf(config, world), read once by the caller.
+PlanThreat PlanPositionThreat(const ProductionConfig& config,
+                              const WorldState& world,
+                              std::uint32_t index,
+                              const ResourceAmounts& to_come);
 
 /// @brief The harvest standing in the fields now, and the heaps lying at
 /// them, by produce (IProductionSystem::StandingHarvest; #1046 (b), econ

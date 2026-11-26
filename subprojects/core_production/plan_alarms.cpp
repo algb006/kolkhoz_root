@@ -803,6 +803,77 @@ ResourceAmounts HarvestToComeThisYearOf(const ProductionConfig& config, const Wo
   return to_come;
 }
 
+PlanThreat PlanPositionThreat(const ProductionConfig& config,
+                              const WorldState& world,
+                              std::uint32_t index,
+                              const ResourceAmounts& to_come) {
+  PlanThreat threat;
+  if (world.plan.announced == 0 || index >= world.plan.due.size() ||
+      index == config.milk_resource.value) {
+    return threat;
+  }
+  const Grams due = world.plan.due[index];
+  const Grams delivered = index < world.plan.delivered.size() ? world.plan.delivered[index] : 0;
+  if (due <= 0 || PositionDelivered(config, due, delivered)) {
+    return threat;
+  }
+  const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+  // The stores above the seed, and the harvest still to come at its expected yield (its heaps
+  // included - so the stores' door, not DeliverableAboveSeed's, which counts the heaps too).
+  const Grams stock = DeliverableFromStores(config, world, resource, world.calendar.day);
+  const Grams coming = index < to_come.size() ? to_come[index] : 0;
+  // THE LOSS TO THE TURN at the year's own pace: what was stolen and what rotted of it this
+  // year so far, per day settled, over the days left - none before a month is settled (the
+  // first month's rate 0, econ). Capped at the stock: the loss cannot take what is not there.
+  const auto day_of_year = static_cast<Grams>(world.calendar.day % kDaysPerYear);
+  const auto days_left = static_cast<Grams>(kDaysPerYear) - day_of_year;
+  const auto at = [index](const ResourceAmounts& amounts) {
+    return index < amounts.size() ? amounts[index] : 0;
+  };
+  const Grams lost_so_far = at(world.ledger.current.stolen) + at(world.ledger.current.spoiled);
+  Grams loss = 0;
+  if (day_of_year >= static_cast<Grams>(kDaysPerMonth)) {
+    loss = std::min(stock, lost_so_far * days_left / day_of_year);
+  }
+  const Grams owed = due - delivered;
+  const Grams cover = stock + coming - loss;
+  const Grams shipped = delivered + std::clamp<Grams>(cover, 0, owed);
+  if (PositionDelivered(config, due, shipped)) {
+    return threat;
+  }
+  threat.threatened = true;
+  threat.short_grams = std::max<Grams>(due - shipped, 1);
+  threat.loss_grams = loss;
+  return threat;
+}
+
+namespace {
+
+/// kPlanPositionThreatened (#2190): every position PlanPositionThreat reads threatened.
+void CollectPlanThreatAlarms(const ProductionConfig& config,
+                             const WorldState& world,
+                             std::vector<Alarm>& alarms) {
+  if (world.plan.announced == 0) {
+    return;
+  }
+  const ResourceAmounts to_come = HarvestToComeThisYearOf(config, world);
+  for (std::uint32_t index = 0; index < world.plan.due.size(); ++index) {
+    const PlanThreat threat = PlanPositionThreat(config, world, index, to_come);
+    if (!threat.threatened) {
+      continue;
+    }
+    Alarm alarm;
+    alarm.kind = AlarmKind::kPlanPositionThreatened;
+    alarm.resource = DefIdFromIndex<ResourceIdTag>(index);
+    alarm.amount = threat.short_grams;
+    alarm.short_grams = threat.loss_grams;
+    alarm.days_to_loss = DaysToLossOf(DaysToPlanTurn(world));
+    alarms.push_back(alarm);
+  }
+}
+
+}  // namespace
+
 void CollectPlanAlarms(const ProductionConfig& config,
                        const WorldState& world,
                        std::vector<Alarm>& alarms) {
@@ -830,6 +901,7 @@ void CollectPlanAlarms(const ProductionConfig& config,
     }
   }
   CollectPlanShortAlarms(config, world, alarms);
+  CollectPlanThreatAlarms(config, world, alarms);
 }
 
 }  // namespace core

@@ -17732,6 +17732,56 @@ int CheckAWinterCropTheChainCannotSow() {
   return failures;
 }
 
+/// «ПЛАН ПОД УГРОЗОЙ: ХИЩЕНИЯ И ПОРЧА» (#2190): 10 t of rye above the seed, 8 t owed, half the
+/// year gone (doy 24) and 2.4 t stolen and rotted so far - at that pace 2.4 t more go by the
+/// turn: 7.6 t ship of 8, lit with 0.4 t short and the 2.4 t named. A loss of 1 t so far
+/// (1 t more to come) leaves 9 t: dark. And in the year's first month the pace is not read.
+int CheckThePlanThreatCountsTheftAndRot() {
+  int failures = 0;
+  constexpr core::Grams kKg = 1'000;
+  core::ProductionConfig config;
+  config.unit_types.resize(1);
+  config.unit_types[0].level_storage_capacity_kg = {1'000'000.0F};
+  core::WorldState world;
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{0};
+  barn.level = 1;
+  barn.stock = {10'000 * kKg};
+  core::AppendRow(world.units, barn);
+  world.plan.announced = 1;
+  world.plan.due = {8'000 * kKg};
+  world.plan.delivered = {0};
+  world.ledger.current.stolen = {1'400 * kKg};
+  world.ledger.current.spoiled = {1'000 * kKg};
+  world.calendar.day = core::kDaysPerYear / 2;  // doy 24, 24 days left
+  const auto threat_of = [&config, &world] {
+    std::vector<core::Alarm> alarms;
+    core::CollectPlanAlarms(config, world, alarms);
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kPlanPositionThreatened) {
+        return alarm;
+      }
+    }
+    return core::Alarm{};
+  };
+  const core::Alarm lit = threat_of();
+  failures += Expect(lit.kind == core::AlarmKind::kPlanPositionThreatened &&
+                         lit.amount == 400 * kKg && lit.short_grams == 2'400 * kKg,
+                     "plan threat: 10 t less 2.4 t of theft and rot to the turn ship 7.6 t of "
+                     "8 - lit 0.4 t short, the 2.4 t named");
+  failures += Expect(core::PlanPositionThreat(config, world, 0, {}).threatened,
+                     "plan threat: the pressure's reader (MarkPlanPressure) reads the same rule");
+  world.ledger.current.stolen = {600 * kKg};
+  world.ledger.current.spoiled = {400 * kKg};
+  failures += Expect(threat_of().kind == core::AlarmKind::kNone,
+                     "plan threat: 1 t lost so far, 1 t to come - 9 t cover 8: dark");
+  world.ledger.current.stolen = {9'000 * kKg};
+  world.calendar.day = 2;
+  failures += Expect(threat_of().kind == core::AlarmKind::kNone,
+                     "plan threat: in the year's first month the pace is not read - dark");
+  return failures;
+}
+
 /// THE DRAW TO THE TURN (boss, the lamp thread [4]; econ's (e2′), [13]):
 /// 1935 y2's potato of host's x3.57 arm in small - 122.8 t in the barn on the
 /// last collection's morning (doy 43), 118.5 t owed, the month's three
@@ -18788,6 +18838,7 @@ int main() {
   failures += CheckThePlanShortCountsTheMilkCartsComingDays();
   failures += CheckThePlanShortLightsOnceTheHarvestIsIn();
   failures += CheckThePlanShortCountsTheDrawToTheTurn();
+  failures += CheckThePlanThreatCountsTheftAndRot();
   failures += CheckAnUnsownFieldLetsItsCropGoAtTheTurn();
   failures += CheckTheReapingGate();
   failures += CheckFelling();

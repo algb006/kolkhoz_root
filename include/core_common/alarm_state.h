@@ -810,6 +810,18 @@ enum class AlarmKind : std::uint8_t {
   /// FloodDeadlineOf already puts first). Collected by core_production.
   kFloodplainFodderAhead,
 
+  /// «ПЛАН ПОД УГРОЗОЙ: ХИЩЕНИЯ И ПОРЧА» (#2190; econ's theft-grain-store-consolidated §7 and
+  /// his five yeses, boss's word; alarms.csv `plan_position_threatened`, boss's row). A
+  /// FORECAST, yellow until the red window: from the plan's announcement to the turn, a
+  /// position (milk aside) the turn will not bring to the met share once the stores above the
+  /// seed, the harvest still to come at its expected yield, and the theft and rot to the turn
+  /// at this year's pace are counted (plan_alarms.h, PlanPositionThreat). The early sibling of
+  /// kPlanPositionShort, which lights only in the last collections: this one makes a drain
+  /// foreseeable a month and more ahead. Subject: `resource`; `amount` GRAMS short at the
+  /// turn; `short_grams` the theft and rot to the turn the forecast took off («хищения и
+  /// порча» in tonnes); `days_to_loss` the days to the turn. Collected by core_production.
+  kPlanPositionThreatened,
+
   // Appended by later tasks and phases: children out of school, sewage.
   // Named so the numbering is planned, not discovered.
 
@@ -1237,6 +1249,7 @@ struct Alarm {
   /// EXPECTED DRAW TO THE TURN the forecast took off, grams - the last
   /// month's draw over the days left (PlanState::draw_last_month), printed
   /// beside `amount`, the whole shortfall it is part of.
+  /// kPlanPositionThreatened (#2190): the theft and rot to the turn, grams.
   /// 0 for every other kind.
   /// @note Not in the save, as `lamp`.
   std::int64_t short_grams = 0;

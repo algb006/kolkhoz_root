@@ -25,6 +25,7 @@
 #include "district_visit.h"
 #include "herd_system.h"
 #include "milk_cart.h"
+#include "plan_alarms.h"
 #include "plan_due.h"
 #include "seed_room.h"
 #include "stock_ops.h"
@@ -925,26 +926,18 @@ float WorkedArableHa(const WorldState& current, SimDay year_start) {
 /// it must not accumulate a record of triumphs it was never asked for.
 /// The verdict is simply not taken there, which is what kNone is for.
 void MarkPlanPressure(const ProductionConfig& config, WorldState& current) {
-  // THE REAL THREAT (econ [10]; PRESS2164 pr10: 5.3 % of canon years): near the turn a position
-  // owed MORE than lies stored. The milk is carted daily and never lies for the turn - with it
-  // in, 99.7 %. The «план под угрозой» lamp's stand-in until #2190.
-  // NOT ON THE TURN'S OWN DAY (0): there the next year's plan is already handed down, nothing of
-  // it sent yet, the harvest not in - au11 marked 47 % of years so (the base rate was 7.6 %).
-  const std::uint32_t days = DaysToPlanTurn(current);
-  if (current.plan.announced == 0 || days == 0 || days > kAuthorityRules.deadline_days) {
+  // THE «ПЛАН ПОД УГРОЗОЙ» LAMP ITSELF (#2190; econ's (3)): a year is under pressure once the
+  // lamp is lit with a game month or more to the turn - early enough to act on. The stand-in it
+  // replaces (a position owed more than lay stored, in the last deadline_days) lit 1-4 days
+  // before the turn, too late to recover, and plan_met_fairly never fired (0 of 1 024).
+  // The same rule as the lamp (PlanPositionThreat), so the two cannot disagree.
+  if (current.plan.announced == 0 || current.chairman.year_under_pressure != 0 ||
+      DaysToPlanTurn(current) < kDaysPerMonth) {
     return;
   }
-  for (std::size_t at = 0; at < current.plan.due.size(); ++at) {
-    if (at == config.milk_resource.value) {
-      continue;
-    }
-    const Grams sent = at < current.plan.delivered.size() ? current.plan.delivered[at] : 0;
-    const Grams owed = current.plan.due[at] > sent ? current.plan.due[at] - sent : 0;
-    Grams lying = 0;
-    for (const UnitRow& unit : current.units.rows) {
-      lying += at < unit.stock.size() ? unit.stock[at] : 0;
-    }
-    if (owed > lying) {
+  const ResourceAmounts to_come = HarvestToComeThisYearOf(config, current);
+  for (std::uint32_t at = 0; at < current.plan.due.size(); ++at) {
+    if (PlanPositionThreat(config, current, at, to_come).threatened) {
       current.chairman.year_under_pressure = 1;
       return;
     }
