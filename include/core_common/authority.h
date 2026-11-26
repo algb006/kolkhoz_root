@@ -78,9 +78,10 @@ enum class UnderstoodReason : std::uint8_t {
 struct AuthorityRules {
   /// Each deed's move, points of A (index: AuthorityDeed).
   std::array<float, kAuthorityDeedCountValue> deed_delta = {
-      -4.0F, -2.0F, -2.0F, 4.0F, -4.0F, 2.0F, -2.0F, -3.0F, 2.0F, 2.0F};
-  // (first_social +3 a kind is econ's FALLBACK only if #2190's forecast lamp is cut from the
-  // first build: au13 measured it - student y15 33.5; au12 at +2 is this release's measurement.)
+      -4.0F, -2.0F, -2.0F, 4.0F, -4.0F, 2.0F, -2.0F, -3.0F, 2.0F, 3.0F};
+  // first_social +3 a kind (econ, after #2190: the student's y15 33.3 < 35 with every designed
+  // door live - the prepared lever taken as its own pair). Was +2; au13 measured +3 on the tree
+  // before the lamp at student y15 33.5 (au12 at +2: 32).
   float catch_up_below = 30.0F;
   float catch_up_factor = 1.5F;
   /// The understanding budget's edges: 0 below the first, 1 to the second, 2 from it.
