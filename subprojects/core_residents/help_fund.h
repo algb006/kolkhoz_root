@@ -27,7 +27,8 @@ void TopUpHelpFund(const FoodConfig& config, WorldState& current);
 
 /// @brief On a month's first day at hour 0 (the closed month's table still stands): every
 ///        family whose month_eaten_kcal fell below kHelpFundRules.line of its month_need_kcal
-///        gets the gap to the line from the fund, food by food in config.help_fund_foods'
+///        gets its pantry topped to the line of a month's need, counting the kcal it holds
+///        (econ's pantry form), from the fund, food by food in config.help_fund_foods'
 ///        order, at each food's kcal_per_gram, as far as the fund holds and the stores still
 ///        have it; in id order. Books help_issued, raises kHelpFundIssued, and kHelpFundEmpty
 ///        once when it ran dry with a family still short.
