@@ -355,6 +355,7 @@ class BuildingChairman {
   void WatchStep(const core::WorldState& world) {
     distiller.WatchStep(world);
     district_table.WatchStep(world);  // TABLE1953: each kDistrictTable as the step raises it
+    rye_probe.CountStep(world);       // RYE2157S (#2188 probe): church rye stolen, refusals
     road_holds.CountStep(world);      // HOLD2129: the day's carts, every plan of it
     data_pack.CountStep(world);       // DATAPACK2157 (probe): thefts, pantries, the book
     church_haul.CountStep(world);     // HAUL2157 (probe): the plan's carts by load kind
