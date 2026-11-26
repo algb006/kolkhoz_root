@@ -36,6 +36,10 @@ class HelpFundProbe {
           foods_.push_back(row);
         }
       }
+      const std::uint32_t key = resources->FindColumn("key");
+      for (std::uint32_t row = 0; row < resources->RowCount(); ++row) {
+        keys_.emplace_back(key != core::kNoTableColumn ? resources->CellText(row, key) : "?");
+      }
     }
   }
 
@@ -97,6 +101,13 @@ class HelpFundProbe {
             all += static_cast<double>(grams);
           }
           split_other_g_ += all - named;
+          // #2199b: every pantry row of them by resource, to name the «other».
+          if (pantry_by_row_.size() < family.pantry.size()) {
+            pantry_by_row_.resize(family.pantry.size(), 0.0);
+          }
+          for (std::size_t index = 0; index < family.pantry.size(); ++index) {
+            pantry_by_row_[index] += static_cast<double>(family.pantry[index]);
+          }
         }
       }
       if (eaten < kLine) {
@@ -160,7 +171,14 @@ class HelpFundProbe {
     for (const double grams : split_g_) {
       line << ' ' << grams / 1000.0;
     }
-    line << ' ' << split_other_g_ / 1000.0;
+    line << ' ' << split_other_g_ / 1000.0 << " pantry_by_resource_kg";
+    for (std::size_t index = 0; index < pantry_by_row_.size(); ++index) {
+      if (pantry_by_row_[index] > 0.0) {
+        line << ' ' << (index < keys_.size() ? keys_[index] : "?") << '='
+             << pantry_by_row_[index] / 1000.0;
+      }
+    }
+    pantry_by_row_.clear();
     split_g_ = {};
     split_other_g_ = 0.0;
     followed_ = 0;
@@ -193,6 +211,8 @@ class HelpFundProbe {
   std::uint32_t pantry_left_with_short_ = 0;
   std::array<double, 5> split_g_{};
   double split_other_g_ = 0.0;
+  std::vector<double> pantry_by_row_;
+  std::vector<std::string> keys_;
   std::uint32_t ration_months_ = 0;
   double ration_eaten_ = 0.0;
   std::vector<std::string> lines_;
