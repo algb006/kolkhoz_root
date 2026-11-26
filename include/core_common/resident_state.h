@@ -350,6 +350,19 @@ struct ResidentRow {
   /// everybody else. Save 122.
   std::uint32_t samogon_ml = 0;
 
+  /// THE STILL'S RAW STOCK, grams (#2189; econ's theft-grain-store-consolidated §1, accepted by
+  /// boss): the sacks link 2's night thieves bring him - grain of every kind in one number,
+  /// potato in the other. He brews out of it first on his night (StealRawMaterial) and carries
+  /// off the stores only the shortfall and the sugar. Capped at `stock_months_of_demand` months
+  /// of his buyers' asking (RawStockFull): full, he takes no sack that month. 0 for everybody
+  /// else. Save 233.
+  std::uint32_t still_raw_grain_g = 0;
+  std::uint32_t still_raw_potato_g = 0;
+
+  /// The month (SupplyMonthTag) in which he brought a distiller a sack (#2189): his asking of
+  /// that month is paid in samogon - free at the month's turn (BuySamogon). 0 never. Save 233.
+  std::uint32_t sack_month = 0;
+
   /// Days of the current calendar month on which he went out to work (hours
   /// away above zero) — counted by the labor day close, read and cleared at
   /// the month's turn by

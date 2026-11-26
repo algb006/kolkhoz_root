@@ -17,6 +17,13 @@
 ///     open (StoreLeakClosed false: no sober night watchman, or a drinking
 ///     storekeeper) takes food_theft_kg_per_thief_month, capped per store a
 ///     month at its recorded stock x food_theft_store_cap_share_month;
+///     SINCE #2189 (save 233) FOR THE STILL, NOT HIS TABLE: the sack goes into
+///     the raw stock of the distiller nearest his yard (NearestDistiller), the
+///     night's sacks of a still at most food_theft_still_raw_kg_month and none
+///     to a still whose raw is full (RawStockFull); a thief with no distiller in
+///     reach steals nothing; the thieves go in a rotating order, the month
+///     picking the first; a sack-bringer's asking of the month is paid in
+///     samogon (ResidentRow::sack_month, BuySamogon);
 ///   * 2b collusion - a storekeeper of alcoholism > collusion_keeper_alcoholism
 ///     lets out collusion_share_month of his store a month (the church has no
 ///     storekeeper, so none there). STUB: the spec's «or inclination >= 50» is
@@ -103,6 +110,11 @@ struct FoodTheftConfig {
   /// #1943 R1″ (`audit_clean_needs_two`; default off): R1 counts only from the second clean
   /// audit in a row (AuditState::clean_in_a_row).
   bool clean_needs_two = false;
+  /// #2189 THE STILLS' DEMAND CAPS THE NIGHT THEFT (`food_theft_still_raw_kg_month`; econ's
+  /// theft-grain-store-consolidated §1, STUB 40): a moonlit night's 2a sacks go to the
+  /// distillers as raw, each still taking at most this many kg a month - and none when his
+  /// raw stock is full (RawStockFull) or no distiller is in a thief's reach.
+  float still_raw_kg_month = 40.0F;
   /// ROUND 2 (econ's crime-separation-2-2026-11-07.md, boss 7 Nov; crime.md
   /// §1 p. 6). Each default is round 1's rule; the tables' rows turn it on.
   /// R1: the act's campaign year, 0-based (`audit_book_opens_year`, human

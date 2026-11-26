@@ -395,6 +395,27 @@ double DistillerDemandMl(const NightTradeConfig& config,
   return asked;
 }
 
+bool RawStockFull(const NightTradeConfig& config,
+                  const WorldState& current,
+                  std::uint32_t distiller_row) {
+  if (distiller_row >= current.residents.rows.size()) {
+    return true;
+  }
+  constexpr double kMillilitresPerLitre = 1000.0;
+  const ResidentRow& distiller = current.residents.rows[distiller_row];
+  const double grain_g = static_cast<double>(GramsFromKilograms(config.grain_kg_per_litre));
+  const double potato_g = static_cast<double>(GramsFromKilograms(config.potato_kg_per_litre));
+  double raw_ml = 0.0;
+  if (grain_g > 0.0) {
+    raw_ml += static_cast<double>(distiller.still_raw_grain_g) / grain_g * kMillilitresPerLitre;
+  }
+  if (potato_g > 0.0) {
+    raw_ml += static_cast<double>(distiller.still_raw_potato_g) / potato_g * kMillilitresPerLitre;
+  }
+  return raw_ml >= static_cast<double>(config.stock_months_of_demand) *
+                       DistillerDemandMl(config, current, distiller_row);
+}
+
 std::uint32_t NearestDistiller(const NightTradeConfig& config,
                                const WorldState& current,
                                Vec2 yard,
@@ -628,10 +649,14 @@ struct StillLoad {
   double heavier_ml_g = 0.0;  ///< Grams a millilitre of the heavier mash.
 };
 
+/// `carry_g` is the carrying the load must fit in, grams; `base_carried` false (#2189) for the
+/// still's own raw stock - he carries only its sugar, so only the sugar weighs.
 StillLoad LoadByRecipe(const NightTradeConfig& config,
                        double sugar_open,
                        double grain_open,
-                       double potato_open) {
+                       double potato_open,
+                       double carry_g,
+                       bool base_carried) {
   const auto per_litre = [](float kilograms) {
     return static_cast<double>(GramsFromKilograms(kilograms));
   };
@@ -639,20 +664,20 @@ StillLoad LoadByRecipe(const NightTradeConfig& config,
   load.sugar_g = per_litre(config.sugar_kg_per_litre);
   const double grain_g = per_litre(config.grain_kg_per_litre);
   const double potato_g = per_litre(config.potato_kg_per_litre);
-  load.weight_left = static_cast<double>(GramsFromKilograms(config.distiller_raw_kg));
+  load.weight_left = std::max(carry_g, 0.0);
   load.heavier_ml_g = (load.sugar_g + std::max(grain_g, potato_g)) / kMillilitresPerLitre;
   double sugar_left = sugar_open;
   const auto litres_of = [&](double base_open, double base_g) {
     if (!(load.sugar_g > 0.0) || !(base_g > 0.0)) {
       return 0.0;
     }
-    const double litres = std::min({sugar_left / load.sugar_g,
-                                    base_open / base_g,
-                                    load.weight_left / (load.sugar_g + base_g)});
+    const double weighs = load.sugar_g + (base_carried ? base_g : 0.0);
+    const double litres =
+        std::min({sugar_left / load.sugar_g, base_open / base_g, load.weight_left / weighs});
     const double whole =
         std::floor(std::max(litres, 0.0) * kMillilitresPerLitre) / kMillilitresPerLitre;
     sugar_left -= whole * load.sugar_g;
-    load.weight_left -= whole * (load.sugar_g + base_g);
+    load.weight_left -= whole * weighs;
     return whole;
   };
   load.grain_litres = litres_of(grain_open, grain_g);
@@ -694,15 +719,25 @@ Grams OpenToHim(const NightTradeConfig& config,
   return std::min(open, AboveFunds(sealed, current, raw));
 }
 
-/// The load a distiller could carry tonight from what is open to him: the
-/// sugar, the grain of every kind, the potato (OpenToHim), by the recipe.
-StillLoad OpenLoad(const NightTradeConfig& config,
-                   std::span<const Grams> sealed,
-                   const WorldState& current) {
+/// The sugar open to him tonight, grams (0 with no sugar in the roster or the recipe).
+double SugarOpen(const NightTradeConfig& config,
+                 std::span<const Grams> sealed,
+                 const WorldState& current) {
   const bool sugar_known =
       config.sugar.value != kInvalidDefIdValue && config.sugar_kg_per_litre > 0.0F;
-  const double sugar_open =
-      sugar_known ? static_cast<double>(OpenToHim(config, sealed, current, config.sugar)) : 0.0;
+  return sugar_known ? static_cast<double>(OpenToHim(config, sealed, current, config.sugar)) : 0.0;
+}
+
+/// The load a distiller could carry tonight from what is open to him: the
+/// sugar, the grain of every kind, the potato (OpenToHim), by the recipe.
+/// `sugar_spoken_g` of the open sugar is already his own raw's (#2189), and
+/// the load fits in `carry_g`.
+StillLoad OpenLoad(const NightTradeConfig& config,
+                   std::span<const Grams> sealed,
+                   const WorldState& current,
+                   double sugar_spoken_g,
+                   double carry_g) {
+  const double sugar_open = std::max(SugarOpen(config, sealed, current) - sugar_spoken_g, 0.0);
   double grain_open = 0.0;
   for (const ResourceId raw : config.raw_material) {
     if (raw.value != config.sugar.value && raw.value != config.potato.value) {
@@ -713,7 +748,12 @@ StillLoad OpenLoad(const NightTradeConfig& config,
       config.potato.value != kInvalidDefIdValue
           ? static_cast<double>(OpenToHim(config, sealed, current, config.potato))
           : 0.0;
-  return LoadByRecipe(config, sugar_open, grain_open, potato_open);
+  return LoadByRecipe(config, sugar_open, grain_open, potato_open, carry_g, true);
+}
+
+/// The night's whole carrying, grams (`distiller_raw_kg`).
+double FullCarry(const NightTradeConfig& config) {
+  return static_cast<double>(GramsFromKilograms(config.distiller_raw_kg));
 }
 
 /// Carries up to `wanted` of `raw` off those stores, in row order, and books
@@ -786,13 +826,34 @@ Grams StealRawMaterial(const NightTradeConfig& config,
               DistillerDemandMl(config, current, distiller_row)) {
     return 0;
   }
-  const StillLoad load = OpenLoad(config, sealed, current);
+  // HIS OWN RAW FIRST (#2189): the night thieves' sacks lie at his yard, so of them he carries
+  // only the sugar - and the stores give the rest of the night's load. With no sugar open the
+  // raw waits; the cap on it is the thieves' (RawStockFull).
+  const bool has_row = distiller_row < current.residents.rows.size();
+  const double own_grain =
+      has_row ? static_cast<double>(current.residents.rows[distiller_row].still_raw_grain_g) : 0.0;
+  const double own_potato =
+      has_row ? static_cast<double>(current.residents.rows[distiller_row].still_raw_potato_g) : 0.0;
+  const StillLoad mine = LoadByRecipe(
+      config, SugarOpen(config, sealed, current), own_grain, own_potato, FullCarry(config), false);
+  const double own_litres = mine.grain_litres + mine.potato_litres;
+  const StillLoad load =
+      OpenLoad(config, sealed, current, own_litres * mine.sugar_g, mine.weight_left);
   const double sugar_g = load.sugar_g;
   const double grain_g = static_cast<double>(GramsFromKilograms(config.grain_kg_per_litre));
   const double potato_g = static_cast<double>(GramsFromKilograms(config.potato_kg_per_litre));
   const double grain_litres = load.grain_litres;
   const double potato_litres = load.potato_litres;
-  const double litres = grain_litres + potato_litres;
+  const double litres = grain_litres + potato_litres + own_litres;
+  if (has_row && own_litres > 0.0) {
+    ResidentRow& distiller = current.residents.rows[distiller_row];
+    const auto used = [](std::uint32_t& stock, double grams) {
+      const double take = std::clamp(std::round(grams), 0.0, static_cast<double>(stock));
+      stock -= static_cast<std::uint32_t>(take);
+    };
+    used(distiller.still_raw_grain_g, mine.grain_litres * grain_g);
+    used(distiller.still_raw_potato_g, mine.potato_litres * potato_g);
+  }
   Grams taken = 0;
   UnitId first_sugar_store;
   const Grams sugar_taken = CarryOff(config,
@@ -996,7 +1057,7 @@ bool VillageLeakOpen(const NightTradeConfig& config,
   // without a gram of sugar, held it open for good, and every distiller taken
   // was replaced with nothing to brew. The same load as the theft's
   // (OpenLoad), so the rule and the night cannot disagree.
-  const StillLoad load = OpenLoad(config, sealed, current);
+  const StillLoad load = OpenLoad(config, sealed, current, 0.0, FullCarry(config));
   return load.grain_litres + load.potato_litres > 0.0 && load.weight_left < load.heavier_ml_g;
 }
 

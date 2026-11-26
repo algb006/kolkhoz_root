@@ -101,7 +101,11 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 205 (#1084): the funeral's mood term, two floats and a u32 after
 // mood_base - predicted 336 -> 352 (12 bytes, the row aligns to 8) and 60
 // fields before the build.
-static_assert(sizeof(ResidentRow) == 352,
+// Save 233 (#2189): the still's raw stock (two u32) and the sack month (u32) after
+// samogon_ml - predicted 352 -> 368 (12 bytes, the row aligns to 8) and 63 fields before
+// the build. A MISS, named: measured 360 - four of the bytes fell into padding the row
+// already had after samogon_ml; the field count, 63, caught the change.
+static_assert(sizeof(ResidentRow) == 360,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 59: distiller_supplied_month, a distiller's supplied month
 // (crime §7, register 206) — 43 fields; the size is read off the build.
@@ -109,7 +113,7 @@ static_assert(sizeof(ResidentRow) == 352,
 // Save 79: away_until_day, _hour, _walk_hours, _reason — 50. Save 105:
 // idle_reason — 51. Save 113: satiety_year and satiety_childhood — 53.
 // Save 122: samogon_ml — 54.
-static_assert(AggregateArity<ResidentRow>() == 60,
+static_assert(AggregateArity<ResidentRow>() == 63,
               "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-14: first_meal_eaten landed in padding beside food_variety_mask; the
 // size stayed 56 + amounts and the field count went to 16. The same day the
@@ -885,6 +889,9 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   out.WriteU8(static_cast<std::uint8_t>(row.night_trade));
   out.WriteU32(row.distiller_supplied_month);  // save 59
   out.WriteU32(row.samogon_ml);                // save 122
+  out.WriteU32(row.still_raw_grain_g);         // save 233
+  out.WriteU32(row.still_raw_potato_g);        // save 233
+  out.WriteU32(row.sack_month);                // save 233
   out.WriteU8(row.days_worked_this_month);
   out.WriteFloat(row.alcoholism);
   out.WriteU32(row.talk_until_day);  // save 69
@@ -987,6 +994,9 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.night_trade = static_cast<NightTrade>(source.ReadEnumValue(0, kMaxNightTrade, "night trade"));
   row.distiller_supplied_month = in.ReadU32();
   row.samogon_ml = in.ReadU32();
+  row.still_raw_grain_g = in.ReadU32();
+  row.still_raw_potato_g = in.ReadU32();
+  row.sack_month = in.ReadU32();
   row.days_worked_this_month = in.ReadU8();
   row.alcoholism = in.ReadFloat();
   row.talk_until_day = in.ReadU32();

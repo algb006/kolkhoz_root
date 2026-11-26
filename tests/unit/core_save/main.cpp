@@ -252,6 +252,9 @@ core::WorldState MakeWorld() {
   first.night_trade = core::NightTrade::kHunter;  // the top of the enum, save format 39
   first.distiller_supplied_month = 7;             // save 59: not nought, so a lost read shows
   first.samogon_ml = 12'500;                      // save 122: twelve and a half litres held
+  first.still_raw_grain_g = 37'000;               // save 233: the sacks' grain
+  first.still_raw_potato_g = 4'000;               // save 233: and potato
+  first.sack_month = 27;                          // save 233: a sack-bringer's month
   first.mood_base = 57.5F;                        // save 188 (#1241): off the mood
   first.school = core::UnitId{6};                 // a pupil, save format 41
   first.days_worked_this_month = 3;               // the month's work, save format 43
@@ -3938,6 +3941,9 @@ int main() {
                      "a resident came back with his night trade");
   failures +=
       Expect(!loaded.residents.rows.empty() && loaded.residents.rows[0].samogon_ml == 12'500 &&
+                 loaded.residents.rows[0].still_raw_grain_g == 37'000 &&
+                 loaded.residents.rows[0].still_raw_potato_g == 4'000 &&
+                 loaded.residents.rows[0].sack_month == 27 &&
                  loaded.ledger.closed.samogon_brewed_ml == 240'000 &&
                  loaded.ledger.closed.samogon_sold_ml == 180'500 &&
                  loaded.ledger.current.samogon_brewed_ml == 25'000 &&

@@ -24,7 +24,7 @@ namespace core {
 namespace {
 
 /// The world_params keys link 2 reads, in ParseFoodTheftConfig's order.
-constexpr std::array<std::string_view, 26> kFoodTheftWorldParamKeys = {
+constexpr std::array<std::string_view, 27> kFoodTheftWorldParamKeys = {
     "crime_food_theft_on",
     "food_theft_from_alcoholism",
     "food_theft_kg_per_thief_month",
@@ -61,7 +61,10 @@ constexpr std::array<std::string_view, 26> kFoodTheftWorldParamKeys = {
     // #1943 R0: 1 - a write-off that withdraws no remark costs no reputation.
     "audit_refused_write_off_free",
     // #1943 R1″ (econ-boss-1943-rep-read [1]): 1 - R1 only from the 2nd clean audit in a row.
-    "audit_clean_needs_two"};
+    "audit_clean_needs_two",
+    // #2189 (econ's theft-grain-store-consolidated §1): a still's month of raw, kg - the
+    // night thieves' month is capped at the village's distillers times it.
+    "food_theft_still_raw_kg_month"};
 
 /// The food a thief takes for his table, in this order (crime §7: grain and
 /// potato, not only sugar).
@@ -187,11 +190,15 @@ void BookStoreLoss(std::uint32_t window_months,
 
 namespace {
 
+/// `still_row`, when not kNoRow (#2189), is the distiller the sack goes to: its grain and its
+/// `potato` land in his raw stock. kNoRow (2b collusion) - it leaves the world, as before.
 Grams TakeFood(const FoodTheftConfig& config,
                std::uint32_t unit_row,
                ResidentId thief,
                bool collusion,
                Grams grams,
+               std::uint32_t still_row,
+               ResourceId potato,
                WorldState& current) {
   UnitRow& unit = current.units.rows[unit_row];
   Grams taken = 0;
@@ -214,6 +221,12 @@ Grams TakeFood(const FoodTheftConfig& config,
     stolen.amount = take;
     stolen.family = FamilyId{collusion ? 1U : 0U};
     taken += take;
+    if (still_row < current.residents.rows.size()) {
+      ResidentRow& still = current.residents.rows[still_row];
+      std::uint32_t& raw =
+          food.value == potato.value ? still.still_raw_potato_g : still.still_raw_grain_g;
+      raw += static_cast<std::uint32_t>(take);
+    }
   }
   return taken;
 }
@@ -313,6 +326,9 @@ bool ParseFoodTheftConfig(const ITableSet& tables, FoodTheftConfig& config, std:
          .range = {.low = 0.0F, .high = 100.0F}},
         {.key = kFoodTheftWorldParamKeys[24], .value = &refused_free, .range = share},
         {.key = kFoodTheftWorldParamKeys[25], .value = &needs_two, .range = share},
+        {.key = kFoodTheftWorldParamKeys[26],
+         .value = &config.still_raw_kg_month,
+         .range = {.low = 0.0F, .high = 1000.0F}},
     }};
     if (!ReadKnobs(*world, "world_params", knobs, error)) {
       return false;
@@ -402,16 +418,39 @@ void RunFoodTheft(const FoodTheftConfig& config,
   const Grams per_thief =
       GramsFromKilograms(config.kg_per_thief_month *
                          TheftAuthorityFactor(kAuthorityRules, current.chairman.authority));
+  // FOR THE STILL (#2189; econ's theft-grain-store-consolidated §1, boss's word): a still
+  // takes at most `still_raw_kg_month` of the night's sacks, and none when its raw is full.
+  std::vector<Grams> still_room(current.residents.rows.size(), 0);
+  for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
+    Vec2 his_yard;
+    if (current.residents.rows[row].night_trade == NightTrade::kDistiller &&
+        YardOf(current, current.residents.rows[row], his_yard) &&
+        !RawStockFull(night, current, row)) {
+      still_room[row] = GramsFromKilograms(config.still_raw_kg_month);
+    }
+  }
+  std::vector<std::uint32_t> thieves;
   for (std::uint32_t person_row = 0; person_row < current.residents.rows.size(); ++person_row) {
     const ResidentRow& person = current.residents.rows[person_row];
-    if (person.sex != Sex::kMale || person.alcoholism < config.thief_from_alcoholism ||
-        BiologicalAgeYears(life_speedup, person.birth_day, current.calendar.day) <
+    if (person.sex == Sex::kMale && person.alcoholism >= config.thief_from_alcoholism &&
+        BiologicalAgeYears(life_speedup, person.birth_day, current.calendar.day) >=
             kThiefFromYears) {
+      thieves.push_back(person_row);
+    }
+  }
+  // THE ORDER ROTATES, the month picking the first thief: with the stills' cap binding, the
+  // rows' order would otherwise pay the same men every month.
+  const std::uint32_t month_tag = SupplyMonthTag(current.calendar.day);
+  const std::size_t first = thieves.empty() ? 0 : month_tag % thieves.size();
+  for (std::size_t turn = 0; turn < thieves.size(); ++turn) {
+    const std::uint32_t person_row = thieves[(first + turn) % thieves.size()];
+    Vec2 yard;
+    if (!YardOf(current, current.residents.rows[person_row], yard)) {
       continue;
     }
-    Vec2 yard;
-    if (!YardOf(current, person, yard)) {
-      continue;
+    const std::uint32_t still = NearestDistiller(night, current, yard, false);
+    if (still == kNoRow || still_room[still] <= 0) {
+      continue;  // no still in his reach, or his still is full: he has nowhere to sell
     }
     std::uint32_t nearest = kNoRow;
     float best = config.reach_m;
@@ -434,9 +473,15 @@ void RunFoodTheft(const FoodTheftConfig& config,
                                  nearest,
                                  current.residents.row_ids[person_row],
                                  false,
-                                 std::min(per_thief, cap[nearest]),
+                                 std::min({per_thief, cap[nearest], still_room[still]}),
+                                 still,
+                                 night.potato,
                                  current);
     cap[nearest] -= taken;
+    still_room[still] -= taken;
+    if (taken > 0) {
+      current.residents.rows[person_row].sack_month = month_tag;  // paid in samogon
+    }
   }
   // 2b: THE DRINKING STOREKEEPER LETS OUT HIS SHARE, guarded or not.
   for (std::uint32_t person_row = 0; person_row < current.residents.rows.size(); ++person_row) {
@@ -454,7 +499,15 @@ void RunFoodTheft(const FoodTheftConfig& config,
         static_cast<Grams>(static_cast<double>(RecordedFood(config, current.units.rows[store])) *
                            static_cast<double>(config.collusion_share_month));
     if (share > 0) {
-      TakeFood(config, store, current.residents.row_ids[person_row], true, share, current);
+      // 2b is NOT routed to a still (#2189, econ's (5)): his share leaves the world.
+      TakeFood(config,
+               store,
+               current.residents.row_ids[person_row],
+               true,
+               share,
+               kNoRow,
+               night.potato,
+               current);
     }
   }
 }

@@ -277,6 +277,14 @@ double DistillerDemandMl(const NightTradeConfig& config,
                          const WorldState& current,
                          std::uint32_t distiller_row);
 
+/// @brief Is the still's raw stock FULL (#2189; econ, theft-grain-store-consolidated §1):
+///        the litres his raw makes by the recipe (grain, potato) at or above
+///        `stock_months_of_demand` months of his buyers' asking (DistillerDemandMl)?
+///        A full still takes no night thief's sack that month.
+bool RawStockFull(const NightTradeConfig& config,
+                  const WorldState& current,
+                  std::uint32_t distiller_row);
+
 /// @brief Is the leak of the store at `unit_row` CLOSED (crime design §7,
 ///        register 206)? A watchman at his post — at the unit or at its
 ///        parent — with alcoholism at most `sober_keeper_max`, and every

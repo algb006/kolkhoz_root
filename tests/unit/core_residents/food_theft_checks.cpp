@@ -29,10 +29,22 @@ int Expect(bool condition, const char* label) {
 constexpr core::Grams kTonne = 1000 * core::kGramsPerKilogram;
 constexpr core::ResourceId kRye{0};
 
+/// The distiller's row in Village with a still (#2189): after the man (and the watchman).
+std::uint32_t StillRow(const core::WorldState& world) {
+  for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
+    if (world.residents.rows[row].night_trade == core::NightTrade::kDistiller) {
+      return row;
+    }
+  }
+  return core::kNoRow;
+}
+
 /// A store of 50 t of rye at the origin, a house 100 m off it, and in the
 /// house a man of 30 at `alcoholism`. With `watched`, a sober night watchman
-/// is posted at the store (profession 0, the night's shift).
-core::WorldState Village(float alcoholism, bool watched) {
+/// is posted at the store (profession 0, the night's shift). With `with_still`
+/// (#2189: the night thief steals for the still), a sober distiller in a house
+/// 200 m off - the man's nearest still, within the samogon's reach.
+core::WorldState Village(float alcoholism, bool watched, bool with_still = true) {
   core::WorldState world;
   world.world_seed = 1931;
   world.audit.books_accepted = 1;  // after the act; the act's own check sets 0
@@ -60,6 +72,20 @@ core::WorldState Village(float alcoholism, bool watched) {
     watchman.post.unit = store_id;
     watchman.post.profession = core::ProfessionId{0};
     core::AppendRow(world.residents, watchman);
+  }
+  if (with_still) {
+    core::UnitRow his_house;
+    his_house.level = 1;
+    his_house.position = core::Vec2{.x = 200.0F, .y = 0.0F};
+    const core::UnitId his_house_id = core::AppendRow(world.units, his_house);
+    core::FamilyRow his_family;
+    his_family.house = his_house_id;
+    core::ResidentRow distiller;
+    distiller.sex = core::Sex::kMale;
+    distiller.family = core::AppendRow(world.families, his_family);
+    distiller.birth_day = -static_cast<std::int32_t>(40 * core::kDaysPerYear / 4);
+    distiller.night_trade = core::NightTrade::kDistiller;
+    core::AppendRow(world.residents, distiller);
   }
   return world;
 }
@@ -119,6 +145,42 @@ int CheckFoodTheft() {
                        "food theft: one kFoodStolen for it");
     failures += Expect(core::AmountOf(open.ledger.current.stolen, kRye) == taken,
                        "food theft: the year's `stolen` carries it");
+    const std::uint32_t still = StillRow(open);
+    failures +=
+        Expect(still != core::kNoRow && open.residents.rows[still].still_raw_grain_g == taken &&
+                   open.residents.rows[0].sack_month == core::SupplyMonthTag(open.calendar.day),
+               "food theft (#2189): the sack lands in the still's raw, and the thief "
+               "is marked to be paid in samogon this month");
+  }
+  // #2189: NO STILL, NO THEFT - and the stills' month caps the night.
+  {
+    core::WorldState dry = Village(45.0F, false, false);
+    ToTheftHour(night, dry);
+    core::RunFoodTheft(on, night, kSpeedup, dry);
+    failures +=
+        Expect(dry.units.rows[0].stock[0] == 50 * kTonne && dry.residents.rows[0].sack_month == 0,
+               "food theft (#2189): with no distiller in reach the drinker steals nothing");
+  }
+  {
+    core::FoodTheftConfig small = On();
+    small.still_raw_kg_month = 10.0F;
+    core::WorldState capped = Village(45.0F, false);
+    ToTheftHour(night, capped);
+    core::RunFoodTheft(small, night, kSpeedup, capped);
+    const core::Grams taken = 50 * kTonne - capped.units.rows[0].stock[0];
+    failures += Expect(taken == 10 * core::kGramsPerKilogram,
+                       "food theft (#2189): a still of 10 kg a month takes 10 kg of the 25");
+  }
+  {
+    core::WorldState full = Village(45.0F, false);
+    // Two months of the thief's 3 l asking (45 abuses) in rye at 1.5 kg a litre is 9 kg.
+    full.residents.rows[StillRow(full)].still_raw_grain_g = 9 * core::kGramsPerKilogram;
+    ToTheftHour(night, full);
+    failures += Expect(core::RawStockFull(night, full, StillRow(full)),
+                       "food theft (#2189): 9 kg of rye is two months of a 3-litre asking - full");
+    core::RunFoodTheft(on, night, kSpeedup, full);
+    failures += Expect(full.units.rows[0].stock[0] == 50 * kTonne,
+                       "food theft (#2189): a full still takes no sack");
   }
   {
     core::WorldState guarded = Village(45.0F, true);
