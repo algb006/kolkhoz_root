@@ -204,6 +204,8 @@ core::WorldState MakeWorld() {
       core::TalkedThief{.thief = core::ResidentId{6}, .until_day = 51});
   world.thief_catch.credited.push_back(
       core::DetectiveCredit{.thief = core::ResidentId{4}, .season = 3});  // save 235
+  world.thief_catch.constable_year = 1;
+  world.thief_catch.constable_district_count = 2;
   world.chairman.issue_raised_month = 8;
   world.chairman.understood_day = 9;
   world.chairman.unfair_season = 10;  // econ [6]'s season marks
@@ -1863,6 +1865,9 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
     chunks.push_back({"thief_catch.credited", U32(credit.thief.value)});
     chunks.push_back({"thief_catch.credited", U32(credit.season)});
   }
+  chunks.push_back({"thief_catch.constable_year", U16(world.thief_catch.constable_year)});
+  chunks.push_back(
+      {"thief_catch.constable_district_count", U8(world.thief_catch.constable_district_count)});
   // The tally clerk's record (#589, save 219).
   chunks.push_back({"clerk.since_day", U32(world.clerk.since_day)});
   chunks.push_back({"clerk.vacancy", U8(static_cast<std::uint8_t>(world.clerk.vacancy))});
@@ -2312,6 +2317,8 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // read off cu2191b.
     // Save 235 (#2191's no-pump fix): the Детектив's credited culprits, a count and one
     // (8) - predicted 1663 -> 1675 before the build, held; the hash read off cu2191d.
+    // And the constable's district count (econ): a u16 year and a u8 count - predicted
+    // 1675 -> 1678 before the build.
     {"world", 1675, 0x297cb2e7cb76b38aULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
@@ -3403,6 +3410,8 @@ int main() {
           loaded.thief_catch.by_chairman == 1 && loaded.thief_catch.under_wing_count == 2 &&
           loaded.thief_catch.talked.size() == 1 && loaded.thief_catch.talked[0].until_day == 51 &&
           loaded.thief_catch.credited.size() == 1 && loaded.thief_catch.credited[0].season == 3 &&
+          loaded.thief_catch.constable_year == 1 &&
+          loaded.thief_catch.constable_district_count == 2 &&
           loaded.chairman.year_under_pressure == 1 && loaded.chairman.issue_raised_month == 8 &&
           loaded.chairman.understood_day == 9 && loaded.chairman.unfair_season == 10 &&
           loaded.chairman.raise_season == 11 && loaded.chairman.authority_live == 0 &&

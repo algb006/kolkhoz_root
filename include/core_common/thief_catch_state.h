@@ -89,6 +89,9 @@ struct ThiefCatchRules {
   /// kHandToConstable: the authority deed (−2, «село осуждает») and the district's step (+2).
   float constable_authority = -2.0F;
   float constable_district = 2.0F;
+  /// The hand-overs a calendar year whose district step counts (econ: «beyond that the
+  /// district shrugs at petty theft»); the village's −2 and the family's −4 stay on every one.
+  std::uint8_t constable_district_per_year = 2;
   /// kHandToConstable: the months he is away (STUB 3).
   std::uint32_t constable_months = 3;
   /// kTalk: the days he steals nothing («на сезон»: STUB 12, three months).
@@ -122,6 +125,11 @@ struct ThiefCatchState {
   /// The culprits the Детектив was raised for this season (econ's no-pump read): a second catch
   /// of one of them in the same season raises nothing. Save 235.
   std::vector<DetectiveCredit> credited;
+  /// kHandToConstable's district step this calendar year (econ after CATCH2191): only the
+  /// first constable_district_per_year hand-overs move the district; the year they count in.
+  /// Save 235.
+  std::uint16_t constable_year = 0;
+  std::uint8_t constable_district_count = 0;
 };
 
 }  // namespace core

@@ -170,8 +170,21 @@ void Judge(const NightTradeConfig& night, WorldState& current, ThiefChoice choic
     case ThiefChoice::kHandToConstable:
       SendToConstable(current, sack);
       MoveAuthority(current, kAuthorityRules, AuthorityDeed::kThiefToConstable);
-      current.chairman.raikom_reputation = std::clamp(
-          current.chairman.raikom_reputation + rules.constable_district, 0.0F, kScaleMax);
+      {
+        // THE DISTRICT COUNTS THE FIRST TWO A YEAR (econ after CATCH2191: 25 hand-overs bought
+        // the district's top in 5 years - a lever bought with drinkers).
+        ThiefCatchState& state = current.thief_catch;
+        const auto year = static_cast<std::uint16_t>(current.calendar.day / kDaysPerYear);
+        if (state.constable_year != year) {
+          state.constable_year = year;
+          state.constable_district_count = 0;
+        }
+        if (state.constable_district_count < rules.constable_district_per_year) {
+          ++state.constable_district_count;
+          current.chairman.raikom_reputation = std::clamp(
+              current.chairman.raikom_reputation + rules.constable_district, 0.0F, kScaleMax);
+        }
+      }
       break;
     case ThiefChoice::kTakeUnderWing:
       ++current.thief_catch.under_wing_count;

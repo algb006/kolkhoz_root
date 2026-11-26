@@ -761,6 +761,8 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
     out.WriteU32(credit.thief.value);
     out.WriteU32(credit.season);
   }
+  out.WriteU16(world.thief_catch.constable_year);           // save 235
+  out.WriteU8(world.thief_catch.constable_district_count);  // save 235
   // The tally clerk's post record (#589, save 219).
   out.WriteU32(world.clerk.since_day);
   out.WriteU8(static_cast<std::uint8_t>(world.clerk.vacancy));
@@ -1190,6 +1192,8 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
     credit.season = in.ReadU32();
     world->thief_catch.credited.push_back(credit);
   }
+  world->thief_catch.constable_year = in.ReadU16();
+  world->thief_catch.constable_district_count = in.ReadU8();
   world->clerk.since_day = in.ReadU32();  // save 219 (#589)
   world->clerk.vacancy = static_cast<ClerkVacancy>(source.ReadEnumValue(
       0, static_cast<std::uint8_t>(ClerkVacancy::kUnitGone), "the clerk's vacancy"));
