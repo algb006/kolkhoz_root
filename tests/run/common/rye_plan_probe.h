@@ -14,15 +14,19 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <ostream>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/event_state.h"
 #include "core_common/fund_ladder.h"
 #include "core_common/land_state.h"
+#include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
 #include "core_common/world_state.h"
 #include "core_production/production_system.h"
@@ -116,7 +120,38 @@ class RyePlanProbe {
     lines_.push_back(line.str());
   }
 
+  /// @brief After every step (#2188): the rye stolen from the church in year 1 (kFoodStolen
+  ///        from a church_store unit), and every refusal of an order to build the food yard or
+  ///        the granary, by the refusal's code and the day.
+  void CountStep(const core::WorldState& world) {
+    if (world.calendar.day >= core::kDaysPerYear) {
+      return;
+    }
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind == core::EventKind::kFoodStolen && event.resource.value == rye_) {
+        const std::uint32_t row = core::FindRow(world.units, event.unit);
+        if (row != core::kNoRow && world.units.rows[row].type.value == church_) {
+          church_rye_stolen_kg_ += static_cast<double>(event.amount) / 1000.0;
+        }
+      } else if (event.kind == core::EventKind::kOrderRefused &&
+                 (event.unit_type.value == granary_ || event.unit_type.value == food_yard_)) {
+        ++refusals_[{event.unit_type.value == granary_ ? 1U : 0U,
+                     static_cast<std::uint32_t>(event.amount)}];
+        first_refusal_day_ = std::min(first_refusal_day_, world.calendar.day + 1U);
+      }
+    }
+  }
+
   void Print(std::ostream& out, std::uint64_t seed) const {
+    out << "population_curve: RYE2157S seed " << seed
+        << " ground=year1;church_rye_stolen_kg(kFoodStolen_at_church_store);build_refusals("
+           "type:code=count;0=food_yard,1=granary;code=OrderRefusal)"
+        << " church_rye_stolen_kg " << church_rye_stolen_kg_ << " first_refusal_day "
+        << (first_refusal_day_ == kNever ? 0U : first_refusal_day_) << " refusals";
+    for (const auto& [key, count] : refusals_) {
+      out << ' ' << key.first << ':' << key.second << '=' << count;
+    }
+    out << '\n';
     for (const std::string& line : lines_) {
       out << "population_curve: RYE2157 seed " << seed << line << '\n';
     }
@@ -129,6 +164,10 @@ class RyePlanProbe {
   std::uint32_t rye_ = core::kNoTableRow;
   std::uint32_t rye_crop_ = core::kNoTableRow;
   std::uint32_t church_ = core::kNoTableRow;
+  static constexpr std::uint32_t kNever = 0xFFFFFFFFU;
+  double church_rye_stolen_kg_ = 0.0;
+  std::map<std::pair<std::uint32_t, std::uint32_t>, std::uint32_t> refusals_;
+  std::uint32_t first_refusal_day_ = kNever;
   std::uint32_t food_yard_ = core::kNoTableRow;
   std::uint32_t granary_ = core::kNoTableRow;
   std::vector<std::string> lines_;
