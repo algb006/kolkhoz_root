@@ -2314,7 +2314,9 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // -> 575 before the build.
     // Save 222 (#1948): placed_by_order, a byte a resident, two - predicted 575 -> 577 before
     // the build, held; the hash read off u1948a.
-    {"residents", 577, 0x76d7b2dd324e56dULL},
+    // Save 233 (#2189): the still's raw (two u32) and the sack month (u32), 12 bytes a
+    // resident, two - 577 -> 601, the only section that moved; the hash read off tu1.
+    {"residents", 601, 0x28f6b8e0198b7fd7ULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
