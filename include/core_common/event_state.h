@@ -1000,7 +1000,9 @@ enum class EventKind : std::uint8_t {
 
   /// THE CHAIRMAN JUDGED A CAUGHT THIEF (#2191, kJudgeThief): `resident` the thief, `amount`
   /// the ThiefChoice, `family` the family whose attitude moved (the distiller's for
-  /// kFindStill). kNotable. Seam key `thief_judged`.
+  /// kFindStill), `order` the kJudgeThief - INVALID when the catch LAPSED unjudged (choice
+  /// kCloseEyes: nothing done is the choice nobody made; boss: the lapse is said, so the feed
+  /// and the no-pump check see it). kNotable. Seam key `thief_judged`.
   kThiefJudged,
 
   // Reserved for project phase 3 and appended by it: fire, epoch change,

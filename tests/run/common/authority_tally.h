@@ -114,7 +114,8 @@ class AuthorityTally {
         "unfair_month",
         "audit_remark",
         "plan_met_fairly",
-        "first_social"};
+        "first_social",
+        "thief_to_constable"};
     static_assert(kNames.back() != nullptr, "a deed without a name in AUTH2164");
     for (const auto& [year, row] : by_year_) {
       if (!row.closed) {

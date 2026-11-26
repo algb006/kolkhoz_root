@@ -12,9 +12,11 @@
 #include "core_common/post_shift.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/thief_catch_state.h"
 #include "core_common/world_state.h"
 #include "food_theft.h"
 #include "night_trade.h"
+#include "thief_catch.h"
 
 namespace {
 
@@ -121,6 +123,104 @@ std::uint32_t Count(const core::WorldState& world, core::EventKind kind) {
     count += event.kind == kind ? 1U : 0U;
   }
   return count;
+}
+
+/// A pending order of `kind` in `world`.
+core::OrderRow& Order(core::WorldState& world, core::OrderKind kind) {
+  core::OrderRow order;
+  order.kind = kind;
+  order.status = core::OrderStatus::kPending;
+  const core::OrderId id = core::AppendRow(world.orders, order);
+  return world.orders.rows[core::FindRow(world.orders, id)];
+}
+
+/// #2191 «застал вора»: the night's sack names the thief to the patrol; «вернуть» brings the
+/// rest of it back from the still; «поговорить» keeps him home the next night; a catch left
+/// unjudged lapses and says so; a patrol at a store robbed by nobody is refused.
+int CheckThiefCatch(const core::NightTradeConfig& night,
+                    const core::FoodTheftConfig& on,
+                    float speedup) {
+  int failures = 0;
+  core::WorldState world = Village(45.0F, false);
+  ToTheftHour(night, world);
+  core::RunFoodTheft(on, night, speedup, world);
+  const core::UnitId store = world.units.row_ids[0];
+  failures += Expect(world.thief_catch.last_night.size() == 1 &&
+                         world.thief_catch.last_night[0].unit == store &&
+                         world.thief_catch.last_night[0].grams == 25 * core::kGramsPerKilogram,
+                     "catch (#2191): the night's sack is remembered - who, where, how much");
+  // A patrol at the house (no sack there): refused.
+  Order(world, core::OrderKind::kCatchThief).unit = world.units.row_ids[1];
+  // The patrol at the store: the thief named, Детектив +1.
+  Order(world, core::OrderKind::kCatchThief).unit = store;
+  world.step_events.clear();
+  core::ConsumeThiefCatchOrders(night, world);
+  failures += Expect(world.orders.rows[0].status == core::OrderStatus::kRefused &&
+                         world.orders.rows[0].refusal == core::OrderRefusal::kNoSuchSubject &&
+                         world.orders.rows[1].status == core::OrderStatus::kDone,
+                     "catch: no sack at the house - refused; the store's - done");
+  failures += Expect(Count(world, core::EventKind::kTheftUncovered) == 1 &&
+                         world.thief_catch.open_catch.thief == world.residents.row_ids[0] &&
+                         world.chairman.detective == 51.0F,
+                     "catch: kTheftUncovered names the thief, the catch is open, Детектив +1");
+  // «Вернуть украденное»: the 25 kg back from the still's raw to the store; his family −2;
+  // Дисциплина +1.
+  const core::Grams before = world.units.rows[0].stock[0];
+  core::OrderRow& judge = Order(world, core::OrderKind::kJudgeThief);
+  judge.resident = world.residents.row_ids[0];
+  judge.amount = static_cast<core::Grams>(core::ThiefChoice::kReturnStolen);
+  world.step_events.clear();
+  core::ConsumeThiefCatchOrders(night, world);
+  const std::uint32_t still = StillRow(world);
+  failures += Expect(world.units.rows[0].stock[0] == before + (25 * core::kGramsPerKilogram) &&
+                         world.residents.rows[still].still_raw_grain_g == 0 &&
+                         world.residents.rows[0].attitude_to_chairman == 48.0F &&
+                         world.chairman.discipline == 51.0F &&
+                         Count(world, core::EventKind::kThiefJudged) == 1 &&
+                         world.thief_catch.open_catch.thief.value == core::kInvalidEntityIdValue,
+                     "judge: «вернуть» - the sack back, attitude −2, Дисциплина +1, the catch "
+                     "closed");
+  // «Поговорить»: the next moonlit night he stays home.
+  {
+    core::WorldState talked = Village(45.0F, false);
+    ToTheftHour(night, talked);
+    core::RunFoodTheft(on, night, speedup, talked);
+    Order(talked, core::OrderKind::kCatchThief).unit = talked.units.row_ids[0];
+    core::ConsumeThiefCatchOrders(night, talked);
+    core::OrderRow& talk = Order(talked, core::OrderKind::kJudgeThief);
+    talk.resident = talked.residents.row_ids[0];
+    talk.amount = static_cast<core::Grams>(core::ThiefChoice::kTalk);
+    core::ConsumeThiefCatchOrders(night, talked);
+    const core::Grams stock = talked.units.rows[0].stock[0];
+    talked.calendar.tick += core::kTicksPerDay * core::kDaysPerMonth;  // the next moonlit night
+    core::RefreshCalendarCaches(talked.calendar);
+    talked.residents.rows[StillRow(talked)].still_raw_grain_g = 0;
+    core::RunFoodTheft(on, night, speedup, talked);
+    failures += Expect(talked.units.rows[0].stock[0] == stock,
+                       "judge: «поговорить» - the next moonlit night he steals nothing");
+  }
+  // A CATCH LEFT UNJUDGED LAPSES as «закрыть глаза» and says so (`order` invalid).
+  {
+    core::WorldState lapsed = Village(45.0F, false);
+    ToTheftHour(night, lapsed);
+    core::RunFoodTheft(on, night, speedup, lapsed);
+    Order(lapsed, core::OrderKind::kCatchThief).unit = lapsed.units.row_ids[0];
+    core::ConsumeThiefCatchOrders(night, lapsed);
+    lapsed.calendar.tick += core::kTicksPerDay * (core::kDaysPerMonth + 1);
+    core::RefreshCalendarCaches(lapsed.calendar);
+    lapsed.step_events.clear();
+    core::ConsumeThiefCatchOrders(night, lapsed);
+    bool said = false;
+    for (const core::SimEvent& event : lapsed.step_events) {
+      said = said || (event.kind == core::EventKind::kThiefJudged &&
+                      event.amount == static_cast<std::int64_t>(core::ThiefChoice::kCloseEyes) &&
+                      event.order.value == core::kInvalidEntityIdValue);
+    }
+    failures += Expect(said && lapsed.residents.rows[0].attitude_to_chairman == 52.0F,
+                       "judge: unjudged past the window - lapses as «закрыть глаза», attitude "
+                       "+2, and kThiefJudged with no order says so");
+  }
+  return failures;
 }
 
 }  // namespace
@@ -440,5 +540,6 @@ int CheckFoodTheft() {
                 5 * core::kGramsPerKilogram,
         "book: before the act it is «до приёмки» and its month's pair, never the store's book");
   }
+  failures += CheckThiefCatch(night, on, kSpeedup);
   return failures;
 }

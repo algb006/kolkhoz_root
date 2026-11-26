@@ -57,6 +57,7 @@ enum class AuthorityDeed : std::uint8_t {
   kAuditRemark,           ///< The district's audit remarked on the stores (#1893).
   kPlanMetFairly,         ///< The plan year met with no rush and no cancelled day off (econ [8]).
   kFirstSocialBuilding,   ///< The first of a social kind stands (bath, school, culture, nursery).
+  kThiefToConstable,      ///< A caught thief handed to the constable (#2191; «село осуждает»).
   kAuthorityDeedCount,
 };
 
@@ -78,7 +79,7 @@ enum class UnderstoodReason : std::uint8_t {
 struct AuthorityRules {
   /// Each deed's move, points of A (index: AuthorityDeed).
   std::array<float, kAuthorityDeedCountValue> deed_delta = {
-      -4.0F, -2.0F, -2.0F, 4.0F, -4.0F, 2.0F, -2.0F, -3.0F, 2.0F, 3.0F};
+      -4.0F, -2.0F, -2.0F, 4.0F, -4.0F, 2.0F, -2.0F, -3.0F, 2.0F, 3.0F, -2.0F};
   // first_social +3 a kind (econ, after #2190: the student's y15 33.3 < 35 with every designed
   // door live - the prepared lever taken as its own pair). Was +2; au13 measured +3 on the tree
   // before the lamp at student y15 33.5 (au12 at +2: 32).

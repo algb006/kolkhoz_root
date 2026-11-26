@@ -600,8 +600,16 @@ bool ParseNightTradeConfig(const ITableSet& tables, NightTradeConfig& config, st
 bool StoreLeakClosed(const NightTradeConfig& config,
                      const WorldState& current,
                      std::uint32_t unit_row) {
+  const StoreWatch watch = StoreWatchAt(config, current, unit_row);
+  return watch.sober_watch && !watch.drinking_keeper;
+}
+
+StoreWatch StoreWatchAt(const NightTradeConfig& config,
+                        const WorldState& current,
+                        std::uint32_t unit_row) {
+  StoreWatch watch;
   if (unit_row >= current.units.rows.size()) {
-    return false;
+    return watch;
   }
   // A MODULE IS KEPT BY ITS PARENT'S WATCH: the staff table posts the
   // watchman at the food yard, never at the granary on its plot, and the
@@ -610,8 +618,8 @@ bool StoreLeakClosed(const NightTradeConfig& config,
   // 2026-09-15).
   const std::uint32_t here = current.units.row_ids[unit_row].value;
   const std::uint32_t parent = current.units.rows[unit_row].parent.value;
-  bool sober_watch = false;
-  bool drinking_keeper = false;
+  bool& sober_watch = watch.sober_watch;
+  bool& drinking_keeper = watch.drinking_keeper;
   for (const ResidentRow& person : current.residents.rows) {
     const std::uint32_t post_unit = person.post.unit.value;
     if (post_unit != here && (parent == kInvalidEntityIdValue || post_unit != parent)) {
@@ -630,7 +638,7 @@ bool StoreLeakClosed(const NightTradeConfig& config,
       drinking_keeper = true;
     }
   }
-  return sober_watch && !drinking_keeper;
+  return watch;
 }
 
 namespace {

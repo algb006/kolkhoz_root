@@ -98,7 +98,8 @@ static_assert(AggregateArity<WeatherState>() == 14,
 // And econ [6]'s two season marks (unfair_season, raise_season, u32 each): measured 168, 52
 // fields, 26 bytes in the codec. And econ [8]'s five (the season's start A and its season, the
 // fall, the year's hard asks, the social kinds built): measured 176, 57 fields, 38 bytes.
-static_assert(sizeof(ChairmanState) == 176, "ChairmanState changed — update the codec");
+// Save 234 (#2191): detective and discipline, two floats - measured 192.
+static_assert(sizeof(ChairmanState) == 192, "ChairmanState changed — update the codec");
 // And the avral's days on the cut, a third u16 beside them: predicted 88
 // unmoved (into the tail's padding) and twenty-six fields; two more bytes in
 // the codec. Save 166 (#1043): the rating's recovery owed, a byte after them:
@@ -110,7 +111,9 @@ static_assert(sizeof(ChairmanState) == 176, "ChairmanState changed — update th
 // unmoved (the float's padding, a probe read before the build) and 44 fields; one byte in the
 // codec.
 // econ [9]'s year_under_pressure, a byte: measured 176 unmoved (padding), 58 fields, 39 bytes.
-static_assert(AggregateArity<ChairmanState>() == 58,
+// Save 234 (#2191): detective and discipline, two floats after social_kinds_built - 60
+// fields, eight bytes in the codec; the size read off the build.
+static_assert(AggregateArity<ChairmanState>() == 60,
               "ChairmanState gained or lost a field — update the codec and VERSION_SAVE");
 // PLANSTATE HAD NO TRIPWIRE AT ALL until 2026-09-12, and it was the only
 // serialized block without one: six blocks go into the save, five were
@@ -362,7 +365,10 @@ static_assert(AggregateArity<ClampRotYear>() == 2,
 // raised in the same commit.
 // Save 229 (#2072, boss 24 Nov): the day's walks, the sixty-sixth - a section of their own,
 // «walks», after «trails» (save.cpp): today's pending tread and yesterday's walkers' ways.
-static_assert(AggregateArity<WorldState>() == 66,
+// Save 234 (#2191): the thief catch, the sixty-seventh - in the section «world», after the
+// audit's clean_in_a_row: the night's sacks (a count and 26 + the resource's id a sack), the
+// open catch, its day and its patrol flag, the under-wing count, the talked (a count, 8 each).
+static_assert(AggregateArity<WorldState>() == 67,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -631,6 +637,8 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU16(world.chairman.year_hard_asks);
   out.WriteU8(world.chairman.year_under_pressure);  // econ [9]
   out.WriteU8(world.chairman.social_kinds_built);
+  out.WriteFloat(world.chairman.detective);   // save 234 (#2191)
+  out.WriteFloat(world.chairman.discipline);  // save 234
   out.WriteU8(world.chairman.authority_live);
 
   out.WriteFloat(world.traction_ration);
@@ -725,6 +733,28 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   sink.WriteAmounts(DefKind::kResource, world.audit.before_acceptance_last_month);
   out.WriteU32(world.audit.remark_withdrawn_day);  // save 218 (lever (a))
   out.WriteU8(world.audit.clean_in_a_row);         // save 221 (#1943 R1″)
+  // #2191 «застал вора» (save 234): the night's sacks, the open catch, the talked.
+  const auto write_sack = [&out, &sink](const NightSack& sack) {
+    out.WriteU32(sack.thief.value);
+    out.WriteU32(sack.unit.value);
+    sink.WriteDefId(DefKind::kResource, sack.resource.value);
+    out.WriteI64(sack.grams);
+    out.WriteU32(sack.still.value);
+    out.WriteU32(sack.day);
+  };
+  out.WriteU32(static_cast<std::uint32_t>(world.thief_catch.last_night.size()));
+  for (const NightSack& sack : world.thief_catch.last_night) {
+    write_sack(sack);
+  }
+  write_sack(world.thief_catch.open_catch);
+  out.WriteU32(world.thief_catch.caught_day);
+  out.WriteU8(world.thief_catch.by_chairman);
+  out.WriteU32(world.thief_catch.under_wing_count);
+  out.WriteU32(static_cast<std::uint32_t>(world.thief_catch.talked.size()));
+  for (const TalkedThief& talked : world.thief_catch.talked) {
+    out.WriteU32(talked.thief.value);
+    out.WriteU32(talked.until_day);
+  }
   // The tally clerk's post record (#589, save 219).
   out.WriteU32(world.clerk.since_day);
   out.WriteU8(static_cast<std::uint8_t>(world.clerk.vacancy));
@@ -998,6 +1028,8 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->chairman.year_hard_asks = in.ReadU16();
   world->chairman.year_under_pressure = in.ReadU8();  // econ [9]
   world->chairman.social_kinds_built = in.ReadU8();
+  world->chairman.detective = in.ReadFloat();   // save 234 (#2191)
+  world->chairman.discipline = in.ReadFloat();  // save 234
   world->chairman.authority_live = in.ReadU8();
 
   world->traction_ration = in.ReadFloat();
@@ -1116,7 +1148,35 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->audit.before_acceptance_last_month = source.ReadAmounts(DefKind::kResource);
   world->audit.remark_withdrawn_day = in.ReadU32();  // save 218 (lever (a))
   world->audit.clean_in_a_row = in.ReadU8();         // save 221 (#1943 R1″)
-  world->clerk.since_day = in.ReadU32();             // save 219 (#589)
+  // #2191 (save 234).
+  const auto read_sack = [&in, &source]() {
+    NightSack sack;
+    sack.thief = ResidentId{in.ReadU32()};
+    sack.unit = UnitId{in.ReadU32()};
+    sack.resource = ResourceId{source.ReadDefId(DefKind::kResource)};
+    sack.grams = in.ReadI64();
+    sack.still = ResidentId{in.ReadU32()};
+    sack.day = in.ReadU32();
+    return sack;
+  };
+  world->thief_catch.last_night.clear();
+  const std::uint32_t sacks = in.ReadU32();
+  for (std::uint32_t index = 0; index < sacks && in.Valid(); ++index) {
+    world->thief_catch.last_night.push_back(read_sack());
+  }
+  world->thief_catch.open_catch = read_sack();
+  world->thief_catch.caught_day = in.ReadU32();
+  world->thief_catch.by_chairman = in.ReadU8();
+  world->thief_catch.under_wing_count = in.ReadU32();
+  world->thief_catch.talked.clear();
+  const std::uint32_t talked = in.ReadU32();
+  for (std::uint32_t index = 0; index < talked && in.Valid(); ++index) {
+    TalkedThief row;
+    row.thief = ResidentId{in.ReadU32()};
+    row.until_day = in.ReadU32();
+    world->thief_catch.talked.push_back(row);
+  }
+  world->clerk.since_day = in.ReadU32();  // save 219 (#589)
   world->clerk.vacancy = static_cast<ClerkVacancy>(source.ReadEnumValue(
       0, static_cast<std::uint8_t>(ClerkVacancy::kUnitGone), "the clerk's vacancy"));
   world->clerk.vacant_since_day = in.ReadU32();

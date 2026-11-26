@@ -58,6 +58,7 @@
 #include "life_config.h"
 #include "salt_edge.h"
 #include "specialist_arrival.h"
+#include "thief_catch.h"
 #include "vitals.h"
 #include "year_metrics.h"
 
@@ -580,6 +581,9 @@ class ResidentsSystem final : public IResidentsSystem {
     TakeWriteOffOrders(config_.food_theft, current);
     RunBookReceipts(config_.food_theft, current);
     RunFoodTheft(config_.food_theft, config_.night_trade, config_.life_speedup, current);
+    // #2191 «застал вора»: the patrol's catch and the judgement, in whatever hour they came -
+    // after the night's theft has recorded its sacks (thief_catch.h).
+    ConsumeThiefCatchOrders(config_.night_trade, current);
     RunStoreAudit(config_.food_theft, current);
     // The exchange's dry count in the counter's own hour — after the day's
     // milk and catch, before the dinner that eats the perishable first: what

@@ -294,6 +294,17 @@ bool StoreLeakClosed(const NightTradeConfig& config,
                      const WorldState& current,
                      std::uint32_t unit_row);
 
+/// The two halves StoreLeakClosed reads (#2191: the watchman's catch needs them apart).
+struct StoreWatch {
+  bool sober_watch = false;      ///< a sober night watchman at his post (the unit or its parent)
+  bool drinking_keeper = false;  ///< a storekeeper posted there who drinks
+};
+
+/// @brief The watch of the store at `unit_row`, the one reading StoreLeakClosed is made of.
+StoreWatch StoreWatchAt(const NightTradeConfig& config,
+                        const WorldState& current,
+                        std::uint32_t unit_row);
+
 /// @brief A distiller's night at the stores: up to `distiller_raw_kg` of the
 ///        raw material, unreserved, unit by unit in row order and resource by
 ///        resource in the config's order, from every store whose leak is OPEN

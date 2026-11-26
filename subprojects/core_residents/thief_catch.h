@@ -49,11 +49,9 @@ void CatchAtWatchedStores(const NightTradeConfig& night, WorldState& current);
 /// @brief Consumes the step's kCatchThief and kJudgeThief orders (order_state.h), each to
 ///        kDone or kRefused with its OrderRefusal, and applies the judgement's choice by
 ///        kThiefCatchRules. A catch not judged within judge_within_days lapses («закрыть глаза»:
-///        nothing done is the choice nobody made) - attitude +2, no event of judgement.
-/// @param life_speedup LifeConfig::life_speedup, for the months away of kHandToConstable.
-void ConsumeThiefCatchOrders(const NightTradeConfig& night,
-                             float life_speedup,
-                             WorldState& current);
+///        nothing done is the choice nobody made) - attitude +2, and kThiefJudged with `order`
+///        invalid says so.
+void ConsumeThiefCatchOrders(const NightTradeConfig& night, WorldState& current);
 
 }  // namespace core
 

@@ -19,6 +19,7 @@
 #include "core_common/state_table_ops.h"
 #include "core_tables/tables.h"
 #include "night_trade.h"
+#include "thief_catch.h"
 
 namespace core {
 namespace {
@@ -226,6 +227,13 @@ Grams TakeFood(const FoodTheftConfig& config,
       std::uint32_t& raw =
           food.value == potato.value ? still.still_raw_potato_g : still.still_raw_grain_g;
       raw += static_cast<std::uint32_t>(take);
+      // The night's sack, for a catch to name (#2191).
+      RecordNightSack(current,
+                      thief,
+                      current.units.row_ids[unit_row],
+                      food,
+                      take,
+                      current.residents.row_ids[still_row]);
     }
   }
   return taken;
@@ -393,6 +401,8 @@ void RunFoodTheft(const FoodTheftConfig& config,
   if (hour != night.hour_out || !IsMoonlitNight(night, current.calendar.day)) {
     return;
   }
+  // A NEW NIGHT (#2191): the last one's sacks are no longer anybody's to catch.
+  OpenTheftNight(current);
   // THE MONTH'S CAP A STORE, read before anybody takes: its recorded food
   // times the share, so the night's first thief does not shrink the cap of
   // the second.
@@ -444,6 +454,10 @@ void RunFoodTheft(const FoodTheftConfig& config,
   const std::size_t first = thieves.empty() ? 0 : month_tag % thieves.size();
   for (std::size_t turn = 0; turn < thieves.size(); ++turn) {
     const std::uint32_t person_row = thieves[(first + turn) % thieves.size()];
+    // TALKED TO (#2191, «Поговорить»): he steals nothing for his season.
+    if (TalkedOutOfTheft(current, current.residents.row_ids[person_row], current.calendar.day)) {
+      continue;
+    }
     Vec2 yard;
     if (!YardOf(current, current.residents.rows[person_row], yard)) {
       continue;
@@ -483,6 +497,8 @@ void RunFoodTheft(const FoodTheftConfig& config,
       current.residents.rows[person_row].sack_month = month_tag;  // paid in samogon
     }
   }
+  // THE WATCHMAN'S CATCH (#2191): a sober watchman at a store a drinking storekeeper left open.
+  CatchAtWatchedStores(night, current);
   // 2b: THE DRINKING STOREKEEPER LETS OUT HIS SHARE, guarded or not.
   for (std::uint32_t person_row = 0; person_row < current.residents.rows.size(); ++person_row) {
     const ResidentRow& person = current.residents.rows[person_row];

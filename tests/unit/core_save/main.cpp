@@ -188,6 +188,20 @@ core::WorldState MakeWorld() {
   world.chairman.year_hard_asks = 3;
   world.chairman.year_under_pressure = 1;  // econ [9]
   world.chairman.social_kinds_built = 5;
+  world.chairman.detective = 53.0F;   // save 234 (#2191)
+  world.chairman.discipline = 51.5F;  // save 234
+  world.thief_catch.last_night.push_back(core::NightSack{.thief = core::ResidentId{4},
+                                                         .unit = core::UnitId{2},
+                                                         .resource = core::ResourceId{0},
+                                                         .grams = 25'000,
+                                                         .still = core::ResidentId{5},
+                                                         .day = 39});
+  world.thief_catch.open_catch = world.thief_catch.last_night[0];
+  world.thief_catch.caught_day = 39;
+  world.thief_catch.by_chairman = 1;
+  world.thief_catch.under_wing_count = 2;
+  world.thief_catch.talked.push_back(
+      core::TalkedThief{.thief = core::ResidentId{6}, .until_day = 51});
   world.chairman.issue_raised_month = 8;
   world.chairman.understood_day = 9;
   world.chairman.unfair_season = 10;  // econ [6]'s season marks
@@ -1722,6 +1736,8 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"chairman.year_hard_asks", U16(world.chairman.year_hard_asks)});
   chunks.push_back({"chairman.year_under_pressure", U8(world.chairman.year_under_pressure)});
   chunks.push_back({"chairman.social_kinds_built", U8(world.chairman.social_kinds_built)});
+  chunks.push_back({"chairman.detective", F32(world.chairman.detective)});    // save 234
+  chunks.push_back({"chairman.discipline", F32(world.chairman.discipline)});  // save 234
   chunks.push_back({"chairman.authority_live", U8(world.chairman.authority_live)});
 
   chunks.push_back({"traction_ration", F32(world.traction_ration)});
@@ -1815,6 +1831,30 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
       chunks, "audit.before_acceptance_last_month", world.audit.before_acceptance_last_month);
   chunks.push_back({"audit.remark_withdrawn_day", U32(world.audit.remark_withdrawn_day)});
   chunks.push_back({"audit.clean_in_a_row", U8(world.audit.clean_in_a_row)});  // save 221
+  // The thief catch (#2191, save 234): the night's sacks, the open catch, the talked.
+  const auto sack_chunks = [&chunks](const char* name, const core::NightSack& sack) {
+    chunks.push_back({name, U32(sack.thief.value)});
+    chunks.push_back({name, U32(sack.unit.value)});
+    chunks.push_back({name, U16(sack.resource.value)});
+    chunks.push_back({name, U64(static_cast<std::uint64_t>(sack.grams))});
+    chunks.push_back({name, U32(sack.still.value)});
+    chunks.push_back({name, U32(sack.day)});
+  };
+  chunks.push_back({"thief_catch.last_night count",
+                    U32(static_cast<std::uint32_t>(world.thief_catch.last_night.size()))});
+  for (const core::NightSack& sack : world.thief_catch.last_night) {
+    sack_chunks("thief_catch.last_night", sack);
+  }
+  sack_chunks("thief_catch.open_catch", world.thief_catch.open_catch);
+  chunks.push_back({"thief_catch.caught_day", U32(world.thief_catch.caught_day)});
+  chunks.push_back({"thief_catch.by_chairman", U8(world.thief_catch.by_chairman)});
+  chunks.push_back({"thief_catch.under_wing_count", U32(world.thief_catch.under_wing_count)});
+  chunks.push_back({"thief_catch.talked count",
+                    U32(static_cast<std::uint32_t>(world.thief_catch.talked.size()))});
+  for (const core::TalkedThief& talked : world.thief_catch.talked) {
+    chunks.push_back({"thief_catch.talked", U32(talked.thief.value)});
+    chunks.push_back({"thief_catch.talked", U32(talked.until_day)});
+  }
   // The tally clerk's record (#589, save 219).
   chunks.push_back({"clerk.since_day", U32(world.clerk.since_day)});
   chunks.push_back({"clerk.vacancy", U8(static_cast<std::uint8_t>(world.clerk.vacancy))});
@@ -3341,6 +3381,13 @@ int main() {
           loaded.chairman.authority_at_season_start == 33.5F &&
           loaded.chairman.authority_season == 12 && loaded.chairman.authority_fell == 1 &&
           loaded.chairman.year_hard_asks == 3 && loaded.chairman.social_kinds_built == 5 &&
+          loaded.chairman.detective == 53.0F && loaded.chairman.discipline == 51.5F &&
+          loaded.thief_catch.last_night.size() == 1 &&
+          loaded.thief_catch.last_night[0].grams == 25'000 &&
+          loaded.thief_catch.last_night[0].still.value == 5 &&
+          loaded.thief_catch.open_catch.thief.value == 4 && loaded.thief_catch.caught_day == 39 &&
+          loaded.thief_catch.by_chairman == 1 && loaded.thief_catch.under_wing_count == 2 &&
+          loaded.thief_catch.talked.size() == 1 && loaded.thief_catch.talked[0].until_day == 51 &&
           loaded.chairman.year_under_pressure == 1 && loaded.chairman.issue_raised_month == 8 &&
           loaded.chairman.understood_day == 9 && loaded.chairman.unfair_season == 10 &&
           loaded.chairman.raise_season == 11 && loaded.chairman.authority_live == 0 &&
