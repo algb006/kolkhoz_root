@@ -649,14 +649,13 @@ struct StillLoad {
   double heavier_ml_g = 0.0;  ///< Grams a millilitre of the heavier mash.
 };
 
-/// `carry_g` is the carrying the load must fit in, grams; `base_carried` false (#2189) for the
-/// still's own raw stock - he carries only its sugar, so only the sugar weighs.
+/// `carry_g` is what is left of the night's load, grams (#2189: his own raw's batch takes its
+/// share of the night first).
 StillLoad LoadByRecipe(const NightTradeConfig& config,
                        double sugar_open,
                        double grain_open,
                        double potato_open,
-                       double carry_g,
-                       bool base_carried) {
+                       double carry_g) {
   const auto per_litre = [](float kilograms) {
     return static_cast<double>(GramsFromKilograms(kilograms));
   };
@@ -671,7 +670,7 @@ StillLoad LoadByRecipe(const NightTradeConfig& config,
     if (!(load.sugar_g > 0.0) || !(base_g > 0.0)) {
       return 0.0;
     }
-    const double weighs = load.sugar_g + (base_carried ? base_g : 0.0);
+    const double weighs = load.sugar_g + base_g;
     const double litres =
         std::min({sugar_left / load.sugar_g, base_open / base_g, load.weight_left / weighs});
     const double whole =
@@ -748,7 +747,7 @@ StillLoad OpenLoad(const NightTradeConfig& config,
       config.potato.value != kInvalidDefIdValue
           ? static_cast<double>(OpenToHim(config, sealed, current, config.potato))
           : 0.0;
-  return LoadByRecipe(config, sugar_open, grain_open, potato_open, carry_g, true);
+  return LoadByRecipe(config, sugar_open, grain_open, potato_open, carry_g);
 }
 
 /// The night's whole carrying, grams (`distiller_raw_kg`).
@@ -826,16 +825,19 @@ Grams StealRawMaterial(const NightTradeConfig& config,
               DistillerDemandMl(config, current, distiller_row)) {
     return 0;
   }
-  // HIS OWN RAW FIRST (#2189): the night thieves' sacks lie at his yard, so of them he carries
-  // only the sugar - and the stores give the rest of the night's load. With no sugar open the
-  // raw waits; the cap on it is the thieves' (RawStockFull).
+  // HIS OWN RAW FIRST (#2189): the night thieves' sacks go into his still before the stores'
+  // grain, and the stores give only the rest of THE SAME night's load (`distiller_raw_kg`,
+  // sugar and all) - the sacks REPLACE his carrying, they do not add a batch to it. The first
+  // form weighed only the sugar of his own raw, and the still brewed a second batch beside
+  // the night's: samogon +43..+135 %, drinking y3 +27 %, his own sugar theft +43 % (tr1). With
+  // no sugar open the raw waits; the cap on it is the thieves' (RawStockFull).
   const bool has_row = distiller_row < current.residents.rows.size();
   const double own_grain =
       has_row ? static_cast<double>(current.residents.rows[distiller_row].still_raw_grain_g) : 0.0;
   const double own_potato =
       has_row ? static_cast<double>(current.residents.rows[distiller_row].still_raw_potato_g) : 0.0;
   const StillLoad mine = LoadByRecipe(
-      config, SugarOpen(config, sealed, current), own_grain, own_potato, FullCarry(config), false);
+      config, SugarOpen(config, sealed, current), own_grain, own_potato, FullCarry(config));
   const double own_litres = mine.grain_litres + mine.potato_litres;
   const StillLoad load =
       OpenLoad(config, sealed, current, own_litres * mine.sugar_g, mine.weight_left);

@@ -3795,19 +3795,21 @@ int CheckRawMaterialLeak() {
                    sugarless.step_events.empty(),
                "recipe: with no sugar open to him he leaves the grain where it lies");
   }
-  // HIS OWN RAW FIRST (#2189): 15 kg of the thieves' rye at his yard make 10 litres with 5 kg
-  // of sugar, of which only the sugar is carried (5 of the 50 kg); the stores then give the
-  // night's 20 litres more out of their 30 kg of grain and 10 of the 15 kg of sugar left.
+  // HIS OWN RAW FIRST, WITHIN THE NIGHT'S LOAD (#2189): 15 kg of the thieves' rye make 10
+  // litres with 5 kg of sugar - 20 of the night's 50 kg; the stores give only the other 30 kg,
+  // 15 litres (22.5 kg of their grain, 7.5 of sugar): 25 litres in all, the same night's
+  // batch as without the sacks, and 7.5 kg of the store's grain stays.
   {
     core::WorldState fed = world;
     fed.residents.rows[kDistillerRow].still_raw_grain_g = 15 * kKilo;
     core::StealRawMaterial(config, {}, fed, kDistillerRow);
     const core::UnitRow& store = fed.units.rows[FindRow(fed.units, open_id)];
-    failures += Expect(fed.residents.rows[kDistillerRow].samogon_ml == 30000 &&
+    failures += Expect(fed.residents.rows[kDistillerRow].samogon_ml == 25000 &&
                            fed.residents.rows[kDistillerRow].still_raw_grain_g == 0 &&
-                           store.stock[0] == 0 && store.stock[1] == 5 * kKilo,
-                       "raw (#2189): the thieves' 15 kg are brewed first, carrying only their "
-                       "sugar - 30 litres, the store's grain all gone and 5 kg of its sugar left");
+                           store.stock[0] == 7500 * core::kGramsPerKilogram / 1000 &&
+                           store.stock[1] == 7500 * core::kGramsPerKilogram / 1000,
+                       "raw (#2189): the thieves' 15 kg are brewed first, inside the night's "
+                       "50 kg - 25 litres, and the store keeps 7.5 kg of grain and of sugar");
   }
   const core::Grams first = core::StealRawMaterial(config, {}, world, kDistillerRow);
   failures += Expect(
