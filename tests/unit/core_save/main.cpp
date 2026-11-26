@@ -2318,8 +2318,8 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // Save 235 (#2191's no-pump fix): the Детектив's credited culprits, a count and one
     // (8) - predicted 1663 -> 1675 before the build, held; the hash read off cu2191d.
     // And the constable's district count (econ): a u16 year and a u8 count - predicted
-    // 1675 -> 1678 before the build.
-    {"world", 1675, 0x297cb2e7cb76b38aULL},
+    // 1675 -> 1678 before the build, held; the hash read off cu2191f.
+    {"world", 1678, 0x309085d614f97fbdULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
