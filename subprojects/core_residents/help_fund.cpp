@@ -3,6 +3,7 @@
 #include "help_fund.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -99,7 +100,9 @@ void IssueFromHelpFund(const FoodConfig& config,
       }
       // What lies in the stores above the other funds: the fund cannot give what is not there.
       const Grams there = FreeFoodStock(config, current, reserve, food);
-      const auto wanted = static_cast<Grams>(gap_kcal / kcal_per_gram);
+      // Rounded, not truncated: 13 200 kcal at 3.3F a gram is 3 999.99 g, and the floor lost a
+      // gram a family a month (hu2199b).
+      const auto wanted = static_cast<Grams>(std::llround(gap_kcal / kcal_per_gram));
       const Grams issue = std::min({wanted, held, there});
       if (issue <= 0) {
         continue;
