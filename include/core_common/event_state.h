@@ -991,6 +991,18 @@ enum class EventKind : std::uint8_t {
   /// `complaint_to_district`.
   kComplaintToDistrict,
 
+  /// A THEFT UNCOVERED (#2191; crime.md «застать вора»; metrics' Детектив «найден виновный»):
+  /// `resident` the thief, `unit` the store his sack came from, `resource` and `amount` (grams)
+  /// the sack, `family` 1 when the chairman caught him on his patrol (kCatchThief), 0 a
+  /// watchman at his post. The catch is open to kJudgeThief. kInterrupting. Seam key
+  /// `theft_uncovered`.
+  kTheftUncovered,
+
+  /// THE CHAIRMAN JUDGED A CAUGHT THIEF (#2191, kJudgeThief): `resident` the thief, `amount`
+  /// the ThiefChoice, `family` the family whose attitude moved (the distiller's for
+  /// kFindStill). kNotable. Seam key `thief_judged`.
+  kThiefJudged,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.
@@ -1057,7 +1069,9 @@ inline constexpr std::array<EventKind, 3> kEndingConditionEventKinds = {
 /// this count - the list cannot fall behind the enum silently.
 // kDistrictTable (127): not an ending's condition.
 // kAuthorityMoved (128), kComplaintToDistrict (129): not an ending's condition.
-static_assert(static_cast<std::size_t>(EventKind::kEventKindCount) == 129,
+// kTheftUncovered (130), kThiefJudged (131): not an ending's condition («Под суд» is the
+// audit's trial, not a thief handed to the constable).
+static_assert(static_cast<std::size_t>(EventKind::kEventKindCount) == 131,
               "a new EventKind: classify it in kEndingConditionEventKinds, then raise this count");
 
 /// @brief One thing that happened. Plain data, no text: the presentation

@@ -65,6 +65,7 @@
 #include "core_common/salt_state.h"
 #include "core_common/settlement_state.h"
 #include "core_common/specialist_state.h"
+#include "core_common/thief_catch_state.h"
 #include "core_common/timber_state.h"
 #include "core_common/trail_state.h"
 #include "core_common/turned_away_state.h"
@@ -715,6 +716,15 @@ struct ChairmanState {
   std::uint8_t year_under_pressure = 0;
   std::uint8_t social_kinds_built = 0;
 
+  /// THE CHAIRMAN'S «ДЕТЕКТИВ» AND «ДИСЦИПЛИНА И МОРАЛЬ» (#2191; metrics, the chairman's
+  /// scales: 0-100, grown only by his decisions, never falling; «любая поимка растит Детектив»,
+  /// a judged theft and a still taken raise Дисциплину). Start thief_catch_state.h's
+  /// scale_start until the avatar layout reaches the core. Moved by core_residents'
+  /// thief_catch.h; read by nothing else in Epoch I yet (their effects - the audit's lag, the
+  /// theft's norm - are later doors). Save 234.
+  Metric detective = 50.0F;
+  Metric discipline = 50.0F;
+
   /// 1: authority is live (#2164). 0 (world_params `authority_live` 0 at genesis, the paired
   /// arm's door): A stays 50, no deed moves it, no day is understood, no complaint is made -
   /// the world as before 232.
@@ -1259,6 +1269,10 @@ struct WorldState {
   /// The district's store audit (#1568 link 2d); SAVED (save 207).
   /// night_trade_state.h.
   AuditState audit;
+
+  /// #2191 «застал вора»: the last moonlit night's sacks and the catch open to the chairman's
+  /// judgement; SAVED (save 234). thief_catch_state.h.
+  ThiefCatchState thief_catch;
 
   /// The tally clerk's post record (#589; clerk_post_view.h): since when, or why and since
   /// when vacant. SAVED (save 219). The holder himself is on his ResidentRow::post.

@@ -265,6 +265,15 @@ bool ShapeIsValid(const OrderRow& order) {
       // The man, and nothing else. Whether he keeps a trade changes at every
       // year's turn — the consumer's verdict (order_state.h).
       return has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site;
+    case OrderKind::kCatchThief:
+      // «Застал вора» (#2191): the unit he stood at, and nothing else - who stole there is the
+      // core's answer from the night's sacks.
+      return has_unit && !has_resident && !has_field && !has_herd && !has_stand && !has_site;
+    case OrderKind::kJudgeThief:
+      // The caught man and the choice in `amount`, 0..6; whether a catch of his is open is the
+      // consumer's verdict.
+      return has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site &&
+             order.amount >= 0 && order.amount < static_cast<Grams>(ThiefChoice::kThiefChoiceCount);
     case OrderKind::kAdvanceEra:
       // Nothing at all: the whole village goes. Whether it is ready is the
       // year's readiness, the consumer's verdict (order_state.h).

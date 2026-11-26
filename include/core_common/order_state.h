@@ -1037,6 +1037,33 @@ enum class OrderKind : std::uint8_t {
   /// key `set_district_table`. Consumer: core_production.
   kSetDistrictTable,
 
+  /// «ЗАСТАЛ ВОРА» (#2191; crime.md «Ночью кражу видно, и вора можно застать»; boss 26 Nov
+  /// 2026): the chairman, on his night patrol in the first person, saw the figure with a sack
+  /// at `unit` (a store or a clamp) - the layer alone knows where he stood and what he saw.
+  /// The core names the culprit: the last moonlit night's thief at that unit
+  /// (ThiefCatchState::last_night), raises kTheftUncovered and opens the catch to the
+  /// judgement (kJudgeThief), the chairman's Детектив +1. A watchman's catch needs no order:
+  /// the core raises it itself where a posted watchman stands at a store whose leak was open
+  /// for another reason (a drinking storekeeper). Refusals: kNoSuchSubject (no sack was taken
+  /// at that unit on the last moonlit night). Seam key `catch_thief`. Consumer:
+  /// core_residents (thief_catch.h).
+  /// CONTRACT ONLY until #2191's body: no consumer reads it yet.
+  kCatchThief,
+
+  /// THE CHAIRMAN'S JUDGEMENT OF A CAUGHT THIEF (#2191; crime.md «Решения председателя о
+  /// пойманном воре»): `resident` the thief of the open catch, `amount` the ThiefChoice
+  /// (thief_catch_state.h; all seven accepted - the windows are the layer's), within
+  /// ThiefCatchRules::judge_within_days of the catch. Raises kThiefJudged; each choice moves
+  /// the family's attitude, the chairman's Дисциплина, and for its door the authority, the
+  /// district, the still (kFindStill takes the distiller as kTakeNightTrader does) or the
+  /// thief's labour days (kWorkOff), his months away (kHandToConstable), his season without
+  /// theft (kTalk), the sack's remainder back to its store (kReturnStolen). Refusals:
+  /// kNoSuchSubject (no open catch of that resident), kNotEligible (an `amount` outside the
+  /// seven), kRuleForbids (the catch older than judge_within_days). Seam key `judge_thief`.
+  /// Consumer: core_residents (thief_catch.h).
+  /// CONTRACT ONLY until #2191's body: no consumer reads it yet.
+  kJudgeThief,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).
