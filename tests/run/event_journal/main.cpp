@@ -180,6 +180,10 @@ const char* KindName(core::EventKind kind) {
       return "authority_moved";
     case core::EventKind::kComplaintToDistrict:
       return "complaint_to_district";
+    case core::EventKind::kTheftUncovered:
+      return "theft_uncovered";
+    case core::EventKind::kThiefJudged:
+      return "thief_judged";
     case core::EventKind::kElectrificationUnlocked:
       return "electrification_unlocked";
     case core::EventKind::kFireBroke:
