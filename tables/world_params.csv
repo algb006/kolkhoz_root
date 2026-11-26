@@ -378,6 +378,7 @@ drunk_fires_per_season_max,1,core
 food_theft_from_alcoholism,40,core
 food_theft_kg_per_thief_month,25,core
 food_theft_reach_m,1000,core
+food_theft_still_raw_kg_month,40,core
 food_theft_store_cap_share_month,0.02,core
 truancy_from_alcoholism,50,core
 truancy_share_at_cap,0.1,core
