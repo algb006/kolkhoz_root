@@ -131,14 +131,15 @@ std::uint32_t BuySamogon(const NightTradeConfig& night,
     }
   }
   // A distiller's own household drinks its own and pays nobody.
-  // A SACK-BRINGER IS PAID IN SAMOGON (#2189; econ's (4)): who brought a still a sack in the
-  // month that closed gets his asking free - his yard pays nothing; the litres stay capped by
-  // the distiller's.
+  // A SACK PAYS FOR HIS MONTH (#2189; econ's (c), after tr2): who brought a still a sack in the
+  // month that closed buys what his yard's pantry would have bought - the sack changes WHO
+  // PAYS, not how much he drinks - and his yard pays nothing for it. The first form gave him
+  // his whole asking free, lifting the pantry's limit: drink y3 +23 %, samogon y3 +67 % (tr2).
   const SimDay day = current.calendar.day;
   const bool brought_a_sack =
       day > 0 && current.residents.rows[buyer_row].sack_month == SupplyMonthTag(day - 1U);
-  const bool pays = payer != seller && price_grams > 0.0 && !brought_a_sack;
-  const double covered = pays ? std::min(1.0, can_pay / (asked * price_grams)) : 1.0;
+  const bool priced = payer != seller && price_grams > 0.0;
+  const double covered = priced ? std::min(1.0, can_pay / (asked * price_grams)) : 1.0;
   const auto got =
       std::min(static_cast<std::uint32_t>(std::floor(asked * covered)), distiller.samogon_ml);
   if (got == 0) {
@@ -146,7 +147,7 @@ std::uint32_t BuySamogon(const NightTradeConfig& night,
   }
   distiller.samogon_ml -= got;
   current.ledger.current.samogon_sold_ml += got;
-  if (!pays) {
+  if (!priced || brought_a_sack) {
     return got;
   }
   Grams owed = static_cast<Grams>(std::llround(static_cast<double>(got) * price_grams));
