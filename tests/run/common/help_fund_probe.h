@@ -81,6 +81,23 @@ class HelpFundProbe {
         }
         followed_pantry_g_ += pantry_g;
         pantry_left_with_short_ += eaten < kLine && pantry_g >= kPantryLeftG ? 1U : 0U;
+        // THE SPLIT (econ): for those short again with food left - the pantry by kind, and the
+        // rest of it (every other food) - so A's limiting kind is named.
+        if (eaten < kLine && pantry_g >= kPantryLeftG) {
+          double named = 0.0;
+          for (std::size_t kind = 0; kind < foods_.size() && kind < split_g_.size(); ++kind) {
+            const std::uint32_t food = foods_[kind];
+            const double grams =
+                food < family.pantry.size() ? static_cast<double>(family.pantry[food]) : 0.0;
+            split_g_[kind] += grams;
+            named += grams;
+          }
+          double all = 0.0;
+          for (const core::Grams grams : family.pantry) {
+            all += static_cast<double>(grams);
+          }
+          split_other_g_ += all - named;
+        }
       }
       if (eaten < kLine) {
         short_now[id] = eaten;
@@ -139,7 +156,13 @@ class HelpFundProbe {
             "short_with_pantry_ge_5kg) "
          << followed_ << ' ' << (followed_ > 0 ? followed_eaten_ / followed_ : -1.0) << ' '
          << short_again_ << ' ' << (followed_ > 0 ? followed_pantry_g_ / followed_ / 1000.0 : -1.0)
-         << ' ' << pantry_left_with_short_;
+         << ' ' << pantry_left_with_short_ << " split_kg(rye/wheat/barley/oat/potato/other)";
+    for (const double grams : split_g_) {
+      line << ' ' << grams / 1000.0;
+    }
+    line << ' ' << split_other_g_ / 1000.0;
+    split_g_ = {};
+    split_other_g_ = 0.0;
     followed_ = 0;
     followed_eaten_ = 0.0;
     short_again_ = 0;
@@ -168,6 +191,8 @@ class HelpFundProbe {
   std::uint32_t short_again_ = 0;
   double followed_pantry_g_ = 0.0;
   std::uint32_t pantry_left_with_short_ = 0;
+  std::array<double, 5> split_g_{};
+  double split_other_g_ = 0.0;
   std::uint32_t ration_months_ = 0;
   double ration_eaten_ = 0.0;
   std::vector<std::string> lines_;
