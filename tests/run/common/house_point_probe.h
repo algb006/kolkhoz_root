@@ -59,17 +59,20 @@ class HousePointProbe {
   void CountDay(const core::ISimulation& simulation) {
     const core::WorldState& world = simulation.CompletedState();
     const std::uint32_t day = world.calendar.day;
-    if ((day != 0 && day != 7U * core::kDaysPerYear) || house_ == core::kNoTableRow) {
+    // Day 1 (the day-end hook's first call reads day 1; day 0 never prints - hp1907a).
+    if ((day != 1 && day != 7U * core::kDaysPerYear) || house_ == core::kNoTableRow) {
       return;
     }
     const float own = house_ < radii_.size() ? radii_[house_] : 0.0F;
     std::ostringstream line;
     std::uint32_t refused = 0;
+    std::uint32_t used_count = 0;
     for (const Point& point : points_) {
       const core::Vec2 at{.x = point.x, .y = point.y};
       const std::uint8_t bans =
           simulation.BuildBansToday(core::UnitTypeId{static_cast<std::uint16_t>(house_)}, at);
       bool plot = false;
+      bool used = false;
       for (const core::UnitRow& unit : world.units.rows) {
         if (unit.dead != 0 || unit.type.value >= radii_.size()) {
           continue;
@@ -77,7 +80,18 @@ class HousePointProbe {
         const float reach = own + radii_[unit.type.value];
         const float dx = unit.position.x - point.x;
         const float dy = unit.position.y - point.y;
-        plot = plot || std::sqrt((dx * dx) + (dy * dy)) < reach;
+        const float distance = std::sqrt((dx * dx) + (dy * dy));
+        // A wooden house standing ON the point (within its own radius) is the point USED, not
+        // refused - the bot spends the rows nearest first.
+        if (unit.type.value == house_ && distance <= own) {
+          used = true;
+          continue;
+        }
+        plot = plot || distance < reach;
+      }
+      if (used) {
+        ++used_count;
+        continue;
       }
       if (bans == 0 && !plot) {
         continue;
@@ -99,8 +113,8 @@ class HousePointProbe {
       line << ')';
     }
     std::ostringstream out;
-    out << "day " << (day + 1U) << " points " << points_.size() << " refused " << refused << " keys"
-        << (refused == 0 ? std::string(" none") : line.str());
+    out << "day " << (day + 1U) << " points " << points_.size() << " used " << used_count
+        << " refused " << refused << " keys" << (refused == 0 ? std::string(" none") : line.str());
     lines_.push_back(out.str());
   }
 
