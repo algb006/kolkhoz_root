@@ -19,6 +19,7 @@
 #ifndef CORE_COMMON_HELP_FUND_STATE_H_
 #define CORE_COMMON_HELP_FUND_STATE_H_
 
+#include <array>
 #include <cstdint>
 
 #include "core_common/quantities.h"
@@ -51,6 +52,14 @@ struct HelpFundState {
   /// PROBE #2199b (not for release, not saved): the free stock above the lower rungs of the
   /// fund's foods at the month's issue, grams.
   Grams probe_free_g = 0;
+  /// PROBE #2199b: over the families short last month at the issue - their count, the pantry
+  /// term's kcal by kind (0 fodder/hay, 1 winter store, 2 potato, 3 vegetables, 4 grain,
+  /// 5 other), the line's kcal, the kcal given, and how many got nothing.
+  std::uint32_t probe_short = 0;
+  std::uint32_t probe_none = 0;
+  std::array<double, 6> probe_term_kcal{};
+  double probe_line_kcal = 0.0;
+  double probe_given_kcal = 0.0;
 };
 
 }  // namespace core

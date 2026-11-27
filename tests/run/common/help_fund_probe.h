@@ -210,6 +210,15 @@ class HelpFundProbe {
     fund_free_ += free;
     fund_given_ += given;
     fund_issued_ += issued;
+    // The clerk's term at the issue, from the core's probe-only record.
+    const core::HelpFundState& fund = world.help_fund;
+    term_short_ += fund.probe_short;
+    term_none_ += fund.probe_none;
+    term_line_ += fund.probe_line_kcal;
+    term_given_ += fund.probe_given_kcal;
+    for (std::size_t kind = 0; kind < term_kcal_.size(); ++kind) {
+      term_kcal_[kind] += fund.probe_term_kcal[kind];
+    }
   }
 
   /// #2199b THE TIMING (econ): each family's day - its eaten and need off the month's table's
@@ -298,6 +307,14 @@ class HelpFundProbe {
          << (fund_months_ > 0 ? fund_free_ / fund_months_ / 1000.0 : -1.0) << ' '
          << (fund_months_ > 0 ? fund_given_ / fund_months_ / 1000.0 : -1.0) << ' '
          << (fund_months_ > 0 ? fund_issued_ / fund_months_ / 1000.0 : -1.0);
+    line << " term(short/none/line_kcal/given_kcal/fodder/winter/potato/veg/grain/other) "
+         << term_short_ << ' ' << term_none_ << ' ' << term_line_ << ' ' << term_given_;
+    for (const double kcal : term_kcal_) {
+      line << ' ' << kcal;
+    }
+    term_short_ = term_none_ = 0;
+    term_line_ = term_given_ = 0.0;
+    term_kcal_ = {};
     fund_months_ = fund_free0_ = fund_free_no_give_ = 0;
     fund_held_ = fund_free_ = fund_given_ = fund_issued_ = 0.0;
     timing_t_ = timing_m_ = timing_n_ = day_reads_ = 0;
@@ -357,6 +374,11 @@ class HelpFundProbe {
   double fund_free_ = 0.0;
   double fund_given_ = 0.0;
   double fund_issued_ = 0.0;
+  std::uint32_t term_short_ = 0;
+  std::uint32_t term_none_ = 0;
+  double term_line_ = 0.0;
+  double term_given_ = 0.0;
+  std::array<double, 6> term_kcal_{};
   std::vector<double> kcal_;
   std::uint32_t timing_t_ = 0;
   std::uint32_t timing_m_ = 0;

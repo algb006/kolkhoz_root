@@ -77,6 +77,11 @@ void IssueFromHelpFund(const FoodConfig& config,
   HelpFundState& fund = current.help_fund;
   Grams given_total = 0;
   fund.probe_free_g = 0;  // PROBE #2199b
+  fund.probe_short = 0;
+  fund.probe_none = 0;
+  fund.probe_term_kcal = {};
+  fund.probe_line_kcal = 0.0;
+  fund.probe_given_kcal = 0.0;
   for (const ResourceId food : config.help_fund_foods) {
     fund.probe_free_g += FreeFoodStock(config, current, reserve, food);
   }
@@ -103,6 +108,33 @@ void IssueFromHelpFund(const FoodConfig& config,
                      static_cast<double>(config.resources[food].kcal_per_gram);
     }
     double gap_kcal = line_kcal - pantry_kcal;
+    {
+      // PROBE #2199b: the term by kind.
+      ++fund.probe_short;
+      fund.probe_line_kcal += line_kcal;
+      for (std::size_t food = 0; food < family.pantry.size() && food < config.resources.size();
+           ++food) {
+        const double kcal = static_cast<double>(family.pantry[food]) *
+                            static_cast<double>(config.resources[food].kcal_per_gram);
+        const FoodCategory category = config.resources[food].category;
+        std::size_t kind = 5;
+        if (food == config.dried_forage_resource.value) {
+          kind = 1;
+        } else if (food == config.potato_resource.value) {
+          kind = 2;
+        } else if (food == config.vegetables_resource.value) {
+          kind = 3;
+        } else if (!(config.resources[food].kcal_per_gram > 0.0F)) {
+          kind = 0;  // fodder and every row with no kcal: counts 0 by construction
+        } else if (category == FoodCategory::kBread) {
+          kind = 4;
+        }
+        fund.probe_term_kcal[kind] += kcal;
+      }
+      if (!(gap_kcal > 0.0)) {
+        ++fund.probe_none;
+      }
+    }
     if (!(gap_kcal > 0.0)) {
       continue;  // the pantry holds a month at the line already
     }
@@ -129,6 +161,7 @@ void IssueFromHelpFund(const FoodConfig& config,
       AddTo(current.ledger.current.help_issued, food, given);
       fund.held[food.value] -= given;
       gap_kcal -= static_cast<double>(given) * kcal_per_gram;
+      fund.probe_given_kcal += static_cast<double>(given) * kcal_per_gram;  // PROBE #2199b
       given_total += given;
     }
     short_left = short_left || gap_kcal > 1.0;
