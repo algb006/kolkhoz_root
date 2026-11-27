@@ -11,12 +11,39 @@
 #include "core_common/emit_event.h"
 #include "core_common/event_state.h"
 #include "core_common/home_reach.h"
+#include "core_common/ledger_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/timber_state.h"
+#include "stock_ops.h"
 #include "timber_planting.h"
 
 namespace core {
 namespace {
+
+/// #2261 stage 3: the felled volume less the logs' (whole logs × log_m3) as firewood, put into
+/// the stores that take it (DeliverToStores: its home is the firewood yard / utility yard by
+/// resource_stores.csv), and what none takes booked to the year's lost_no_room.
+void DeliverFellingFirewood(const ProductionConfig& config,
+                            WorldState& current,
+                            float felled_m3,
+                            Grams log_grams) {
+  if (config.firewood_resource.value == kInvalidDefIdValue ||
+      !(config.firewood_grams_per_m3 > 0.0) || config.timber.log_grams <= 0) {
+    return;
+  }
+  const double logs_m3 = static_cast<double>(log_grams) /
+                         static_cast<double>(config.timber.log_grams) *
+                         static_cast<double>(config.timber.log_m3);
+  const double firewood_m3 = static_cast<double>(felled_m3) - logs_m3;
+  if (!(firewood_m3 > 0.0)) {
+    return;
+  }
+  const auto grams = static_cast<Grams>(std::llround(firewood_m3 * config.firewood_grams_per_m3));
+  const Grams placed = DeliverToStores(current, config, config.firewood_resource, grams);
+  if (grams > placed) {
+    AddLedgerAmount(current.ledger.current.lost_no_room, config.firewood_resource, grams - placed);
+  }
+}
 
 /// The stand's catalogue row, or nullptr for a stand whose table row the
 /// build does not carry (a save from a different bake).
@@ -81,10 +108,14 @@ void FellFinishedStands(const ProductionConfig& config, WorldState& current) {
             ? &planted
             : (stand.kind == TimberStandKind::kPlanted ? nullptr : DefOf(config, stand));
     if (def != nullptr) {
-      stand.load_grams += LogGramsFromVolume(config.timber, *def, felled);
+      const Grams logs = LogGramsFromVolume(config.timber, *def, felled);
+      stand.load_grams += logs;
+      // #2261 stage 3, THE FIREWOOD THE SAME TREES GIVE (timber design §8a; econ: to the
+      // firewood yard, else the nearest store that takes firewood, else lost): the felled
+      // volume less the logs' volume. STUB: it reaches its store the day it is felled, with no
+      // cart - the logs' own carting is not shared with it; what no store takes is booked lost.
+      DeliverFellingFirewood(config, current, felled, logs);
     }
-    // The firewood the same trees give has no holder yet (STUB, timber
-    // design §8a): it is felled and not laid down.
     stand.stock_m3 = std::max(stand.stock_m3 - felled, 0.0F);
     stand.marked_m3 = 0.0F;
     stand.work_days_remaining = 0.0F;
@@ -125,7 +156,9 @@ void ReleaseUnreachableMarks(const ProductionConfig& config, WorldState& current
             ? &planted
             : (stand.kind == TimberStandKind::kPlanted ? nullptr : DefOf(config, stand));
     if (def != nullptr && felled > 0.0F) {
-      stand.load_grams += LogGramsFromVolume(config.timber, *def, felled);
+      const Grams logs = LogGramsFromVolume(config.timber, *def, felled);
+      stand.load_grams += logs;
+      DeliverFellingFirewood(config, current, felled, logs);  // #2261, as a finished felling
     }
     stand.stock_m3 = std::max(stand.stock_m3 - felled, 0.0F);
     stand.marked_m3 = 0.0F;

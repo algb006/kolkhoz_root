@@ -1297,6 +1297,11 @@ struct ProductionConfig {
 
   ResourceId hide_resource;  ///< resources.csv "hide" row.
 
+  /// resources.csv "firewood" row and its grams a m³ (kg_per_unit × 1000): the felling's
+  /// firewood share (#2261 stage 3). Invalid / 0 = no firewood in the tables.
+  ResourceId firewood_resource;
+  double firewood_grams_per_m3 = 0.0;
+
   ResourceId pelt_resource;  ///< resources.csv "mink_pelt" row.
 
   ResourceId down_resource;  ///< resources.csv "down" row.

@@ -1836,6 +1836,17 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   }
   config.manure_resource = ResourceByKey(resources, "manure");
   config.hay_resource = ResourceByKey(resources, "hay");
+  // #2261 stage 3: the felling's firewood, in m³ of the resource's measure.
+  config.firewood_resource = ResourceByKey(resources, "firewood");
+  if (resources != nullptr && config.firewood_resource.value != kInvalidDefIdValue) {
+    const std::uint32_t kg = resources->FindColumn("kg_per_unit");
+    config.firewood_grams_per_m3 =
+        kg == kNoTableColumn
+            ? 0.0
+            : static_cast<double>(
+                  resources->CellReal(config.firewood_resource.value, kg).value_or(0.0F)) *
+                  1000.0;
+  }
   // #1630 (B): the salt and its substitutes, for the table's reserve and SaltToday.
   config.salt_resource = ResourceByKey(resources, "salt");
   config.salted_fish_resource = ResourceByKey(resources, "salted_fish");
