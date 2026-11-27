@@ -134,6 +134,15 @@ bool AlcoholSparesWork(const WorkAssignment& work) {
   return work.kind == WorkKind::kHauling && work.stand.value != kInvalidEntityIdValue;
 }
 
+/// #2261 stage 4 (needs.md §1): «Холодно» works at cold_work_factor, «Замёрз» goes home - an
+/// efficiency of nought, which every caller already reads as «no work today».
+float ColdFactor(const LaborConfig& config, const ResidentRow& resident) {
+  if (resident.cold_stage >= 2) {
+    return 0.0F;
+  }
+  return resident.cold_stage == 1 ? config.cold_work_factor : 1.0F;
+}
+
 float ResidentEfficiency(const LaborConfig& config,
                          const ResidentRow& resident,
                          float age_years,
@@ -153,7 +162,8 @@ float ResidentEfficiency(const LaborConfig& config,
       PivotFactor(resident.mood, factors.mood_pivot, factors.mood_slope) * education * self_taught *
       PivotFactor(FieldSkillBlend(config, resident), factors.skill_pivot, factors.skill_slope) *
       FedFactor(factors, resident.satiety, first_year) *
-      (drink_spared ? 1.0F : SoberFactor(factors, resident.alcoholism));
+      (drink_spared ? 1.0F : SoberFactor(factors, resident.alcoholism)) *
+      ColdFactor(config, resident);
   return efficiency > 0.0F ? efficiency : 0.0F;
 }
 

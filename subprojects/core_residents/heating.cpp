@@ -10,7 +10,10 @@
 #include <optional>
 
 #include "core_catalog/table_value.h"
+#include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
+#include "core_common/emit_event.h"
+#include "core_common/random.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 
@@ -448,6 +451,89 @@ void RunHeatingBurn(const HeatingConfig& config,
   }
   heating.need_1m_m3 = static_cast<float>(per_degree_day * degrees_1m);
   heating.need_2m_m3 = static_cast<float>(per_degree_day * degrees_2m);
+}
+
+namespace {
+
+/// STUB bands for the endurance offsets (econ named hardy / ordinary / weak-sick-old and their
+/// offsets, not the bands): hardy at stamina+sportiness ≥ 120 of 200; weak under 60, or health
+/// under 40, or 55 biological years and over.
+constexpr float kHardyToughness = 120.0F;
+constexpr float kWeakToughness = 60.0F;
+constexpr float kWeakHealth = 40.0F;
+constexpr float kOldYears = 55.0F;
+constexpr std::uint64_t kColdHitSalt = 0x2261C01DULL;
+
+}  // namespace
+
+void RunResidentsCold(const HeatingConfig& config,
+                      float life_speedup,
+                      bool epoch_one,
+                      WorldState& world) {
+  HeatingState& heating = world.heating;
+  const float outdoor = world.weather.air_temperature_celsius;
+  const bool cold_day = outdoor < config.heat_threshold_c;
+  const SimDay day = world.calendar.day;
+  for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
+    ResidentRow& resident = world.residents.rows[row];
+    if (AwayInDistrict(resident, world.calendar.tick)) {
+      continue;  // the district's roof
+    }
+    // HIS HOME TONIGHT: warm on a day at or above the threshold, or under a roof whose buffer
+    // still holds fuel after today's burn; cold with no house or an empty stove.
+    bool warm = !cold_day;
+    if (cold_day) {
+      const std::uint32_t family = FindRow(world.families, resident.family);
+      const std::uint32_t house =
+          family == kNoRow ? kNoRow : FindRow(world.units, world.families.rows[family].house);
+      warm = house != kNoRow && world.units.rows[house].heat_buffer_m3 > 0.0F;
+    }
+    resident.cold =
+        warm ? std::max(0.0F, resident.cold - config.cold_loss_night_warm)
+             : std::min(config.cold_scale_max, resident.cold + config.cold_gain_night_home);
+    // His thresholds, moved by his offsets.
+    const float toughness = resident.stamina + resident.sportiness;
+    const float age = BiologicalAgeYears(life_speedup, resident.birth_day, day);
+    float offset = epoch_one ? config.cold_era1_offset : 0.0F;
+    if (toughness < kWeakToughness || resident.health < kWeakHealth || age >= kOldYears) {
+      offset += config.cold_weak_offset;
+    } else if (toughness >= kHardyToughness) {
+      offset += config.cold_hardy_offset;
+    }
+    const std::uint8_t was = resident.cold_stage;
+    std::uint8_t stage = 0;
+    if (resident.cold >= config.cold_frozen_at + offset) {
+      stage = 2;
+    } else if (resident.cold >= config.cold_cold_at + offset) {
+      stage = 1;
+    }
+    resident.cold_stage = stage;
+    // THE HEALTH HIT (boss: no disease in the first build): reaching «Замёрз», once an episode,
+    // or a «Холодно» day.
+    float chance_pct = 0.0F;
+    if (stage == 2 && was != 2) {
+      chance_pct = config.cold_frozen_sick_chance_pct;
+    } else if (stage == 1) {
+      chance_pct = config.cold_sickness_pct_day;
+    }
+    if (chance_pct > 0.0F &&
+        CounterHashUnitFloat(
+            world.world_seed, day, world.residents.row_ids[row].value, kColdHitSalt) *
+                100.0F <
+            chance_pct) {
+      const float taken = std::min(resident.health, kColdHealthHitPoints);
+      resident.health -= taken;
+      SimEvent& hit = EmitEvent(world, EventKind::kColdHealthHit, EventSeverity::kNotable);
+      hit.resident = world.residents.row_ids[row];
+      hit.amount = static_cast<std::int64_t>(std::lround(taken));
+      ++heating.probe_health_hits;
+    }
+    if (cold_day) {
+      ++heating.probe_cold_season_days;
+      heating.probe_cold_stage_days += stage == 1 ? 1U : 0U;
+      heating.probe_frozen_stage_days += stage == 2 ? 1U : 0U;
+    }
+  }
 }
 
 }  // namespace core

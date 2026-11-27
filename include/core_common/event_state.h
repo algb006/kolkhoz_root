@@ -1016,6 +1016,13 @@ enum class EventKind : std::uint8_t {
   /// Once until the next top-up. kNotable. Seam key `help_fund_empty`.
   kHelpFundEmpty,
 
+  /// THE COLD HIT A RESIDENT'S HEALTH (#2261 stage 4; boss: no disease in the first build,
+  /// health.md l.177 - cold lowers health directly): on reaching «Замёрз» (once an episode, at
+  /// cold_frozen_sick_chance_pct) or a «Холодно» day (at cold_sickness_pct_day), health −8
+  /// (the cold/flu row's number, health.md l.189). `resident` the one hit, `amount` the points
+  /// taken. kNotable. Seam key `cold_health_hit`.
+  kColdHealthHit,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.
@@ -1085,7 +1092,8 @@ inline constexpr std::array<EventKind, 3> kEndingConditionEventKinds = {
 // kTheftUncovered (130), kThiefJudged (131): not an ending's condition («Под суд» is the
 // audit's trial, not a thief handed to the constable).
 // kHelpFundIssued (132), kHelpFundEmpty (133): not an ending's condition.
-static_assert(static_cast<std::size_t>(EventKind::kEventKindCount) == 133,
+// kColdHealthHit (134): not an ending's condition (no death by cold, needs.md §1).
+static_assert(static_cast<std::size_t>(EventKind::kEventKindCount) == 134,
               "a new EventKind: classify it in kEndingConditionEventKinds, then raise this count");
 
 /// @brief One thing that happened. Plain data, no text: the presentation

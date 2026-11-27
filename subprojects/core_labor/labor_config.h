@@ -688,6 +688,10 @@ struct LaborConfig {
   /// world_params road_access_m, a unit's own road access (unit rules §12).
   float beach_path_access_m = 10.0F;
 
+  /// #2261 stage 4: a resident in «Холодно» (ResidentRow::cold_stage 1) works at this factor
+  /// (1 − world_params cold_work_penalty_pct / 100); in «Замёрз» (2) he does not work at all.
+  float cold_work_factor = 0.85F;
+
   /// A holiday's rest (labor.csv rest_recovery_holiday, design +20). NEGATIVE
   /// when the row is absent: then a holiday is the day off it was before
   /// #1373, May Day's +15 of the leisure window included (the rest-off arm of

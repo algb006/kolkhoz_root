@@ -45,6 +45,10 @@ class HeatingProbe {
     month.split_floor_days = heating.probe_split_floor_days - last_.probe_split_floor_days;
     month.split_m3 = heating.probe_split_m3 - last_.probe_split_m3;
     month.deadwood_m3 = heating.probe_deadwood_m3 - last_.probe_deadwood_m3;
+    month.cold_season = heating.probe_cold_season_days - last_.probe_cold_season_days;
+    month.kholodno = heating.probe_cold_stage_days - last_.probe_cold_stage_days;
+    month.zamerz = heating.probe_frozen_stage_days - last_.probe_frozen_stage_days;
+    month.hits = heating.probe_health_hits - last_.probe_health_hits;
     months_.push_back(month);
     last_ = heating;
     // The buffers standing at the month's end, m³, and how many heated units hold any.
@@ -58,6 +62,15 @@ class HeatingProbe {
     }
     months_.back().standing = standing;
     months_.back().holding = holding;
+    // econ's C2 second half: the village's mean health on month 5's first day (the month that
+    // closes now is month 4 - its last day is the eve).
+    if (world.calendar.date.month == core::Month::kApril && !world.residents.rows.empty()) {
+      double health = 0.0;
+      for (const core::ResidentRow& resident : world.residents.rows) {
+        health += static_cast<double>(resident.health);
+      }
+      months_.back().health_mean = health / static_cast<double>(world.residents.rows.size());
+    }
   }
 
   void Print(std::ostream& out, std::uint64_t seed) const {
@@ -93,7 +106,13 @@ class HeatingProbe {
       out << "HEAT2261 seed " << seed << " year " << (first / kMonths) + 1 << ' ';
       Line(out, year);
       const Month& last = months_[std::min(first + kMonths, months_.size()) - 1];
-      out << " standing_m3 " << last.standing << " holding " << last.holding << '\n';
+      out << " standing_m3 " << last.standing << " holding " << last.holding;
+      for (std::size_t i = first; i < first + kMonths && i < months_.size(); ++i) {
+        if (months_[i].health_mean >= 0.0) {
+          out << " health_mean_may1 " << months_[i].health_mean;  // April's last day's close
+        }
+      }
+      out << '\n';
     }
     for (std::uint32_t m = 0; m < kMonths; ++m) {
       out << "HEAT2261 seed " << seed << " month " << m + 1 << ' ';
@@ -118,6 +137,11 @@ class HeatingProbe {
     std::uint64_t split_floor_days = 0;
     double split_m3 = 0.0;
     double deadwood_m3 = 0.0;
+    std::uint64_t cold_season = 0;
+    std::uint64_t kholodno = 0;
+    std::uint64_t zamerz = 0;
+    std::uint64_t hits = 0;
+    double health_mean = -1.0;
     double standing = 0.0;
     std::uint32_t holding = 0;
   };
@@ -136,6 +160,10 @@ class HeatingProbe {
     into.split_floor_days += month.split_floor_days;
     into.split_m3 += month.split_m3;
     into.deadwood_m3 += month.deadwood_m3;
+    into.cold_season += month.cold_season;
+    into.kholodno += month.kholodno;
+    into.zamerz += month.zamerz;
+    into.hits += month.hits;
   }
 
   static double Pct(std::uint64_t part, std::uint64_t whole) {
@@ -148,7 +176,10 @@ class HeatingProbe {
         << Pct(m.empty_house, m.want_house) << "%) burnt_m3 " << m.burnt << " short_m3 "
         << m.short_m3 << " refills " << m.refills << " refill_short " << m.refill_short
         << " refill_m3 " << m.refill_m3 << " split_days " << m.split_days << " split_floor_days "
-        << m.split_floor_days << " split_m3 " << m.split_m3 << " deadwood_m3 " << m.deadwood_m3;
+        << m.split_floor_days << " split_m3 " << m.split_m3 << " deadwood_m3 " << m.deadwood_m3
+        << " cold_season_resident_days " << m.cold_season << " kholodno " << m.kholodno << " ("
+        << Pct(m.kholodno, m.cold_season) << "%) zamerz " << m.zamerz << " ("
+        << Pct(m.zamerz, m.cold_season) << "%) health_hits " << m.hits;
   }
 
   core::HeatingState last_;

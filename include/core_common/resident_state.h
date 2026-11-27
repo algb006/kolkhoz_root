@@ -154,7 +154,15 @@ struct ResidentRow {
 
   Metric rest = 70.0F;  ///< STUB neutral until labor arrives (stage 5).
 
-  Metric cold = 0.0F;  ///< 0 = warm; appears only when freezing (stage 6).
+  /// 0 = warm, up to cold_scale_max (needs.md §1; #2261 stage 4, core_residents/heating.h):
+  /// gained a night in a cold home, lost a night in a warm one. Written daily by the residents'
+  /// heating; read through `cold_stage`.
+  Metric cold = 0.0F;
+
+  /// #2261 stage 4: 0 warm, 1 «Холодно» (cold ≥ cold_cold_at + his offsets: work −15 %),
+  /// 2 «Замёрз» (≥ cold_frozen_at + offsets: off work, home). Written with `cold` each day;
+  /// labor reads it. SAVED (save 237).
+  std::uint8_t cold_stage = 0;
 
   /// Personal cleanliness, 0..100 (health design §3). Beside health and
   /// satisfaction rather than inside either, and it feeds both — «вшивое село

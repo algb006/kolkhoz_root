@@ -105,7 +105,7 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // samogon_ml - predicted 352 -> 368 (12 bytes, the row aligns to 8) and 63 fields before
 // the build. A MISS, named: measured 360 - four of the bytes fell into padding the row
 // already had after samogon_ml; the field count, 63, caught the change.
-static_assert(sizeof(ResidentRow) == 360,
+static_assert(sizeof(ResidentRow) == 368,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 59: distiller_supplied_month, a distiller's supplied month
 // (crime §7, register 206) — 43 fields; the size is read off the build.
@@ -113,7 +113,9 @@ static_assert(sizeof(ResidentRow) == 360,
 // Save 79: away_until_day, _hour, _walk_hours, _reason — 50. Save 105:
 // idle_reason — 51. Save 113: satiety_year and satiety_childhood — 53.
 // Save 122: samogon_ml — 54.
-static_assert(AggregateArity<ResidentRow>() == 63,
+// Save 237 (#2261 stage 4): cold_stage, a byte after `cold` - predicted before the build:
+// between two floats it takes 4 (364, aligned to 8: 360 -> 368), 64 fields.
+static_assert(AggregateArity<ResidentRow>() == 64,
               "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-14: first_meal_eaten landed in padding beside food_variety_mask; the
 // size stayed 56 + amounts and the field count went to 16. The same day the
@@ -829,6 +831,7 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   out.WriteFloat(row.health);
   out.WriteFloat(row.rest);
   out.WriteFloat(row.cold);
+  out.WriteU8(row.cold_stage);  // save 237 (#2261 stage 4)
   // Personal cleanliness (health design §3, save format 51).
   out.WriteFloat(row.hygiene);
   out.WriteFloat(row.mood);
@@ -933,6 +936,7 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.health = in.ReadFloat();
   row.rest = in.ReadFloat();
   row.cold = in.ReadFloat();
+  row.cold_stage = static_cast<std::uint8_t>(source.ReadEnumValue(0, 2, "a resident's cold stage"));
   row.hygiene = in.ReadFloat();
   row.mood = in.ReadFloat();
   row.mood_base = in.ReadFloat();             // save 188 (#1241)

@@ -184,8 +184,55 @@ int CheckTheDeadwood() {
   return failures;
 }
 
+/// Stage 4: an ordinary adult in a cold house (Epoch I: thresholds 40 / 80) - five cold nights
+/// to «Холодно», ten to «Замёрз» with its health hit (chance forced to 100 %), and a warm night
+/// back; a hardy one (+15) is not yet cold at 40.
+int CheckTheCold() {
+  int failures = 0;
+  core::HeatingConfig config = Config();
+  config.cold_frozen_sick_chance_pct = 100.0F;
+  config.cold_sickness_pct_day = 0.0F;
+  core::WorldState world;
+  world.calendar.day = 400;
+  world.weather.air_temperature_celsius = -10.0F;
+  const core::UnitId house = core::AppendRow(world.units, Unit(kHouse));  // empty stove
+  core::FamilyRow family;
+  family.house = house;
+  const core::FamilyId family_id = core::AppendRow(world.families, family);
+  core::ResidentRow ordinary;
+  ordinary.family = family_id;
+  ordinary.birth_day = 0;  // 33 years at x4
+  ordinary.stamina = 50.0F;
+  ordinary.sportiness = 30.0F;
+  ordinary.health = 70.0F;
+  core::AppendRow(world.residents, ordinary);
+  core::ResidentRow hardy = ordinary;
+  hardy.stamina = 80.0F;
+  hardy.sportiness = 50.0F;
+  core::AppendRow(world.residents, hardy);
+
+  for (int night = 0; night < 5; ++night) {
+    core::RunResidentsCold(config, 4.0F, true, world);
+  }
+  failures += Expect(Near(world.residents.rows[0].cold, 40.0F), "five cold nights: 40");
+  failures += Expect(world.residents.rows[0].cold_stage == 1, "ordinary: «Холодно» at 40");
+  failures += Expect(world.residents.rows[1].cold_stage == 0, "hardy: not yet at 40");
+  for (int night = 0; night < 5; ++night) {
+    core::RunResidentsCold(config, 4.0F, true, world);
+  }
+  failures += Expect(world.residents.rows[0].cold_stage == 2, "ordinary: «Замёрз» at 80");
+  failures += Expect(Near(world.residents.rows[0].health, 62.0F), "one hit of 8, once");
+  failures += Expect(world.heating.probe_health_hits == 1, "one hit counted");
+  // A warm night (fuel in the stove): 80 − 20 = 60, back to «Холодно».
+  world.units.rows[0].heat_buffer_m3 = 5.0F;
+  core::RunResidentsCold(config, 4.0F, true, world);
+  failures += Expect(Near(world.residents.rows[0].cold, 60.0F), "a warm night: −20");
+  failures += Expect(world.residents.rows[0].cold_stage == 1, "back to «Холодно»");
+  return failures;
+}
+
 }  // namespace
 
 int CheckTheHeatingBurn() {
-  return CheckTheFormula() + CheckTheDay() + CheckTheRefill() + CheckTheDeadwood();
+  return CheckTheFormula() + CheckTheDay() + CheckTheRefill() + CheckTheDeadwood() + CheckTheCold();
 }

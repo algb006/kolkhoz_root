@@ -188,6 +188,8 @@ const char* KindName(core::EventKind kind) {
       return "help_fund_issued";
     case core::EventKind::kHelpFundEmpty:
       return "help_fund_empty";
+    case core::EventKind::kColdHealthHit:
+      return "cold_health_hit";
     case core::EventKind::kElectrificationUnlocked:
       return "electrification_unlocked";
     case core::EventKind::kFireBroke:

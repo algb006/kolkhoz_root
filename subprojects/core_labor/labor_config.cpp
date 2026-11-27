@@ -352,6 +352,18 @@ bool ParseLeisureReach(const ITable& labor,
       PrefixError("world_params", "road_access_m", error);
       return false;
     }
+    // #2261 stage 4: «Холодно»'s work penalty, % (its declaring reader is the residents'
+    // heating; read here too because labor applies it - one row, two readers, one number).
+    float cold_penalty_pct = (1.0F - config.cold_work_factor) * 100.0F;
+    if (!OptionalValue(*world,
+                       "cold_work_penalty_pct",
+                       Range{.low = 0.0F, .high = 100.0F},
+                       cold_penalty_pct,
+                       error)) {
+      PrefixError("world_params", "cold_work_penalty_pct", error);
+      return false;
+    }
+    config.cold_work_factor = 1.0F - (cold_penalty_pct / 100.0F);
   }
   config.wild_bathing.clear();
   if (const ITable* const wild = tables.FindTable("map_bathing")) {

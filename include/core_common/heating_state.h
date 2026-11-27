@@ -46,6 +46,12 @@ struct HeatingState {
   double probe_split_m3 = 0.0;
   /// Stage 3c: m³ of deadwood brought into the houses.
   double probe_deadwood_m3 = 0.0;
+  /// Stage 4 (econ's C1/C2): resident-days on a cold day (outdoor under the threshold), of
+  /// them days in «Холодно» and in «Замёрз», and the cold's health hits.
+  std::uint64_t probe_cold_season_days = 0;
+  std::uint64_t probe_cold_stage_days = 0;
+  std::uint64_t probe_frozen_stage_days = 0;
+  std::uint64_t probe_health_hits = 0;
 };
 
 }  // namespace core

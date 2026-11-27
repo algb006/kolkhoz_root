@@ -608,6 +608,8 @@ class ResidentsSystem final : public IResidentsSystem {
     // #2261 stage 1: the heated units burn their day's firewood from their buffers (heating.h;
     // the day's weather is this step's, written by phase 1).
     RunHeatingBurn(config_.heating, config_.life_speedup, config_.adult_age_years, current);
+    // #2261 stage 4: the night's cold for everyone at home, after the day's burn.
+    RunResidentsCold(config_.heating, config_.life_speedup, current.epoch == Epoch::kOne, current);
     // THE MONTH'S ISSUE JUDGED (#2164): families at the line while the store holds free food
     // over its funds, and the chairman changed nothing - «месяц под чертой при полном складе».
     // The free stock is read on the month's last day only (econ [6]: once a month, CPU).
@@ -768,11 +770,11 @@ std::unique_ptr<IResidentsSystem> CreateResidentsSystem(
   food.standing_harvest = std::move(standing_harvest);
   food.issue_source = std::move(issue_source);
   food.forecast_terms = life.hunger_forecast_terms;
-  // The cold metric is not "zero cold", it is "cold is not counted": phase 1
-  // has neither firewood nor unit heating (plan §11), so ResidentRow::cold
-  // never moves. Said out loud at world creation so that a run showing
-  // suspiciously even health through the winter explains itself.
-  LogInfo("cold is not simulated in phase 1 (STUB): ResidentRow::cold stays at its default");
+  // #2261: the cold is simulated (heating.h, stage 4) - what is NOT yet is said aloud, so a run
+  // reading the winter knows its holes.
+  LogInfo(
+      "cold (#2261): outdoor work hours, clothes, the bath, the hot meal and cold -> mood "
+      "are STUB; the cold reads the night at home only");
   return std::make_unique<ResidentsSystem>(life, std::move(food));
 }
 

@@ -108,6 +108,23 @@ float HeatingBurnToday(const HeatingConfig& config, const UnitRow& unit, float o
 /// @note A dwelling (class housing) burns only while some family names it its house; any other
 ///       heated unit burns while it stands (staffing joins with stage 2's refill). Nothing refills,
 ///       nothing reads the buffer yet - the world moves by the buffer alone.
+/// @brief #2261 stage 4, once a day after the burn (needs.md §1; econ's smallest form): each
+///        resident at home gains cold_gain_night_home in a cold home (his house's buffer empty
+///        on a day under the threshold, or no house) and loses cold_loss_night_warm in a warm
+///        one; his stage is set against the thresholds moved by his offsets (Epoch I +10; hardy
+///        +15, weak −15 - STUB bands below); reaching «Замёрз» hits his health by
+///        kColdHealthHitPoints at cold_frozen_sick_chance_pct once an episode, a «Холодно» day
+///        at cold_sickness_pct_day (kColdHealthHit).
+/// @note STUBS, named: outdoor work hours, clothes, the bath and the hot meal (no door here
+///       yet); cold → mood waits for mood's first writer (boss); a cold WORK unit's workers.
+void RunResidentsCold(const HeatingConfig& config,
+                      float life_speedup,
+                      bool epoch_one,
+                      WorldState& world);
+
+/// @brief The cold's health hit, points (health.md l.189, the cold/flu row; boss 28 Nov).
+inline constexpr float kColdHealthHitPoints = 8.0F;
+
 /// @param life_speedup, adult_age_years The life config's (stage 3c: who gathers deadwood).
 void RunHeatingBurn(const HeatingConfig& config,
                     float life_speedup,
