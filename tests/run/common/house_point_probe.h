@@ -33,7 +33,9 @@ class HousePointProbe {
     if (types != nullptr) {
       house_ = types->FindRowByKey("wooden_house");
       const std::uint32_t radius = types->FindColumn("plot_radius_m");
+      const std::uint32_t key = types->FindColumn("key");
       for (std::uint32_t row = 0; row < types->RowCount(); ++row) {
+        names_.emplace_back(key != core::kNoTableColumn ? types->CellText(row, key) : "?");
         const std::optional<float> value =
             radius != core::kNoTableColumn ? types->CellReal(row, radius) : std::nullopt;
         radii_.push_back(value ? *value : 0.0F);
@@ -59,6 +61,23 @@ class HousePointProbe {
   void CountDay(const core::ISimulation& simulation) {
     const core::WorldState& world = simulation.CompletedState();
     const std::uint32_t day = world.calendar.day;
+    // econ's precision (boss 27 Nov): the FIRST day any bot_house point stands used - G3 reads a
+    // difference only before it. Checked daily until found.
+    if (first_used_day_ == 0 && house_ != core::kNoTableRow && house_ < radii_.size()) {
+      for (const Point& point : points_) {
+        for (const core::UnitRow& unit : world.units.rows) {
+          if (unit.dead == 0 && unit.type.value == house_ &&
+              std::hypot(unit.position.x - point.x, unit.position.y - point.y) <= radii_[house_]) {
+            first_used_day_ = day + 1U;
+            first_used_key_ = point.key;
+            break;
+          }
+        }
+        if (first_used_day_ != 0) {
+          break;
+        }
+      }
+    }
     // Day 1 (the day-end hook's first call reads day 1; day 0 never prints - hp1907a).
     // And year 16's last day (boss: which points kept losing by y16).
     if ((day != 1 && day != 7U * core::kDaysPerYear && day != (16U * core::kDaysPerYear) - 1U) ||
@@ -75,6 +94,7 @@ class HousePointProbe {
           simulation.BuildBansToday(core::UnitTypeId{static_cast<std::uint16_t>(house_)}, at);
       bool plot = false;
       bool used = false;
+      std::string culprit;  // the first overlapping unit's type (boss: name the culprit)
       for (const core::UnitRow& unit : world.units.rows) {
         if (unit.dead != 0 || unit.type.value >= radii_.size()) {
           continue;
@@ -89,7 +109,12 @@ class HousePointProbe {
           used = true;
           continue;
         }
-        plot = plot || distance < reach;
+        if (distance < reach) {
+          if (!plot) {
+            culprit = names_[unit.type.value];
+          }
+          plot = true;
+        }
       }
       if (used) {
         ++used_count;
@@ -111,7 +136,7 @@ class HousePointProbe {
       if ((bans & core::kBanEdge) != 0)
         line << "edge ";
       if (plot)
-        line << "plot ";
+        line << "plot:" << culprit << ' ';
       line << ')';
     }
     std::ostringstream out;
@@ -124,6 +149,15 @@ class HousePointProbe {
     for (const std::string& line : lines_) {
       out << "population_curve: HOUSE1907 seed " << seed << ' ' << line << '\n';
     }
+    out << "population_curve: HOUSE1907 seed " << seed << " first_used_day ";
+    if (points_.empty()) {
+      out << "none (no bot_house point in this layout)\n";
+    } else if (first_used_day_ == 0) {
+      out << "NEVER (points " << points_.size() << ")\n";
+    } else {
+      out << first_used_day_ << " year " << ((first_used_day_ - 1U) / core::kDaysPerYear) + 1U
+          << " key " << first_used_key_ << '\n';
+    }
   }
 
  private:
@@ -135,7 +169,10 @@ class HousePointProbe {
 
   std::uint32_t house_ = core::kNoTableRow;
   std::vector<float> radii_;
+  std::vector<std::string> names_;
   std::vector<Point> points_;
+  std::uint32_t first_used_day_ = 0;
+  std::string first_used_key_;
   std::vector<std::string> lines_;
 };
 
