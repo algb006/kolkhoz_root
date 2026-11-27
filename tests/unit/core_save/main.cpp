@@ -209,7 +209,9 @@ core::WorldState MakeWorld() {
   world.help_fund.share_permille = 25;  // save 236 (#2199)
   world.help_fund.held = {40'000};
   world.help_fund.empty_said = 1;
-  world.heating.seeded = 1;  // save 237 (#2261)
+  world.heating.seeded = 1;          // save 237 (#2261)
+  world.heating.need_1m_m3 = 12.5F;  // and the splitting's demand (stage 3b)
+  world.heating.need_2m_m3 = 30.25F;
   world.chairman.issue_raised_month = 8;
   world.chairman.understood_day = 9;
   world.chairman.unfair_season = 10;  // econ [6]'s season marks
@@ -1877,7 +1879,9 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"help_fund.share_permille", U16(world.help_fund.share_permille)});
   AppendAmounts(chunks, "help_fund.held", world.help_fund.held);
   chunks.push_back({"help_fund.empty_said", U8(world.help_fund.empty_said)});
-  chunks.push_back({"heating.seeded", U8(world.heating.seeded)});  // save 237 (#2261)
+  chunks.push_back({"heating.seeded", U8(world.heating.seeded)});           // save 237 (#2261)
+  chunks.push_back({"heating.need_1m_m3", F32(world.heating.need_1m_m3)});  // 237, stage 3b
+  chunks.push_back({"heating.need_2m_m3", F32(world.heating.need_2m_m3)});
   // The tally clerk's record (#589, save 219).
   chunks.push_back({"clerk.since_day", U32(world.clerk.since_day)});
   chunks.push_back({"clerk.vacancy", U8(static_cast<std::uint8_t>(world.clerk.vacancy))});
@@ -2333,7 +2337,9 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // 1678 -> 1691, read off hu2199a (not predicted: the amounts' header measured, 10 bytes).
     // Save 237 (#2261): the heating's seeded byte (set to 1) - 1691 -> 1692, measured on
     // hh2261b with it 0; the hash read off hh2261c with the fixture's 1.
-    {"world", 1692, 0x3fbffce15c78bd7bULL},
+    // And the splitting's demand, two floats (stage 3b, the same unshipped 237): 1692 -> 1700
+    // measured on hh2261k; the hash re-read owed with the fixture's 12.5 / 30.25.
+    {"world", 1700, 0x1ae257c3d442089bULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -3432,7 +3438,8 @@ int main() {
           loaded.thief_catch.constable_district_count == 2 &&
           loaded.help_fund.share_permille == 25 && loaded.help_fund.held.size() == 1 &&
           loaded.help_fund.held[0] == 40'000 && loaded.help_fund.empty_said == 1 &&
-          loaded.heating.seeded == 1 && loaded.chairman.year_under_pressure == 1 &&
+          loaded.heating.seeded == 1 && loaded.heating.need_1m_m3 == 12.5F &&
+          loaded.heating.need_2m_m3 == 30.25F && loaded.chairman.year_under_pressure == 1 &&
           loaded.chairman.issue_raised_month == 8 && loaded.chairman.understood_day == 9 &&
           loaded.chairman.unfair_season == 10 && loaded.chairman.raise_season == 11 &&
           loaded.chairman.authority_live == 0 && loaded.families.rows[1].advance_turns == 0 &&
