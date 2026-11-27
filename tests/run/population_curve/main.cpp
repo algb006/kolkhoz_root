@@ -44,6 +44,7 @@
 #include "../common/build_bans.h"
 #include "../common/building_chairman.h"
 #include "../common/crime_tally.h"
+#include "../common/electrification_probe.h"
 #include "../common/env_value.h"
 #include "../common/fallow_harrow_tally.h"
 #include "../common/fed_tally.h"
@@ -1013,6 +1014,7 @@ bool Walk(std::uint64_t seed,
   run::FloodTally flood_tally;                          // #1375
   run::PlanThreatTally plan_threat(*world.tables);      // #2190 LAMP2190
   run::HeatingProbe heating_probe;                      // #2261 HEAT2261
+  run::ElectrificationProbe elec_probe(*world.tables);  // ELEC2261 (econ, street lamps)
   run::FirstPlanTally first_plan(*world.tables);        // #1750
   run::MilkCutTally milk_cut(*world.tables);            // #1737 option 1, every run's door
   run::FallowHarrowTally fallow_harrow(*world.tables);  // #1837
@@ -1176,6 +1178,7 @@ bool Walk(std::uint64_t seed,
       flood_tally.CountDayEnd(*simulation);                     // #1375
       plan_threat.CountDayEnd(*simulation);                     // #2190
       heating_probe.CountDayEnd(*simulation);                   // #2261
+      elec_probe.CountDay(simulation->CompletedState());        // ELEC2261
       first_plan.CountDayEnd(simulation->CompletedState());     // #1750
       milk_cut.CountDayEnd(*simulation);                        // #1737
       fallow_harrow.CountDayEnd(simulation->CompletedState());  // #1837
@@ -1749,6 +1752,7 @@ bool Walk(std::uint64_t seed,
       flood_tally.Print(std::cout, seed);    // #1375
       plan_threat.Print(std::cout, seed);    // #2190
       heating_probe.Print(std::cout, seed);  // #2261
+      elec_probe.Print(std::cout, seed);     // ELEC2261
       first_plan.Print(std::cout, seed);     // #1750
       milk_cut.Print(std::cout, seed);       // #1737
       fallow_harrow.Print(std::cout, seed);  // #1837
