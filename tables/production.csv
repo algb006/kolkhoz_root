@@ -2,9 +2,33 @@
 # one row per processing recipe the core runs; labor_days are game man-days per batch, places how many of the parent's post holders stand in the shop at once (empty = 1)
 # inputs and outputs are in production_io.csv, per batch
 key,unit,labor_days,places
+milling_rye,water_mill,0.15,2
+milling_wheat,water_mill,0.15,2
+hulling_barley,water_mill,0.2,2
+hulling_buckwheat,water_mill,0.2,2
+hulling_pea,water_mill,0.2,2
+baking_bread,bakery,1,2
+baking_pastry,bakery,2,1
 smoking_meat,smokehouse,1,1
 smoking_fish,smokehouse,1,1
+toolmaking,workshops,0.15,1
+carpentry,workshops,0.3,2
+tanning,tannery,0.15,2
+weaving_flax,weaving_shop,1.4,2
+weaving_wool,weaving_shop,1.4,2
+dyeing_cloth,dye_house,0.15,1
+dyeing_leather,dye_house,0.15,1
+sew_summer,sewing_shop,0.15,1
+sew_midseason,sewing_shop,0.3,1
+sew_winter,sewing_shop,0.45,1
+sew_summer_dyed,sewing_shop,0.15,1
+sew_midseason_dyed,sewing_shop,0.3,1
+sew_winter_dyed,sewing_shop,0.45,1
+boots,shoemaking_shop,0.3,1
+felt_boots,shoemaking_shop,0.3,1
+boots_dyed,shoemaking_shop,0.3,1
 cooperage,workshops,0.125,1
 pickling,sauerkraut_shop,0.1667,1
 salting_meat,smokehouse,0.5,1
 salting_fish,smokehouse,0.5,1
+firewood_splitting,firewood_yard,0.0231,2
