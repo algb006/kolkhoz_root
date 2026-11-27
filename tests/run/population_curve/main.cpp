@@ -1014,7 +1014,7 @@ bool Walk(std::uint64_t seed,
   run::HorseTailTally horse_tail(*world.tables);
   run::FloodTally flood_tally;                          // #1375
   run::PlanThreatTally plan_threat(*world.tables);      // #2190 LAMP2190
-  run::HeatingProbe heating_probe;                      // #2261 HEAT2261
+  run::HeatingProbe heating_probe(*world.tables);       // #2261 HEAT2261
   run::ElectrificationProbe elec_probe(*world.tables);  // ELEC2261 (econ, street lamps)
   run::PantryTroughProbe pantry_trough(*world.tables);  // PANTRY2295 (econ)
   run::FirstPlanTally first_plan(*world.tables);        // #1750

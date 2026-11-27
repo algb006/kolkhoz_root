@@ -14,18 +14,37 @@
 #include <ostream>
 #include <vector>
 
+#include "core_catalog/world_conventions.h"
 #include "core_common/calendar.h"
 #include "core_common/world_state.h"
 #include "core_sim/step.h"
+#include "core_tables/tables.h"
 
 namespace run {
 
 class HeatingProbe {
  public:
+  explicit HeatingProbe(const core::ITableSet& tables)
+      : life_speedup_(core::LifeSpeedupOr(tables, 4.0F)) {}
+
   /// @brief Once a day after the step: on a month's last day, the month's deltas.
   void CountDayEnd(const core::ISimulation& simulation) {
     const core::WorldState& world = simulation.CompletedState();
     const std::uint32_t day = world.calendar.day;
+    // econ's base rate for the STUB endurance bands (heating.cpp's: hardy ≥ 120 of 200; weak
+    // under 60, health < 40 or ≥ 55 biological years), each year's last day.
+    if ((day + 1U) % core::kDaysPerYear == 0) {
+      std::array<std::uint32_t, 3> bands{};  // hardy, ordinary, weak
+      for (const core::ResidentRow& resident : world.residents.rows) {
+        const float toughness = resident.stamina + resident.sportiness;
+        const float age = core::BiologicalAgeYears(life_speedup_, resident.birth_day, day);
+        const std::size_t band = (toughness < 60.0F || resident.health < 40.0F || age >= 55.0F)
+                                     ? 2U
+                                     : (toughness >= 120.0F ? 0U : 1U);
+        ++bands[band];
+      }
+      band_lines_.push_back(bands);
+    }
     if ((day + 1U) % core::kDaysPerMonth != 0) {
       return;
     }
@@ -77,6 +96,12 @@ class HeatingProbe {
     if (months_.empty()) {
       out << "HEAT2261 seed " << seed << " NOT MEASURED (no month closed)\n";
       return;
+    }
+    for (std::size_t year = 0; year < band_lines_.size(); ++year) {
+      const std::array<std::uint32_t, 3>& b = band_lines_[year];
+      const std::uint32_t all = b[0] + b[1] + b[2];
+      out << "HEAT2261 seed " << seed << " year " << year + 1 << " bands(hardy/ordinary/weak) "
+          << b[0] << ' ' << b[1] << ' ' << b[2] << " of " << all << '\n';
     }
     constexpr std::uint32_t kMonths = core::kDaysPerYear / core::kDaysPerMonth;
     std::array<Month, kMonths> by_month{};
@@ -184,6 +209,8 @@ class HeatingProbe {
 
   core::HeatingState last_;
   std::vector<Month> months_;
+  float life_speedup_ = 4.0F;
+  std::vector<std::array<std::uint32_t, 3>> band_lines_;
 };
 
 }  // namespace run
