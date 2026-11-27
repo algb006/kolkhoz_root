@@ -209,6 +209,7 @@ core::WorldState MakeWorld() {
   world.help_fund.share_permille = 25;  // save 236 (#2199)
   world.help_fund.held = {40'000};
   world.help_fund.empty_said = 1;
+  world.heating.seeded = 1;  // save 237 (#2261)
   world.chairman.issue_raised_month = 8;
   world.chairman.understood_day = 9;
   world.chairman.unfair_season = 10;  // econ [6]'s season marks
@@ -493,7 +494,8 @@ core::WorldState MakeWorld() {
   // guard that ever notices.
   house.paused = 1;
   house.dead = 1;
-  house.insulated = 1;  // warm, save format 44
+  house.insulated = 1;          // warm, save format 44
+  house.heat_buffer_m3 = 5.5F;  // save 237 (#2261): the fuel buffer
   // Save 171 (#1056 C1.2): a rick's supply half carried, every field off its
   // default and unlike the others.
   house.rick_supply.from = core::UnitId{21};
@@ -1875,6 +1877,7 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"help_fund.share_permille", U16(world.help_fund.share_permille)});
   AppendAmounts(chunks, "help_fund.held", world.help_fund.held);
   chunks.push_back({"help_fund.empty_said", U8(world.help_fund.empty_said)});
+  chunks.push_back({"heating.seeded", U8(world.heating.seeded)});  // save 237 (#2261)
   // The tally clerk's record (#589, save 219).
   chunks.push_back({"clerk.since_day", U32(world.clerk.since_day)});
   chunks.push_back({"clerk.vacancy", U8(static_cast<std::uint8_t>(world.clerk.vacancy))});
@@ -2328,7 +2331,9 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // 1675 -> 1678 before the build, held; the hash read off cu2191f.
     // Save 236 (#2199): the help fund - a u16 share, the held amounts (one entry), a byte:
     // 1678 -> 1691, read off hu2199a (not predicted: the amounts' header measured, 10 bytes).
-    {"world", 1691, 0x4c3913e26bd54b56ULL},
+    // Save 237 (#2261): the heating's seeded byte (set to 1) - 1691 -> 1692, measured on
+    // hh2261b with it 0; the hash re-read owed with the fixture's 1.
+    {"world", 1692, 0xceef41175335792eULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2524,7 +2529,9 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // amounts vectors were not in it.
     // Save 211 (#1375): flood_lost_year, a u16 at each unit's tail - three units, +6; the hash
     // read off it (s0381).
-    {"units", 891, 0xd1881d10f4ecd91dULL},
+    // Save 237 (#2261): the fuel buffer, a float at each unit's tail - three units, +12, 891 ->
+    // 903 measured on hh2261b; the hash re-read owed with the house's 5.5.
+    {"units", 903, 0xf0a86f056d87a5cdULL},
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
     // Save 91: +8 — the adult age band, two floats, one herd; predicted
     // 71 -> 79 with every other section unmoved before the build.
@@ -3425,10 +3432,10 @@ int main() {
           loaded.thief_catch.constable_district_count == 2 &&
           loaded.help_fund.share_permille == 25 && loaded.help_fund.held.size() == 1 &&
           loaded.help_fund.held[0] == 40'000 && loaded.help_fund.empty_said == 1 &&
-          loaded.chairman.year_under_pressure == 1 && loaded.chairman.issue_raised_month == 8 &&
-          loaded.chairman.understood_day == 9 && loaded.chairman.unfair_season == 10 &&
-          loaded.chairman.raise_season == 11 && loaded.chairman.authority_live == 0 &&
-          loaded.families.rows[1].advance_turns == 0 &&
+          loaded.heating.seeded == 1 && loaded.chairman.year_under_pressure == 1 &&
+          loaded.chairman.issue_raised_month == 8 && loaded.chairman.understood_day == 9 &&
+          loaded.chairman.unfair_season == 10 && loaded.chairman.raise_season == 11 &&
+          loaded.chairman.authority_live == 0 && loaded.families.rows[1].advance_turns == 0 &&
           loaded.ledger.current.advance_written_off_ended == 0 &&
           loaded.families.rows[1].formed_day == core::kNotFormedInPlay &&
           loaded.families.rows[1].advance_debt == 0 &&
@@ -4080,6 +4087,7 @@ int main() {
   failures += Expect(house_back.paused == 1, "a stopped unit resumes stopped");
   failures += Expect(house_back.dead == 1, "and a dead one resumes dead, not merely worn");
   failures += Expect(house_back.wear == 70.0F, "and its wear is its own number");
+  failures += Expect(house_back.heat_buffer_m3 == 5.5F, "and its fuel buffer its own (save 237)");
   failures += Expect(
       house_back.rick_supply.from.value == 21 && house_back.rick_supply.resource.value == 1 &&
           house_back.rick_supply.days_remaining == 0.625F &&
