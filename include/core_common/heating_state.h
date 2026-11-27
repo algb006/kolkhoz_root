@@ -44,6 +44,8 @@ struct HeatingState {
   std::uint64_t probe_split_days = 0;
   std::uint64_t probe_split_floor_days = 0;
   double probe_split_m3 = 0.0;
+  /// Stage 3c: m³ of deadwood brought into the houses.
+  double probe_deadwood_m3 = 0.0;
 };
 
 }  // namespace core

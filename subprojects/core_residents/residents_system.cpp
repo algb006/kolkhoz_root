@@ -607,7 +607,7 @@ class ResidentsSystem final : public IResidentsSystem {
     }
     // #2261 stage 1: the heated units burn their day's firewood from their buffers (heating.h;
     // the day's weather is this step's, written by phase 1).
-    RunHeatingBurn(config_.heating, current);
+    RunHeatingBurn(config_.heating, config_.life_speedup, config_.adult_age_years, current);
     // THE MONTH'S ISSUE JUDGED (#2164): families at the line while the store holds free food
     // over its funds, and the chairman changed nothing - «месяц под чертой при полном складе».
     // The free stock is read on the month's last day only (econ [6]: once a month, CPU).

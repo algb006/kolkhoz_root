@@ -44,6 +44,7 @@ class HeatingProbe {
     month.split_days = heating.probe_split_days - last_.probe_split_days;
     month.split_floor_days = heating.probe_split_floor_days - last_.probe_split_floor_days;
     month.split_m3 = heating.probe_split_m3 - last_.probe_split_m3;
+    month.deadwood_m3 = heating.probe_deadwood_m3 - last_.probe_deadwood_m3;
     months_.push_back(month);
     last_ = heating;
     // The buffers standing at the month's end, m³, and how many heated units hold any.
@@ -116,6 +117,7 @@ class HeatingProbe {
     std::uint64_t split_days = 0;
     std::uint64_t split_floor_days = 0;
     double split_m3 = 0.0;
+    double deadwood_m3 = 0.0;
     double standing = 0.0;
     std::uint32_t holding = 0;
   };
@@ -133,6 +135,7 @@ class HeatingProbe {
     into.split_days += month.split_days;
     into.split_floor_days += month.split_floor_days;
     into.split_m3 += month.split_m3;
+    into.deadwood_m3 += month.deadwood_m3;
   }
 
   static double Pct(std::uint64_t part, std::uint64_t whole) {
@@ -145,7 +148,7 @@ class HeatingProbe {
         << Pct(m.empty_house, m.want_house) << "%) burnt_m3 " << m.burnt << " short_m3 "
         << m.short_m3 << " refills " << m.refills << " refill_short " << m.refill_short
         << " refill_m3 " << m.refill_m3 << " split_days " << m.split_days << " split_floor_days "
-        << m.split_floor_days << " split_m3 " << m.split_m3;
+        << m.split_floor_days << " split_m3 " << m.split_m3 << " deadwood_m3 " << m.deadwood_m3;
   }
 
   core::HeatingState last_;

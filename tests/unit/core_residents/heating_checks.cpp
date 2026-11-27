@@ -82,7 +82,7 @@ int CheckTheDay() {
   family.house = lived;
   core::AppendRow(world.families, family);
 
-  core::RunHeatingBurn(config, world);
+  core::RunHeatingBurn(config, 4.0F, 16.0F, world);
   failures += Expect(world.heating.seeded == 1, "seeded on the first day");
   failures += Expect(Near(world.units.rows[0].heat_buffer_m3, 2.0F - 0.8F), "house: 2 − 0.8");
   failures += Expect(world.units.rows[1].heat_buffer_m3 == 0.0F, "empty house: no seed");
@@ -95,9 +95,9 @@ int CheckTheDay() {
   failures += Expect(std::fabs(world.heating.probe_short_m3 - 3.2) < 1e-4, "short: 3.2 m³");
 
   // The second day: no second seed; the house burns its 1.2 down to 0.4, then a short day.
-  core::RunHeatingBurn(config, world);
+  core::RunHeatingBurn(config, 4.0F, 16.0F, world);
   failures += Expect(Near(world.units.rows[0].heat_buffer_m3, 0.4F), "house: 1.2 − 0.8");
-  core::RunHeatingBurn(config, world);
+  core::RunHeatingBurn(config, 4.0F, 16.0F, world);
   failures += Expect(world.units.rows[0].heat_buffer_m3 == 0.0F, "never below zero");
   failures += Expect(world.heating.probe_empty_house_days == 1, "the third day short");
   return failures;
@@ -120,7 +120,7 @@ int CheckTheRefill() {
   family.house = lived;
   core::AppendRow(world.families, family);
 
-  core::RunHeatingBurn(config, world);
+  core::RunHeatingBurn(config, 4.0F, 16.0F, world);
   // 8 m³ brought, 0.8 burnt: 7.2 left; the store keeps 2 m³.
   failures += Expect(Near(world.units.rows[0].heat_buffer_m3, 7.2F), "refilled to 8, burnt 0.8");
   failures += Expect(world.units.rows[1].stock[0] == 1'000'000, "the store gave 8 m³");
@@ -128,7 +128,7 @@ int CheckTheRefill() {
                      "one whole refill");
   // 7.2 → 2.4 over six days (no refill at 3.2), then day 8 starts under 3: wants 5.6, gets 2.
   for (int day = 0; day < 7; ++day) {
-    core::RunHeatingBurn(config, world);
+    core::RunHeatingBurn(config, 4.0F, 16.0F, world);
   }
   failures += Expect(world.units.rows[1].stock[0] == 0, "the store emptied");
   failures += Expect(world.heating.probe_refills == 2 && world.heating.probe_refill_short == 1,
@@ -136,13 +136,56 @@ int CheckTheRefill() {
   failures += Expect(Near(world.units.rows[0].heat_buffer_m3, 2.4F + 2.0F - 0.8F), "2.4 + 2 − 0.8");
   // A warm day: nothing wanted, nothing refilled.
   world.weather.air_temperature_celsius = 15.0F;
-  core::RunHeatingBurn(config, world);
+  core::RunHeatingBurn(config, 4.0F, 16.0F, world);
   failures += Expect(world.heating.probe_refills == 2, "no refill above the threshold");
+  return failures;
+}
+
+/// Stage 3c: an adult's house 2 km from a stand gathers half a trip (0.05 m³) a cold day; a
+/// child-only house and a house past 3 km gather nothing.
+int CheckTheDeadwood() {
+  int failures = 0;
+  const core::HeatingConfig config = Config();
+  core::WorldState world;
+  world.heating.seeded = 1;
+  world.calendar.day = 400;
+  world.weather.air_temperature_celsius = -10.0F;
+  core::TimberStandRow stand;
+  stand.position = core::Vec2{.x = 0.0F, .y = 0.0F};
+  stand.stock_m3 = 100.0F;
+  core::AppendRow(world.stands, stand);
+  core::UnitRow near = Unit(kHouse);
+  near.position = core::Vec2{.x = 2000.0F, .y = 0.0F};
+  near.heat_buffer_m3 = 5.0F;  // above the refill line: only the deadwood moves it
+  const core::UnitId near_id = core::AppendRow(world.units, near);
+  core::UnitRow far = Unit(kHouse);
+  far.position = core::Vec2{.x = 3500.0F, .y = 0.0F};
+  far.heat_buffer_m3 = 5.0F;
+  const core::UnitId far_id = core::AppendRow(world.units, far);
+  core::FamilyRow near_family;
+  near_family.house = near_id;
+  const core::FamilyId near_family_id = core::AppendRow(world.families, near_family);
+  core::FamilyRow far_family;
+  far_family.house = far_id;
+  const core::FamilyId far_family_id = core::AppendRow(world.families, far_family);
+  core::ResidentRow adult;  // 400 days at x4 = 33 years
+  adult.family = near_family_id;
+  adult.birth_day = 0;
+  core::AppendRow(world.residents, adult);
+  core::ResidentRow far_adult = adult;
+  far_adult.family = far_family_id;
+  core::AppendRow(world.residents, far_adult);
+
+  core::RunHeatingBurn(config, 4.0F, 16.0F, world);
+  failures += Expect(Near(world.units.rows[0].heat_buffer_m3, 5.0F + 0.05F - 0.8F),
+                     "2 km: half a trip, then the burn");
+  failures += Expect(Near(world.units.rows[1].heat_buffer_m3, 5.0F - 0.8F), "3.5 km: nothing");
+  failures += Expect(std::fabs(world.heating.probe_deadwood_m3 - 0.05) < 1e-4, "0.05 m³ counted");
   return failures;
 }
 
 }  // namespace
 
 int CheckTheHeatingBurn() {
-  return CheckTheFormula() + CheckTheDay() + CheckTheRefill();
+  return CheckTheFormula() + CheckTheDay() + CheckTheRefill() + CheckTheDeadwood();
 }

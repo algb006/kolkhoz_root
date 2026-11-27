@@ -108,7 +108,11 @@ float HeatingBurnToday(const HeatingConfig& config, const UnitRow& unit, float o
 /// @note A dwelling (class housing) burns only while some family names it its house; any other
 ///       heated unit burns while it stands (staffing joins with stage 2's refill). Nothing refills,
 ///       nothing reads the buffer yet - the world moves by the buffer alone.
-void RunHeatingBurn(const HeatingConfig& config, WorldState& world);
+/// @param life_speedup, adult_age_years The life config's (stage 3c: who gathers deadwood).
+void RunHeatingBurn(const HeatingConfig& config,
+                    float life_speedup,
+                    float adult_age_years,
+                    WorldState& world);
 
 /// @brief The world_params keys this file reads, for the assembly's declared-readers check.
 std::span<const std::string_view> HeatingWorldParamKeys();

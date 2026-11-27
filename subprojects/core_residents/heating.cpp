@@ -107,6 +107,33 @@ Grams TakeFirewood(const HeatingConfig& config,
   return taken;
 }
 
+/// One deadwood trip's m³ from `home`: whole within deadwood_full_within_m of the nearest
+/// forest stand holding stock, linear to 0 at deadwood_zero_at_m, 0 with no stand.
+float DeadwoodTripM3(const HeatingConfig& config, const WorldState& world, Vec2 home) {
+  if (!(config.deadwood_m3_per_trip > 0.0F)) {
+    return 0.0F;
+  }
+  float nearest = -1.0F;
+  for (const TimberStandRow& stand : world.stands.rows) {
+    if (!(stand.stock_m3 > 0.0F)) {
+      continue;
+    }
+    const float d = std::hypot(stand.position.x - home.x, stand.position.y - home.y);
+    if (nearest < 0.0F || d < nearest) {
+      nearest = d;
+    }
+  }
+  if (nearest < 0.0F || nearest >= config.deadwood_zero_at_m) {
+    return 0.0F;
+  }
+  if (nearest <= config.deadwood_full_within_m) {
+    return config.deadwood_m3_per_trip;
+  }
+  const float span = config.deadwood_zero_at_m - config.deadwood_full_within_m;
+  return span > 0.0F ? config.deadwood_m3_per_trip * (config.deadwood_zero_at_m - nearest) / span
+                     : 0.0F;
+}
+
 }  // namespace
 
 std::span<const std::string_view> HeatingWorldParamKeys() {
@@ -292,7 +319,10 @@ float HeatingBurnToday(const HeatingConfig& config, const UnitRow& unit, float o
   return burn;
 }
 
-void RunHeatingBurn(const HeatingConfig& config, WorldState& world) {
+void RunHeatingBurn(const HeatingConfig& config,
+                    float life_speedup,
+                    float adult_age_years,
+                    WorldState& world) {
   HeatingState& heating = world.heating;
   // Inhabited = some family names the unit as its house (settlement_rules' InhabitedUnits, the
   // same rule: a barrack holds several families, UnitRow::household names one at most).
@@ -301,6 +331,22 @@ void RunHeatingBurn(const HeatingConfig& config, WorldState& world) {
     const std::uint32_t row = FindRow(world.units, family.house);
     if (row != kNoRow) {
       inhabited[row] = 1;
+    }
+  }
+  // A dwelling some ADULT lives in (the deadwood's gatherer, stage 3c).
+  std::vector<std::uint8_t> adult_home(world.units.rows.size(), 0);
+  for (const ResidentRow& resident : world.residents.rows) {
+    if (BiologicalAgeYears(life_speedup, resident.birth_day, world.calendar.day) <
+        adult_age_years) {
+      continue;
+    }
+    const std::uint32_t family = FindRow(world.families, resident.family);
+    if (family == kNoRow) {
+      continue;
+    }
+    const std::uint32_t row = FindRow(world.units, world.families.rows[family].house);
+    if (row != kNoRow) {
+      adult_home[row] = 1;
     }
   }
   const auto heated = [&config](const UnitRow& unit) {
@@ -341,6 +387,20 @@ void RunHeatingBurn(const HeatingConfig& config, WorldState& world) {
     const float want = HeatingBurnToday(config, unit, outdoor);
     if (!(want > 0.0F)) {
       continue;
+    }
+    // STAGE 3c, THE DEADWOOD (heating §2; econ: the poor family's own fuel, straight into its
+    // own house, free time only): a dwelling whose family has an adult at home brings one trip
+    // a day while its buffer is under the full one - deadwood_m3_per_trip, whole within
+    // deadwood_full_within_m of the nearest forest stand, falling linearly to 0 at
+    // deadwood_zero_at_m. STUB: the trip's hours are not taken from anyone's day (the forage
+    // net's form), so it costs no labour any instrument sees.
+    if (dwelling && unit.heat_buffer_m3 < config.heat_buffer_m3 && adult_home[row] != 0) {
+      const float brought = std::min(DeadwoodTripM3(config, world, unit.position),
+                                     config.heat_buffer_m3 - unit.heat_buffer_m3);
+      if (brought > 0.0F) {
+        unit.heat_buffer_m3 += brought;
+        heating.probe_deadwood_m3 += static_cast<double>(brought);
+      }
     }
     // STAGE 2, THE REFILL (heating §1; econ: under heat_refill_below_m3 back to heat_buffer_m3,
     // from the first day the burn wants fuel): from the village's stores, in unit id order.
