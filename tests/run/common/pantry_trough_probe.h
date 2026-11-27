@@ -4,8 +4,9 @@
 ///        holds ≥ ¼ of a month's need (one game day of the 4-day month), and the median months
 ///        held. The month's need is read at this month's pace (month_need_kcal so far × 4 /
 ///        days into the month, today included).
-///        WHAT IT IS NOT: the W term - the whole pantry counts, the winter store too (its
-///        Dec-May pace is the help fund's, not on this branch); so the share is an upper bound.
+///        The pantry is the meal-countable W term (0.37.431): the winter store counts only
+///        Dec-May at its pace - help_fund.cpp's WinterStoreMonthShare, mirrored here from the
+///        same food.csv rows (a probe cannot call the file-local original).
 /// @threading SINGLE_THREADED
 /// Test-side code, driven once a day from the thread that owns the simulation.
 #ifndef TESTS_RUN_COMMON_PANTRY_TROUGH_PROBE_H_
@@ -17,6 +18,7 @@
 #include <ostream>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "core_common/calendar.h"
@@ -35,6 +37,22 @@ class PantryTroughProbe {
         kcal_.push_back(kcal != core::kNoTableColumn ? resources->CellReal(row, kcal).value_or(0.0F)
                                                      : 0.0F);
       }
+      dried_ = resources->FindRowByKey("dried_forest_gifts");
+    }
+    // W (econ, 0.37.431's help_fund.cpp WinterStoreMonthShare, mirrored): the dried store
+    // counts only Dec-May, at the month's share of the days left in its window.
+    if (const core::ITable* const food = tables.FindTable("food")) {
+      const std::uint32_t value = food->FindColumn("value");
+      const auto month_of = [&](std::string_view key, std::uint32_t fallback) {
+        const std::uint32_t row = food->FindRowByKey(key);
+        if (row == core::kNoTableRow || value == core::kNoTableColumn) {
+          return fallback;
+        }
+        const float human = food->CellReal(row, value).value_or(static_cast<float>(fallback + 1U));
+        return static_cast<std::uint32_t>(human) - 1U;
+      };
+      dried_from_ = month_of("dried_eaten_from_month", 11U);
+      dried_to_ = month_of("dried_eaten_to_month", 4U);
     }
   }
 
@@ -88,8 +106,10 @@ class PantryTroughProbe {
                                 static_cast<double>(core::kDaysPerMonth) /
                                 static_cast<double>(into);
       double held = 0.0;
+      const double dried_share = DriedMonthShare(world);
       for (std::size_t food = 0; food < family.pantry.size() && food < kcal_.size(); ++food) {
-        held += static_cast<double>(family.pantry[food]) * static_cast<double>(kcal_[food]);
+        held += static_cast<double>(family.pantry[food]) * static_cast<double>(kcal_[food]) *
+                (food == dried_ ? dried_share : 1.0);
       }
       const double months = held / month_need;
       ++families_;
@@ -98,7 +118,23 @@ class PantryTroughProbe {
     }
   }
 
+  /// The dried store's share the meal takes this month (WinterStoreMonthShare's rule).
+  double DriedMonthShare(const core::WorldState& world) const {
+    const auto month = static_cast<std::uint32_t>(world.calendar.date.month);
+    const bool inside = dried_from_ <= dried_to_ ? (month >= dried_from_ && month <= dried_to_)
+                                                 : (month >= dried_from_ || month <= dried_to_);
+    if (!inside) {
+      return 0.0;
+    }
+    const std::uint32_t after = (dried_to_ + 12U - month) % 12U;
+    const std::uint32_t days_left = (after + 1U) * core::kDaysPerMonth;
+    return std::min(1.0, static_cast<double>(core::kDaysPerMonth) / static_cast<double>(days_left));
+  }
+
   std::vector<float> kcal_;
+  std::uint32_t dried_ = core::kNoTableRow;
+  std::uint32_t dried_from_ = 11U;
+  std::uint32_t dried_to_ = 4U;
   float low_days_ = -1.0F;
   std::uint32_t low_day_ = 0;
   std::uint32_t families_ = 0;
