@@ -2332,8 +2332,8 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // Save 236 (#2199): the help fund - a u16 share, the held amounts (one entry), a byte:
     // 1678 -> 1691, read off hu2199a (not predicted: the amounts' header measured, 10 bytes).
     // Save 237 (#2261): the heating's seeded byte (set to 1) - 1691 -> 1692, measured on
-    // hh2261b with it 0; the hash re-read owed with the fixture's 1.
-    {"world", 1692, 0xceef41175335792eULL},
+    // hh2261b with it 0; the hash read off hh2261c with the fixture's 1.
+    {"world", 1692, 0x3fbffce15c78bd7bULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2530,8 +2530,8 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // Save 211 (#1375): flood_lost_year, a u16 at each unit's tail - three units, +6; the hash
     // read off it (s0381).
     // Save 237 (#2261): the fuel buffer, a float at each unit's tail - three units, +12, 891 ->
-    // 903 measured on hh2261b; the hash re-read owed with the house's 5.5.
-    {"units", 903, 0xf0a86f056d87a5cdULL},
+    // 903 measured on hh2261b; the hash read off hh2261c with the house's 5.5.
+    {"units", 903, 0x98a28b310250bc3dULL},
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
     // Save 91: +8 — the adult age band, two floats, one herd; predicted
     // 71 -> 79 with every other section unmoved before the build.
