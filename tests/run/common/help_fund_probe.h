@@ -74,6 +74,9 @@ class HelpFundProbe {
       }
     }
     TrackDays(world);  // #2199b's timing (econ's T / M / N)
+    if (day % core::kDaysPerMonth == 0) {
+      ReadFundMonth(world);  // #2199b: the fund's month - held, free, given, the issue's draw
+    }
     if (day % core::kDaysPerMonth != core::kDaysPerMonth - 1U) {
       return;  // the month's table is read on its last day, after the day's meals
     }
@@ -174,6 +177,41 @@ class HelpFundProbe {
     previous_short_ = std::move(short_now);
   }
 
+  /// #2199b THE FUND'S MONTH (econ's print): on a month's first day, after its issue hour -
+  /// what the fund holds, the free stock above the lower rungs it read, what it gave, and what
+  /// the trudodni issue drew of its foods over the month that closed.
+  void ReadFundMonth(const core::WorldState& world) {
+    const auto sum = [this](const core::ResourceAmounts& amounts) {
+      double grams = 0.0;
+      for (const std::uint32_t food : foods_) {
+        grams += food < amounts.size() ? static_cast<double>(amounts[food]) : 0.0;
+      }
+      return grams;
+    };
+    const double given_book = sum(world.ledger.current.help_issued);
+    const double issued_book = sum(world.ledger.current.issued);
+    if (world.calendar.day % core::kDaysPerYear == 0) {
+      given_mark_ = 0.0;  // the book turned
+      issued_mark_ = 0.0;
+    }
+    const double given = given_book - given_mark_;
+    const double issued = issued_book - issued_mark_;
+    given_mark_ = given_book;
+    issued_mark_ = issued_book;
+    if (world.calendar.day < core::kDaysPerYear) {
+      return;  // year 1 has no fund
+    }
+    const double held = sum(world.help_fund.held);
+    const auto free = static_cast<double>(world.help_fund.probe_free_g);
+    ++fund_months_;
+    fund_free0_ += free <= 0.0 ? 1U : 0U;
+    fund_free_no_give_ += free > 0.0 && given <= 0.0 && held > 0.0 ? 1U : 0U;
+    fund_held_ += held;
+    fund_free_ += free;
+    fund_given_ += given;
+    fund_issued_ += issued;
+  }
+
   /// #2199b THE TIMING (econ): each family's day - its eaten and need off the month's table's
   /// growth, its pantry's food kcal after the day (hay and every row of no kcal out) - the
   /// month's first day's pantry and the first day it ate under 0.9 of its day's need.
@@ -254,6 +292,14 @@ class HelpFundProbe {
          << (day_reads_ > 0 ? first_days_ / day_reads_ : -1.0) << ' '
          << (day_reads_ > 0 ? short_days_ / day_reads_ : -1.0) << ' '
          << (day_reads_ > 0 ? end_days_ / day_reads_ : -1.0);
+    line << " fund_month(months/free0/free_but_none_given/held_kg/free_kg/given_kg/issue_drawn_kg) "
+         << fund_months_ << ' ' << fund_free0_ << ' ' << fund_free_no_give_ << ' '
+         << (fund_months_ > 0 ? fund_held_ / fund_months_ / 1000.0 : -1.0) << ' '
+         << (fund_months_ > 0 ? fund_free_ / fund_months_ / 1000.0 : -1.0) << ' '
+         << (fund_months_ > 0 ? fund_given_ / fund_months_ / 1000.0 : -1.0) << ' '
+         << (fund_months_ > 0 ? fund_issued_ / fund_months_ / 1000.0 : -1.0);
+    fund_months_ = fund_free0_ = fund_free_no_give_ = 0;
+    fund_held_ = fund_free_ = fund_given_ = fund_issued_ = 0.0;
     timing_t_ = timing_m_ = timing_n_ = day_reads_ = 0;
     short_day_hist_ = {};
     first_days_ = short_days_ = end_days_ = 0.0;
@@ -302,6 +348,15 @@ class HelpFundProbe {
   };
 
   std::map<std::uint32_t, Day> days_;
+  double given_mark_ = 0.0;
+  double issued_mark_ = 0.0;
+  std::uint32_t fund_months_ = 0;
+  std::uint32_t fund_free0_ = 0;
+  std::uint32_t fund_free_no_give_ = 0;
+  double fund_held_ = 0.0;
+  double fund_free_ = 0.0;
+  double fund_given_ = 0.0;
+  double fund_issued_ = 0.0;
   std::vector<double> kcal_;
   std::uint32_t timing_t_ = 0;
   std::uint32_t timing_m_ = 0;

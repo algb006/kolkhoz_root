@@ -76,6 +76,10 @@ void IssueFromHelpFund(const FoodConfig& config,
   }
   HelpFundState& fund = current.help_fund;
   Grams given_total = 0;
+  fund.probe_free_g = 0;  // PROBE #2199b
+  for (const ResourceId food : config.help_fund_foods) {
+    fund.probe_free_g += FreeFoodStock(config, current, reserve, food);
+  }
   bool short_left = false;
   // IN ID ORDER, as the ration: the fund shrinks family by family.
   for (const std::uint32_t row : RowsById(current.families)) {

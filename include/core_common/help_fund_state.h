@@ -48,6 +48,9 @@ struct HelpFundState {
   ResourceAmounts held;
   /// 0/1: kHelpFundEmpty has been said since the last top-up.
   std::uint8_t empty_said = 0;
+  /// PROBE #2199b (not for release, not saved): the free stock above the lower rungs of the
+  /// fund's foods at the month's issue, grams.
+  Grams probe_free_g = 0;
 };
 
 }  // namespace core
