@@ -279,6 +279,7 @@ core::WorldState MakeWorld() {
   first.still_raw_grain_g = 37'000;               // save 233: the sacks' grain
   first.still_raw_potato_g = 4'000;               // save 233: and potato
   first.sack_month = 27;                          // save 233: a sack-bringer's month
+  first.cold_stage = 2;                           // save 237 (#2261): «Замёрз»
   first.mood_base = 57.5F;                        // save 188 (#1241): off the mood
   first.school = core::UnitId{6};                 // a pupil, save format 41
   first.days_worked_this_month = 3;               // the month's work, save format 43
@@ -2396,7 +2397,9 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // the build, held; the hash read off u1948a.
     // Save 233 (#2189): the still's raw (two u32) and the sack month (u32), 12 bytes a
     // resident, two - 577 -> 601, the only section that moved; the hash read off tu1.
-    {"residents", 601, 0x28f6b8e0198b7fd7ULL},
+    // Save 237 (#2261 stage 4): cold_stage, a byte a resident, two - 601 -> 603 measured on
+    // hh2261m; the hash re-read owed with the first's 2.
+    {"residents", 603, 0x59b26b571bda7af7ULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
@@ -4042,6 +4045,7 @@ int main() {
   failures +=
       Expect(!loaded.residents.rows.empty() && loaded.residents.rows[0].samogon_ml == 12'500 &&
                  loaded.residents.rows[0].still_raw_grain_g == 37'000 &&
+                 loaded.residents.rows[0].cold_stage == 2 &&
                  loaded.residents.rows[0].still_raw_potato_g == 4'000 &&
                  loaded.residents.rows[0].sack_month == 27 &&
                  loaded.ledger.closed.samogon_brewed_ml == 240'000 &&
