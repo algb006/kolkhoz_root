@@ -40,6 +40,7 @@
 #include "core_common/world_state.h"
 #include "food_theft.h"
 #include "funeral_rules.h"
+#include "heating.h"
 #include "membership.h"
 #include "night_trade.h"
 #include "salt_issue.h"
@@ -303,6 +304,9 @@ struct LifeConfig {
   /// #1568 link 2: theft for one's own table, the book and the audit
   /// (food_theft.h; off by default).
   FoodTheftConfig food_theft;
+
+  /// #2261 residents' cold and firewood (heating.h): stage 0, read and not yet acting.
+  HeatingConfig heating;
 
   /// The yards' exchange at the barter counter (barter.h).
   BarterConfig barter;

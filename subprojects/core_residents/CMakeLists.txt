@@ -29,6 +29,7 @@ kolkhoz_add_module(core_residents
     funeral_rules.cpp
     food_theft.cpp
     thief_catch.cpp
+    heating.cpp
     help_fund.cpp
     night_trade.cpp
     barter.cpp

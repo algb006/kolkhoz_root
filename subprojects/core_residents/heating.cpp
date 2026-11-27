@@ -1,0 +1,175 @@
+// #2261 heating's reader (heating.h). Stage 0: the numbers are read; nothing acts on them yet.
+
+#include "heating.h"
+
+#include <array>
+#include <cstdint>
+#include <optional>
+
+#include "core_catalog/table_value.h"
+
+namespace core {
+namespace {
+
+/// The keys in the order ParseHeatingConfig reads them (design.db world_param, sort 410).
+constexpr std::array<std::string_view, 38> kHeatingWorldParamKeys = {
+    "heat_threshold_c",
+    "burn_m3_per_degree_day",
+    "burn_dilapidated_factor",
+    "burn_dugout_factor",
+    "burn_level_factor",
+    "burn_insulated_factor",
+    "coal_m3_per_t",
+    "heat_buffer_m3",
+    "dilapidated_wear_pct",
+    "heat_refill_below_m3",
+    "heat_start_buffer_m3",
+    "heat_empty_output_penalty_pct",
+    "heat_indoor_warm_offset_c",
+    "heat_indoor_warm_cap_c",
+    "heat_indoor_cold_offset_c",
+    "heat_close_below_c",
+    "cold_scale_max",
+    "cold_gain_night_home",
+    "cold_gain_hour_per_10c_frost",
+    "cold_loss_night_warm",
+    "cold_cold_at",
+    "cold_frozen_at",
+    "cold_work_penalty_pct",
+    "cold_mood_penalty",
+    "cold_sickness_pct_day",
+    "cold_sickness_frozen_pct_day",
+    "cold_hardy_offset",
+    "cold_weak_offset",
+    "cold_era1_offset",
+    "cold_clothes_both_factor",
+    "cold_clothes_one_factor",
+    "cold_bath_relief",
+    "cold_hot_meal_relief",
+    "deadwood_m3_per_trip",
+    "deadwood_full_within_m",
+    "deadwood_zero_at_m",
+    "cook_home_m3_per_resident_day",
+    "cook_meal_m3"};
+
+}  // namespace
+
+std::span<const std::string_view> HeatingWorldParamKeys() {
+  return kHeatingWorldParamKeys;
+}
+
+bool ParseHeatingConfig(const ITableSet& tables, HeatingConfig& config, std::string& error) {
+  if (const ITable* const world = tables.FindTable("world_params")) {
+    // The ranges are design.db's min_ok/max_ok, widened to the physically possible where a
+    // tuning pair may need to step past them.
+    const auto r = [](float low, float high) { return Range{.low = low, .high = high}; };
+    const std::array<ScalarKnob, kHeatingWorldParamKeys.size()> knobs = {{
+        {.key = kHeatingWorldParamKeys[0], .value = &config.heat_threshold_c, .range = r(-10, 25)},
+        {.key = kHeatingWorldParamKeys[1],
+         .value = &config.burn_m3_per_degree_day,
+         .range = r(0, 1)},
+        {.key = kHeatingWorldParamKeys[2],
+         .value = &config.burn_dilapidated_factor,
+         .range = r(1, 3)},
+        {.key = kHeatingWorldParamKeys[3], .value = &config.burn_dugout_factor, .range = r(1, 3)},
+        {.key = kHeatingWorldParamKeys[4], .value = &config.burn_level_factor, .range = r(0.1F, 1)},
+        {.key = kHeatingWorldParamKeys[5],
+         .value = &config.burn_insulated_factor,
+         .range = r(0.1F, 1)},
+        {.key = kHeatingWorldParamKeys[6], .value = &config.coal_m3_per_t, .range = r(0.5F, 10)},
+        {.key = kHeatingWorldParamKeys[7], .value = &config.heat_buffer_m3, .range = r(0, 50)},
+        {.key = kHeatingWorldParamKeys[8],
+         .value = &config.dilapidated_wear_pct,
+         .range = r(0, 100)},
+        {.key = kHeatingWorldParamKeys[9],
+         .value = &config.heat_refill_below_m3,
+         .range = r(0, 50)},
+        {.key = kHeatingWorldParamKeys[10],
+         .value = &config.heat_start_buffer_m3,
+         .range = r(0, 50)},
+        {.key = kHeatingWorldParamKeys[11],
+         .value = &config.heat_empty_output_penalty_pct,
+         .range = r(0, 100)},
+        {.key = kHeatingWorldParamKeys[12],
+         .value = &config.heat_indoor_warm_offset_c,
+         .range = r(0, 60)},
+        {.key = kHeatingWorldParamKeys[13],
+         .value = &config.heat_indoor_warm_cap_c,
+         .range = r(5, 30)},
+        {.key = kHeatingWorldParamKeys[14],
+         .value = &config.heat_indoor_cold_offset_c,
+         .range = r(0, 30)},
+        {.key = kHeatingWorldParamKeys[15], .value = &config.heat_close_below_c, .range = r(0, 25)},
+        {.key = kHeatingWorldParamKeys[16], .value = &config.cold_scale_max, .range = r(10, 500)},
+        {.key = kHeatingWorldParamKeys[17],
+         .value = &config.cold_gain_night_home,
+         .range = r(0, 100)},
+        {.key = kHeatingWorldParamKeys[18],
+         .value = &config.cold_gain_hour_per_10c_frost,
+         .range = r(0, 20)},
+        {.key = kHeatingWorldParamKeys[19],
+         .value = &config.cold_loss_night_warm,
+         .range = r(0, 100)},
+        {.key = kHeatingWorldParamKeys[20], .value = &config.cold_cold_at, .range = r(0, 500)},
+        {.key = kHeatingWorldParamKeys[21], .value = &config.cold_frozen_at, .range = r(0, 500)},
+        {.key = kHeatingWorldParamKeys[22],
+         .value = &config.cold_work_penalty_pct,
+         .range = r(0, 100)},
+        {.key = kHeatingWorldParamKeys[23], .value = &config.cold_mood_penalty, .range = r(0, 100)},
+        {.key = kHeatingWorldParamKeys[24],
+         .value = &config.cold_sickness_pct_day,
+         .range = r(0, 100)},
+        {.key = kHeatingWorldParamKeys[25],
+         .value = &config.cold_sickness_frozen_pct_day,
+         .range = r(0, 100)},
+        {.key = kHeatingWorldParamKeys[26], .value = &config.cold_hardy_offset, .range = r(0, 100)},
+        {.key = kHeatingWorldParamKeys[27], .value = &config.cold_weak_offset, .range = r(-100, 0)},
+        {.key = kHeatingWorldParamKeys[28],
+         .value = &config.cold_era1_offset,
+         .range = r(-100, 100)},
+        {.key = kHeatingWorldParamKeys[29],
+         .value = &config.cold_clothes_both_factor,
+         .range = r(0, 1)},
+        {.key = kHeatingWorldParamKeys[30],
+         .value = &config.cold_clothes_one_factor,
+         .range = r(0, 1)},
+        {.key = kHeatingWorldParamKeys[31], .value = &config.cold_bath_relief, .range = r(0, 100)},
+        {.key = kHeatingWorldParamKeys[32],
+         .value = &config.cold_hot_meal_relief,
+         .range = r(0, 100)},
+        {.key = kHeatingWorldParamKeys[33],
+         .value = &config.deadwood_m3_per_trip,
+         .range = r(0, 5)},
+        {.key = kHeatingWorldParamKeys[34],
+         .value = &config.deadwood_full_within_m,
+         .range = r(0, 20000)},
+        {.key = kHeatingWorldParamKeys[35],
+         .value = &config.deadwood_zero_at_m,
+         .range = r(0, 20000)},
+        {.key = kHeatingWorldParamKeys[36],
+         .value = &config.cook_home_m3_per_resident_day,
+         .range = r(0, 1)},
+        {.key = kHeatingWorldParamKeys[37], .value = &config.cook_meal_m3, .range = r(0, 1)},
+    }};
+    if (!ReadKnobs(*world, "world_params", knobs, error)) {
+      return false;
+    }
+  }
+  // unit_types.csv heat_size_factor: empty = 1.0 (a house's worth). Absent column: all 1.0.
+  config.heat_size_factor.clear();
+  if (const ITable* const types = tables.FindTable("unit_types")) {
+    const std::uint32_t column = types->FindColumn("heat_size_factor");
+    config.heat_size_factor.assign(types->RowCount(), 1.0F);
+    if (column != kNoTableColumn) {
+      for (std::uint32_t row = 0; row < types->RowCount(); ++row) {
+        const std::optional<float> value = types->CellReal(row, column);
+        if (value && *value > 0.0F) {
+          config.heat_size_factor[row] = *value;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+}  // namespace core
