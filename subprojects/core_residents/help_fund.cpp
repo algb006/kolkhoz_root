@@ -32,6 +32,41 @@ Grams HeldOf(const HelpFundState& fund, ResourceId resource) {
   return resource.value < fund.held.size() ? fund.held[resource.value] : 0;
 }
 
+double KcalOf(const FoodConfig& config, ResourceId food) {
+  return food.value < config.resources.size()
+             ? static_cast<double>(config.resources[food.value].kcal_per_gram)
+             : 0.0;
+}
+
+/// The fund's pool in kcal: what it holds of every food, at each food's kcal.
+double PoolKcal(const FoodConfig& config, const HelpFundState& fund) {
+  double kcal = 0.0;
+  for (const ResourceId food : config.help_fund_foods) {
+    kcal += static_cast<double>(HeldOf(fund, food)) * KcalOf(config, food);
+  }
+  return kcal;
+}
+
+/// `kcal` off the pool: first from what it holds of the food given, then from the other foods
+/// in order (the sealed grams follow the kcal, so the stores' seal stays the pool's size).
+void DrawFromPool(const FoodConfig& config, HelpFundState& fund, ResourceId given, double kcal) {
+  const auto take = [&fund, &config, &kcal](ResourceId food) {
+    const double per_gram = KcalOf(config, food);
+    if (!(kcal > 0.0) || !(per_gram > 0.0) || food.value >= fund.held.size()) {
+      return;
+    }
+    const Grams held = fund.held[food.value];
+    const auto wanted = static_cast<Grams>(std::llround(kcal / per_gram));
+    const Grams taken = std::min(held, wanted);
+    fund.held[food.value] -= taken;
+    kcal -= static_cast<double>(taken) * per_gram;
+  };
+  take(given);
+  for (const ResourceId food : config.help_fund_foods) {
+    take(food);
+  }
+}
+
 /// The share of the winter store the meal will eat this month (family_meal.cpp,
 /// EatTheWinterStore: the store over the days left to its window's end, and nothing outside
 /// the window): the month's days over the days left, from the month's first day; 0 outside.
@@ -129,8 +164,12 @@ void IssueFromHelpFund(const FoodConfig& config,
         break;
       }
       const double kcal_per_gram = static_cast<double>(config.resources[food.value].kcal_per_gram);
-      const Grams held = HeldOf(fund, food);
-      if (!(kcal_per_gram > 0.0) || held <= 0) {
+      // ONE POOL IN KCAL (econ after #2199b's depth: 56 % of the remaining short months ate under
+      // 0.6 while the fund's rye and wheat - 2 % of EACH crop - ran thin and barley, oat and potato
+      // lay): any food the fund holds pays the gap by its kcal, the pool shrinking by the kcal
+      // given, food by food in order.
+      const double pool_kcal = PoolKcal(config, fund);
+      if (!(kcal_per_gram > 0.0) || !(pool_kcal > 0.0)) {
         continue;
       }
       // What lies in the stores above the other funds: the fund cannot give what is not there.
@@ -138,14 +177,15 @@ void IssueFromHelpFund(const FoodConfig& config,
       // Rounded, not truncated: 13 200 kcal at 3.3F a gram is 3 999.99 g, and the floor lost a
       // gram a family a month (hu2199b).
       const auto wanted = static_cast<Grams>(std::llround(gap_kcal / kcal_per_gram));
-      const Grams issue = std::min({wanted, held, there});
+      const auto by_pool = static_cast<Grams>(pool_kcal / kcal_per_gram);
+      const Grams issue = std::min({wanted, by_pool, there});
       if (issue <= 0) {
         continue;
       }
       const Grams given = TakeFoodFromStores(config, current, food, issue);
       AddFoodToPantry(family, food, given);
       AddTo(current.ledger.current.help_issued, food, given);
-      fund.held[food.value] -= given;
+      DrawFromPool(config, fund, food, static_cast<double>(given) * kcal_per_gram);
       gap_kcal -= static_cast<double>(given) * kcal_per_gram;
       given_total += given;
     }
