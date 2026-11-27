@@ -36,6 +36,13 @@ struct HelpFundRules {
   /// The hour of the year's first day the fund is topped up: after the ledger's turn (hour 0's
   /// end), so the closed book is the year that ended.
   std::uint32_t turn_hour = 1;
+  /// #2199b THE SAME-MONTH TRIGGER (econ after hf2199k: 88 % of the short months left were a
+  /// family's FIRST short month): on any other day of the month, a family whose meal-countable
+  /// pantry falls under this share of a month's need is topped to `line` at once. econ wrote
+  /// «7 days» of a 30-day month; the core's month is 4 days, so 7/30 ≈ 0.25 of a month - one
+  /// game day's need (STUB, econ's to confirm). Checked once a day, so «at most one top-up a
+  /// family per 7 days» reads «at most one a game day» the same way.
+  float same_month_trigger = 0.25F;
 };
 
 inline constexpr HelpFundRules kHelpFundRules{};

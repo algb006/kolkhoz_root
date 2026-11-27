@@ -37,6 +37,15 @@ void IssueFromHelpFund(const FoodConfig& config,
                        const std::vector<Grams>& reserve,
                        WorldState& current);
 
+/// @brief #2199b THE SAME-MONTH TRIGGER, every other day of a month at hour 0 (from year 2): a
+///        family whose meal-countable pantry (the W term) falls under
+///        kHelpFundRules.same_month_trigger of its month's need at this month's pace is topped
+///        to the line of a month's need at once, from the same pool and as the month-start issue.
+/// @param reserve As IssueFromHelpFund's.
+void IssueSameMonthFromHelpFund(const FoodConfig& config,
+                                const std::vector<Grams>& reserve,
+                                WorldState& current);
+
 /// @brief Consumes the step's kSetHelpFundShare orders: the share written, the fund set to the
 ///        new target at once. Refusals: kNotEligible (an amount outside 0..max_permille).
 void ConsumeHelpFundOrders(const FoodConfig& config, WorldState& current);

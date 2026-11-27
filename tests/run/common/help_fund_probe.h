@@ -60,6 +60,16 @@ class HelpFundProbe {
   /// @brief Once a day, after the day's step.
   void CountDay(const core::WorldState& world) {
     const std::uint32_t day = world.calendar.day;
+    // econ's FUND DRY gate (#2199b trigger): the pool empty on any day of a year from year 2.
+    if (day >= core::kDaysPerYear) {
+      core::Grams held = 0;
+      for (const core::Grams grams : world.help_fund.held) {
+        held += grams;
+      }
+      if (held <= 0) {
+        ++dry_days_;
+      }
+    }
     if (day > 0 && day % core::kDaysPerYear == 0) {
       CloseYear(day / core::kDaysPerYear);
       double harvest_g = 0.0;
@@ -275,7 +285,8 @@ class HelpFundProbe {
     std::ostringstream line;
     line << "year " << year
          << " ground=virtual_fund_from_closed_harvest(grain+potato);line=0.9;gap_in_grain_g"
-         << " short_family_months " << short_months_;
+         << " short_family_months " << short_months_ << " pool_dry_days " << dry_days_;
+    dry_days_ = 0;
     for (std::size_t share = 0; share < kShares.size(); ++share) {
       line << " fund" << (share == 0 ? 2 : 3) << "pct_kg " << start_[share] / 1000.0 << " draws "
            << draws_[share] << " drawn_kg " << drawn_[share] / 1000.0 << " dry_month "
@@ -390,6 +401,7 @@ class HelpFundProbe {
   double given_mark_ = 0.0;
   double issued_mark_ = 0.0;
   std::uint32_t fund_months_ = 0;
+  std::uint32_t dry_days_ = 0;
   std::uint32_t fund_free0_ = 0;
   std::uint32_t fund_free_no_give_ = 0;
   double fund_held_ = 0.0;

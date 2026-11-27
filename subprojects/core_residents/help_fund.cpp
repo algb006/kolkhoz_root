@@ -90,6 +90,25 @@ void SetToTarget(const FoodConfig& config, WorldState& current) {
   current.help_fund.empty_said = 0;
 }
 
+/// One family's top-up from the pool: what it was given, and the kcal still short.
+struct PoolTopUp {
+  Grams given = 0;
+  double gap_left_kcal = 0.0;
+};
+
+/// `gap_kcal` paid into `family`'s pantry from the pool, food by food (defined below).
+PoolTopUp TopUpFromPool(const FoodConfig& config,
+                        const std::vector<Grams>& reserve,
+                        WorldState& current,
+                        FamilyRow& family,
+                        double gap_kcal);
+
+/// An issue's close: kHelpFundIssued for what was given, kHelpFundEmpty once when dry.
+void CloseIssue(const FoodConfig& config, WorldState& current, Grams given_total, bool short_left);
+
+/// The family pantry's kcal the meal will count this month (econ's W term).
+double MealPantryKcal(const FoodConfig& config, const WorldState& current, const FamilyRow& family);
+
 }  // namespace
 
 ResourceAmounts HelpFundTarget(const FoodConfig& config, const WorldState& world) {
@@ -126,17 +145,7 @@ void IssueFromHelpFund(const FoodConfig& config,
   if (day == 0 || day % kDaysPerMonth != 0 || HourFromTick(current.calendar.tick) != 0) {
     return;
   }
-  HelpFundState& fund = current.help_fund;
   Grams given_total = 0;
-  fund.probe_free_g = 0;  // PROBE #2199b
-  fund.probe_short = 0;
-  fund.probe_none = 0;
-  fund.probe_term_kcal = {};
-  fund.probe_line_kcal = 0.0;
-  fund.probe_given_kcal = 0.0;
-  for (const ResourceId food : config.help_fund_foods) {
-    fund.probe_free_g += FreeFoodStock(config, current, reserve, food);
-  }
   bool short_left = false;
   // IN ID ORDER, as the ration: the fund shrinks family by family.
   for (const std::uint32_t row : RowsById(current.families)) {
@@ -153,81 +162,95 @@ void IssueFromHelpFund(const FoodConfig& config,
     // topped to 0.9 of a month's need, COUNTING WHAT IT HOLDS. The first form gave last
     // month's gap, and 40 % of the families were short again the month after - their own
     // intake swings with the issue's periods, and a gap read backwards undershot (hf2199c).
-    double pantry_kcal = 0.0;
-    for (std::size_t food = 0; food < family.pantry.size() && food < config.resources.size();
-         ++food) {
-      // THE WINTER STORE COUNTS ONLY WHAT THE MEAL WILL TAKE OF IT THIS MONTH (econ's W, after
-      // #2199b's term split: 15 % of the term was the dried store, eaten Dec-May at its pace and
-      // not at all outside it - a family holding it read «full» and was short on day 1).
-      const double share =
-          food == config.dried_forage_resource.value ? WinterStoreMonthShare(config, current) : 1.0;
-      pantry_kcal += static_cast<double>(family.pantry[food]) *
-                     static_cast<double>(config.resources[food].kcal_per_gram) * share;
-    }
-    double gap_kcal = line_kcal - pantry_kcal;
-    {
-      // PROBE #2199b: the term by kind.
-      ++fund.probe_short;
-      fund.probe_line_kcal += line_kcal;
-      for (std::size_t food = 0; food < family.pantry.size() && food < config.resources.size();
-           ++food) {
-        const double kcal = static_cast<double>(family.pantry[food]) *
-                            static_cast<double>(config.resources[food].kcal_per_gram);
-        const FoodCategory category = config.resources[food].category;
-        std::size_t kind = 5;
-        if (food == config.dried_forage_resource.value) {
-          kind = 1;
-        } else if (food == config.potato_resource.value) {
-          kind = 2;
-        } else if (food == config.vegetables_resource.value) {
-          kind = 3;
-        } else if (!(config.resources[food].kcal_per_gram > 0.0F)) {
-          kind = 0;  // fodder and every row with no kcal: counts 0 by construction
-        } else if (category == FoodCategory::kBread) {
-          kind = 4;
-        }
-        fund.probe_term_kcal[kind] += kcal;
-      }
-      if (!(gap_kcal > 0.0)) {
-        ++fund.probe_none;
-      }
-    }
+    const double gap_kcal = line_kcal - MealPantryKcal(config, current, family);
     if (!(gap_kcal > 0.0)) {
       continue;  // the pantry holds a month at the line already
     }
-    for (const ResourceId food : config.help_fund_foods) {
-      if (!(gap_kcal > 0.0) || food.value >= config.resources.size()) {
-        break;
-      }
-      const double kcal_per_gram = static_cast<double>(config.resources[food.value].kcal_per_gram);
-      // ONE POOL IN KCAL (econ after #2199b's depth: 56 % of the remaining short months ate under
-      // 0.6 while the fund's rye and wheat - 2 % of EACH crop - ran thin and barley, oat and potato
-      // lay): any food the fund holds pays the gap by its kcal, the pool shrinking by the kcal
-      // given, food by food in order.
-      const double pool_kcal = PoolKcal(config, fund);
-      if (!(kcal_per_gram > 0.0) || !(pool_kcal > 0.0)) {
-        continue;
-      }
-      // What lies in the stores above the other funds: the fund cannot give what is not there.
-      const Grams there = FreeFoodStock(config, current, reserve, food);
-      // Rounded, not truncated: 13 200 kcal at 3.3F a gram is 3 999.99 g, and the floor lost a
-      // gram a family a month (hu2199b).
-      const auto wanted = static_cast<Grams>(std::llround(gap_kcal / kcal_per_gram));
-      const auto by_pool = static_cast<Grams>(pool_kcal / kcal_per_gram);
-      const Grams issue = std::min({wanted, by_pool, there});
-      if (issue <= 0) {
-        continue;
-      }
-      const Grams given = TakeFoodFromStores(config, current, food, issue);
-      AddFoodToPantry(family, food, given);
-      AddTo(current.ledger.current.help_issued, food, given);
-      DrawFromPool(config, fund, food, static_cast<double>(given) * kcal_per_gram);
-      gap_kcal -= static_cast<double>(given) * kcal_per_gram;
-      fund.probe_given_kcal += static_cast<double>(given) * kcal_per_gram;  // PROBE #2199b
-      given_total += given;
-    }
-    short_left = short_left || gap_kcal > 1.0;
+    const PoolTopUp topped = TopUpFromPool(config, reserve, current, family, gap_kcal);
+    given_total += topped.given;
+    short_left = short_left || topped.gap_left_kcal > 1.0;
   }
+  CloseIssue(config, current, given_total, short_left);
+}
+
+void IssueSameMonthFromHelpFund(const FoodConfig& config,
+                                const std::vector<Grams>& reserve,
+                                WorldState& current) {
+  const SimDay day = current.calendar.day;
+  const SimDay into_month = day % kDaysPerMonth;
+  // Not on the month's first day (the month-start issue reads the closed month there) and not
+  // in year 1 (the fund is empty until the first turn).
+  if (day < kDaysPerYear || into_month == 0 || HourFromTick(current.calendar.tick) != 0) {
+    return;
+  }
+  Grams given_total = 0;
+  bool short_left = false;
+  for (const std::uint32_t row : RowsById(current.families)) {
+    FamilyRow& family = current.families.rows[row];
+    // The month's need so far over the days it covers, times the month: the month's need at
+    // this month's pace (the month's table resets at its first meal).
+    if (!(family.month_need_kcal > 0.0F)) {
+      continue;
+    }
+    const double month_need = static_cast<double>(family.month_need_kcal) *
+                              static_cast<double>(kDaysPerMonth) / static_cast<double>(into_month);
+    const double pantry = MealPantryKcal(config, current, family);
+    if (!(pantry < static_cast<double>(kHelpFundRules.same_month_trigger) * month_need)) {
+      continue;
+    }
+    const double gap_kcal = static_cast<double>(kHelpFundRules.line) * month_need - pantry;
+    const PoolTopUp topped = TopUpFromPool(config, reserve, current, family, gap_kcal);
+    given_total += topped.given;
+    short_left = short_left || topped.gap_left_kcal > 1.0;
+  }
+  CloseIssue(config, current, given_total, short_left);
+}
+
+namespace {
+
+PoolTopUp TopUpFromPool(const FoodConfig& config,
+                        const std::vector<Grams>& reserve,
+                        WorldState& current,
+                        FamilyRow& family,
+                        double gap_kcal) {
+  HelpFundState& fund = current.help_fund;
+  PoolTopUp out;
+  for (const ResourceId food : config.help_fund_foods) {
+    if (!(gap_kcal > 0.0) || food.value >= config.resources.size()) {
+      break;
+    }
+    const double kcal_per_gram = static_cast<double>(config.resources[food.value].kcal_per_gram);
+    // ONE POOL IN KCAL (econ after #2199b's depth: 56 % of the remaining short months ate under
+    // 0.6 while the fund's rye and wheat - 2 % of EACH crop - ran thin and barley, oat and potato
+    // lay): any food the fund holds pays the gap by its kcal, the pool shrinking by the kcal
+    // given, food by food in order.
+    const double pool_kcal = PoolKcal(config, fund);
+    if (!(kcal_per_gram > 0.0) || !(pool_kcal > 0.0)) {
+      continue;
+    }
+    // What lies in the stores above the other funds: the fund cannot give what is not there.
+    const Grams there = FreeFoodStock(config, current, reserve, food);
+    // Rounded, not truncated: 13 200 kcal at 3.3F a gram is 3 999.99 g, and the floor lost a
+    // gram a family a month (hu2199b).
+    const auto wanted = static_cast<Grams>(std::llround(gap_kcal / kcal_per_gram));
+    const auto by_pool = static_cast<Grams>(pool_kcal / kcal_per_gram);
+    const Grams issue = std::min({wanted, by_pool, there});
+    if (issue <= 0) {
+      continue;
+    }
+    const Grams given = TakeFoodFromStores(config, current, food, issue);
+    AddFoodToPantry(family, food, given);
+    AddTo(current.ledger.current.help_issued, food, given);
+    DrawFromPool(config, fund, food, static_cast<double>(given) * kcal_per_gram);
+    gap_kcal -= static_cast<double>(given) * kcal_per_gram;
+    out.given += given;
+  }
+  out.gap_left_kcal = gap_kcal;
+  return out;
+}
+
+void CloseIssue(const FoodConfig& config, WorldState& current, Grams given_total, bool short_left) {
+  HelpFundState& fund = current.help_fund;
   if (given_total > 0) {
     SimEvent& issued = EmitEvent(current, EventKind::kHelpFundIssued, EventSeverity::kNotable);
     issued.amount = given_total;
@@ -236,11 +259,30 @@ void IssueFromHelpFund(const FoodConfig& config,
   for (const ResourceId food : config.help_fund_foods) {
     left += HeldOf(fund, food);
   }
-  if (short_left && left <= 0 && fund.empty_said == 0 && day >= kDaysPerYear) {
+  if (short_left && left <= 0 && fund.empty_said == 0 && current.calendar.day >= kDaysPerYear) {
     fund.empty_said = 1;
     EmitEvent(current, EventKind::kHelpFundEmpty, EventSeverity::kNotable);
   }
 }
+
+double MealPantryKcal(const FoodConfig& config,
+                      const WorldState& current,
+                      const FamilyRow& family) {
+  double pantry_kcal = 0.0;
+  for (std::size_t food = 0; food < family.pantry.size() && food < config.resources.size();
+       ++food) {
+    // THE WINTER STORE COUNTS ONLY WHAT THE MEAL WILL TAKE OF IT THIS MONTH (econ's W, after
+    // #2199b's term split: 15 % of the term was the dried store, eaten Dec-May at its pace and
+    // not at all outside it - a family holding it read «full» and was short on day 1).
+    const double share =
+        food == config.dried_forage_resource.value ? WinterStoreMonthShare(config, current) : 1.0;
+    pantry_kcal += static_cast<double>(family.pantry[food]) *
+                   static_cast<double>(config.resources[food].kcal_per_gram) * share;
+  }
+  return pantry_kcal;
+}
+
+}  // namespace
 
 void ConsumeHelpFundOrders(const FoodConfig& config, WorldState& current) {
   for (OrderRow& order : current.orders.rows) {

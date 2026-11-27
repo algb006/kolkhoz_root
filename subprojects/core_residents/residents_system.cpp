@@ -579,6 +579,9 @@ class ResidentsSystem final : public IResidentsSystem {
     TopUpHelpFund(food_, current);
     if (current.calendar.day % kDaysPerMonth == 0 && HourFromTick(current.calendar.tick) == 0) {
       IssueFromHelpFund(food_, ReserveBelowHelpFund(food_, current), current);
+    } else if (current.calendar.day >= kDaysPerYear && HourFromTick(current.calendar.tick) == 0) {
+      // #2199b the same-month trigger on the month's other days (help_fund.h).
+      IssueSameMonthFromHelpFund(food_, ReserveBelowHelpFund(food_, current), current);
     }
     // The night trades go out and come back in their own hours, not at the
     // day's turn (night_trade.h).
