@@ -57,6 +57,7 @@
 #include "../common/horse_tail_tally.h"
 #include "../common/house_point_probe.h"
 #include "../common/ledger_turn_tally.h"
+#include "../common/level_block_probe.h"
 #include "../common/milk_cut_tally.h"
 #include "../common/passed_over_tally.h"
 #include "../common/plan_threat_tally.h"
@@ -1013,6 +1014,7 @@ bool Walk(std::uint64_t seed,
   run::FloodTally flood_tally;                          // #1375
   run::PlanThreatTally plan_threat(*world.tables);      // #2190 LAMP2190
   run::HousePointProbe house_points(*world.tables);     // #1907 HOUSE1907 (probe)
+  run::LevelBlockProbe level_block(*world.tables);      // #1907 LEVEL1907 (probe)
   run::FirstPlanTally first_plan(*world.tables);        // #1750
   run::MilkCutTally milk_cut(*world.tables);            // #1737 option 1, every run's door
   run::FallowHarrowTally fallow_harrow(*world.tables);  // #1837
@@ -1176,6 +1178,7 @@ bool Walk(std::uint64_t seed,
       flood_tally.CountDayEnd(*simulation);                     // #1375
       plan_threat.CountDayEnd(*simulation);                     // #2190
       house_points.CountDay(*simulation);                       // #1907 (probe)
+      level_block.CountDayEnd(*simulation);                     // #1907 (probe)
       first_plan.CountDayEnd(simulation->CompletedState());     // #1750
       milk_cut.CountDayEnd(*simulation);                        // #1737
       fallow_harrow.CountDayEnd(simulation->CompletedState());  // #1837
@@ -1749,6 +1752,7 @@ bool Walk(std::uint64_t seed,
       flood_tally.Print(std::cout, seed);    // #1375
       plan_threat.Print(std::cout, seed);    // #2190
       house_points.Print(std::cout, seed);   // #1907 (probe)
+      level_block.Print(std::cout, seed);    // #1907 (probe)
       first_plan.Print(std::cout, seed);     // #1750
       milk_cut.Print(std::cout, seed);       // #1737
       fallow_harrow.Print(std::cout, seed);  // #1837
