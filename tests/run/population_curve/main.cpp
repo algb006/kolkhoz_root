@@ -53,6 +53,7 @@
 #include "../common/funeral_tally.h"
 #include "../common/hand_over_tally.h"
 #include "../common/hay_day_off_policy.h"
+#include "../common/heating_probe.h"
 #include "../common/herd_tally.h"
 #include "../common/horse_tail_tally.h"
 #include "../common/ledger_turn_tally.h"
@@ -1011,6 +1012,7 @@ bool Walk(std::uint64_t seed,
   run::HorseTailTally horse_tail(*world.tables);
   run::FloodTally flood_tally;                          // #1375
   run::PlanThreatTally plan_threat(*world.tables);      // #2190 LAMP2190
+  run::HeatingProbe heating_probe;                      // #2261 HEAT2261
   run::FirstPlanTally first_plan(*world.tables);        // #1750
   run::MilkCutTally milk_cut(*world.tables);            // #1737 option 1, every run's door
   run::FallowHarrowTally fallow_harrow(*world.tables);  // #1837
@@ -1173,6 +1175,7 @@ bool Walk(std::uint64_t seed,
       horse_tail.CountDayEnd(*simulation);
       flood_tally.CountDayEnd(*simulation);                     // #1375
       plan_threat.CountDayEnd(*simulation);                     // #2190
+      heating_probe.CountDayEnd(*simulation);                   // #2261
       first_plan.CountDayEnd(simulation->CompletedState());     // #1750
       milk_cut.CountDayEnd(*simulation);                        // #1737
       fallow_harrow.CountDayEnd(simulation->CompletedState());  // #1837
@@ -1745,6 +1748,7 @@ bool Walk(std::uint64_t seed,
       horse_tail.Print(std::cout, seed);     // #1573's horse tail
       flood_tally.Print(std::cout, seed);    // #1375
       plan_threat.Print(std::cout, seed);    // #2190
+      heating_probe.Print(std::cout, seed);  // #2261
       first_plan.Print(std::cout, seed);     // #1750
       milk_cut.Print(std::cout, seed);       // #1737
       fallow_harrow.Print(std::cout, seed);  // #1837

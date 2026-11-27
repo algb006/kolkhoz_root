@@ -46,6 +46,7 @@
 #include "core_common/family_state.h"
 #include "core_common/flood_state.h"
 #include "core_common/funeral_state.h"
+#include "core_common/heating_state.h"
 #include "core_common/help_fund_state.h"
 #include "core_common/herd_state.h"
 #include "core_common/horse_lamp_memory.h"
@@ -1278,6 +1279,10 @@ struct WorldState {
   /// #2199 «фонд помощи»: the share and what the fund holds; SAVED (save 236).
   /// help_fund_state.h.
   HelpFundState help_fund;
+
+  /// #2261 heating: whether the start's houses got their firewood (SAVED, save 237) and the
+  /// burn's probe tallies (not saved). heating_state.h.
+  HeatingState heating;
 
   /// The tally clerk's post record (#589; clerk_post_view.h): since when, or why and since
   /// when vacant. SAVED (save 219). The holder himself is on his ResidentRow::post.

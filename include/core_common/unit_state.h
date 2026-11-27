@@ -643,6 +643,12 @@ struct UnitRow {
   /// thread [7]): the calendar year (1-based) RunSpringFlood zeroed them on a floodplain cell;
   /// 0 never. A read door for the layer, which must not remember it itself. Save 211.
   std::uint16_t flood_lost_year = 0;
+
+  /// THE FUEL BUFFER (#2261; heating.md §1 «Буфер топлива у юнита»): firewood m³ standing at
+  /// this heated unit, burnt from by core_residents/heating.h each day below the heating
+  /// threshold. The start's inhabited houses get heat_start_buffer_m3 once; every other unit
+  /// starts empty. Stage 1: nothing refills it and nothing reads it but the burn. Save 237.
+  float heat_buffer_m3 = 0.0F;
 };
 
 /// @brief Whether `unit` is supplied from another rick NOW (#1056 C1.2): a

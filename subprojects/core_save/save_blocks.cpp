@@ -370,7 +370,9 @@ static_assert(AggregateArity<ClampRotYear>() == 2,
 // open catch, its day and its patrol flag, the under-wing count, the talked (a count, 8 each).
 // Save 236 (#2199): the help fund, the sixty-eighth - in «world» after the thief catch: a u16
 // share, its held amounts and a byte.
-static_assert(AggregateArity<WorldState>() == 68,
+// Save 237 (#2261): the heating, the sixty-ninth - in «world» after the help fund: one byte
+// (seeded); its probe tallies are not written.
+static_assert(AggregateArity<WorldState>() == 69,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -769,6 +771,7 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU16(world.help_fund.share_permille);
   sink.WriteAmounts(DefKind::kResource, world.help_fund.held);
   out.WriteU8(world.help_fund.empty_said);
+  out.WriteU8(world.heating.seeded);  // save 237 (#2261)
   // The tally clerk's post record (#589, save 219).
   out.WriteU32(world.clerk.since_day);
   out.WriteU8(static_cast<std::uint8_t>(world.clerk.vacancy));
@@ -1203,6 +1206,8 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->help_fund.share_permille = in.ReadU16();  // save 236 (#2199)
   world->help_fund.held = source.ReadAmounts(DefKind::kResource);
   world->help_fund.empty_said = in.ReadU8();
+  world->heating.seeded =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the heating's seeded flag"));  // 237
   world->clerk.since_day = in.ReadU32();  // save 219 (#589)
   world->clerk.vacancy = static_cast<ClerkVacancy>(source.ReadEnumValue(
       0, static_cast<std::uint8_t>(ClerkVacancy::kUnitGone), "the clerk's vacancy"));

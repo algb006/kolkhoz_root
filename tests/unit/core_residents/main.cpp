@@ -48,6 +48,7 @@
 #include "food_config.h"
 #include "food_theft_checks.h"
 #include "funeral_checks.h"
+#include "heating_checks.h"
 #include "help_fund.h"
 #include "household_plot.h"
 #include "housing.h"
@@ -5355,8 +5356,9 @@ int main() {
   failures += CheckBurial();
   failures += CheckFunerals();
   failures += CheckTheSugar();
-  failures += CheckTheSalt();      // #1630 (B)
-  failures += CheckTheSaltEdge();  // #1630 (C)
+  failures += CheckTheSalt();         // #1630 (B)
+  failures += CheckTheSaltEdge();     // #1630 (C)
+  failures += CheckTheHeatingBurn();  // #2261 stage 1
   failures += CheckTheYardsInheritance();
   failures += CheckTheDrinkingRaisers();
   failures += CheckNoWeddingIntoABarrackAndTheCrowdedBarrack();

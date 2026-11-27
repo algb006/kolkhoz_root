@@ -2,11 +2,15 @@
 
 #include "heating.h"
 
+#include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 
 #include "core_catalog/table_value.h"
+#include "core_common/state_table_ops.h"
+#include "core_common/world_state.h"
 
 namespace core {
 namespace {
@@ -169,8 +173,24 @@ bool ParseHeatingConfig(const ITableSet& tables, HeatingConfig& config, std::str
     }
   }
   // unit_types.csv heat_size_factor: empty = 1.0 (a house's worth). Absent column: all 1.0.
+  // And has_heating (construction_config.cpp validates it 0/1 for the insulation; read here
+  // again for the burn - one column, two readers, the same truth).
   config.heat_size_factor.clear();
+  config.has_heating.clear();
+  config.is_housing.clear();
   if (const ITable* const types = tables.FindTable("unit_types")) {
+    const std::uint32_t heating = types->FindColumn("has_heating");
+    config.has_heating.assign(types->RowCount(), 0);
+    const std::uint32_t klass = types->FindColumn("class");
+    config.is_housing.assign(types->RowCount(), 0);
+    for (std::uint32_t row = 0; klass != kNoTableColumn && row < types->RowCount(); ++row) {
+      config.is_housing[row] = types->CellText(row, klass) == "housing" ? 1 : 0;
+    }
+    if (heating != kNoTableColumn) {
+      for (std::uint32_t row = 0; row < types->RowCount(); ++row) {
+        config.has_heating[row] = types->CellReal(row, heating).value_or(0.0F) > 0.5F ? 1 : 0;
+      }
+    }
     const std::uint32_t column = types->FindColumn("heat_size_factor");
     config.heat_size_factor.assign(types->RowCount(), 1.0F);
     if (column != kNoTableColumn) {
@@ -183,6 +203,88 @@ bool ParseHeatingConfig(const ITableSet& tables, HeatingConfig& config, std::str
     }
   }
   return true;
+}
+
+float HeatingBurnToday(const HeatingConfig& config, const UnitRow& unit, float outdoor_mean_c) {
+  const float degrees = config.heat_threshold_c - outdoor_mean_c;
+  if (!(degrees > 0.0F)) {
+    return 0.0F;
+  }
+  const std::size_t type = unit.type.value;
+  float burn = degrees * config.burn_m3_per_degree_day;
+  burn *= type < config.heat_size_factor.size() ? config.heat_size_factor[type] : 1.0F;
+  if (unit.wear >= config.dilapidated_wear_pct) {
+    burn *= config.burn_dilapidated_factor;
+  }
+  for (std::uint8_t level = 1; level < unit.level; ++level) {
+    burn *= config.burn_level_factor;
+  }
+  if (unit.insulated != 0) {
+    burn *= config.burn_insulated_factor;
+  }
+  return burn;
+}
+
+void RunHeatingBurn(const HeatingConfig& config, WorldState& world) {
+  HeatingState& heating = world.heating;
+  // Inhabited = some family names the unit as its house (settlement_rules' InhabitedUnits, the
+  // same rule: a barrack holds several families, UnitRow::household names one at most).
+  std::vector<std::uint8_t> inhabited(world.units.rows.size(), 0);
+  for (const FamilyRow& family : world.families.rows) {
+    const std::uint32_t row = FindRow(world.units, family.house);
+    if (row != kNoRow) {
+      inhabited[row] = 1;
+    }
+  }
+  const auto heated = [&config](const UnitRow& unit) {
+    const std::size_t type = unit.type.value;
+    return unit.dead == 0 && unit.level > 0 && type < config.has_heating.size() &&
+           config.has_heating[type] != 0;
+  };
+  if (heating.seeded == 0) {
+    // The start's firewood: heat_start_buffer_m3 into each inhabited heated dwelling (econ's
+    // pick for the 40 m³ that heating §2 forbids in the log pile).
+    for (std::size_t row = 0; row < world.units.rows.size(); ++row) {
+      UnitRow& unit = world.units.rows[row];
+      if (heated(unit) && inhabited[row] != 0) {
+        unit.heat_buffer_m3 = config.heat_start_buffer_m3;
+      }
+    }
+    heating.seeded = 1;
+  }
+  const float outdoor = world.weather.air_temperature_celsius;
+  for (std::size_t row = 0; row < world.units.rows.size(); ++row) {
+    UnitRow& unit = world.units.rows[row];
+    if (!heated(unit)) {
+      continue;
+    }
+    const std::size_t type = unit.type.value;
+    const bool dwelling = type < config.is_housing.size() && config.is_housing[type] != 0;
+    // An empty dwelling is not stoked: nobody lives there to stoke it.
+    if (dwelling && inhabited[row] == 0) {
+      continue;
+    }
+    const bool house = dwelling;
+    const float want = HeatingBurnToday(config, unit, outdoor);
+    if (!(want > 0.0F)) {
+      continue;
+    }
+    const float burnt = std::min(want, unit.heat_buffer_m3);
+    unit.heat_buffer_m3 -= burnt;
+    ++heating.probe_want_unit_days;
+    heating.probe_burnt_m3 += static_cast<double>(burnt);
+    const bool short_day = burnt < want;
+    if (short_day) {
+      ++heating.probe_empty_unit_days;
+      heating.probe_short_m3 += static_cast<double>(want - burnt);
+    }
+    if (house) {
+      ++heating.probe_want_house_days;
+      if (short_day) {
+        ++heating.probe_empty_house_days;
+      }
+    }
+  }
 }
 
 }  // namespace core

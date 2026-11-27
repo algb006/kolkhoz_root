@@ -6,13 +6,14 @@
 /// @threading SINGLE_THREADED
 /// Read once at assembly; the config is copied into the residents system.
 ///
-/// STAGE 0 (this file): THE READER ONLY. The core reads the 42 world_params rows and
-/// unit_types' heat_size_factor so the table export can land (the assembly refuses a `core` row
-/// nobody reads); nothing burns, nobody gets cold yet - ResidentRow::cold stays the STUB of
-/// residents_system.cpp until stage 4. Build order (boss): burn → buffer/refill → supply → cold.
+/// STAGE 0: the reader of the 42 world_params rows and unit_types' heat_size_factor /
+/// has_heating. STAGE 1: the burn from each heated unit's buffer (RunHeatingBurn) - nobody gets
+/// cold yet, ResidentRow::cold stays the STUB of residents_system.cpp until stage 4. Build order
+/// (boss): burn → buffer/refill → supply → cold.
 #ifndef CORE_RESIDENTS_HEATING_H_
 #define CORE_RESIDENTS_HEATING_H_
 
+#include <cstdint>
 #include <span>
 #include <string>
 #include <string_view>
@@ -21,6 +22,9 @@
 #include "core_tables/tables.h"
 
 namespace core {
+
+struct UnitRow;
+struct WorldState;
 
 /// @brief The heating's numbers (world_params, all econ's STUB; units in each comment).
 struct HeatingConfig {
@@ -77,7 +81,26 @@ struct HeatingConfig {
   /// unit_types.csv `heat_size_factor` by type row (empty → 1.0): a non-house heated type burns
   /// this many houses' worth.
   std::vector<float> heat_size_factor;
+  /// unit_types.csv `has_heating` by type row (1 = a stove stands in it).
+  std::vector<std::uint8_t> has_heating;
+  /// unit_types.csv `class` == housing by type row (a dwelling burns only while inhabited).
+  std::vector<std::uint8_t> is_housing;
 };
+
+/// @brief One heated unit's burn today, m³ (heating.md §3): the degrees below the threshold ×
+///        the base norm × the size factor × dilapidated (wear ≥ dilapidated_wear_pct) × the
+///        level's factor per level above the first × insulated. 0 at or above the threshold.
+/// @note The dugout's ×1.4 is not applied: no dugout type exists (STUB).
+float HeatingBurnToday(const HeatingConfig& config, const UnitRow& unit, float outdoor_mean_c);
+
+/// @brief #2261 stage 1, once a day: the start's inhabited houses get heat_start_buffer_m3 on the
+///        first call (HeatingState::seeded), then every standing heated unit burns its day from
+///        its buffer (UnitRow::heat_buffer_m3), never below 0, and the probe tallies count the
+///        wanted and uncovered days.
+/// @note A dwelling (class housing) burns only while some family names it its house; any other
+///       heated unit burns while it stands (staffing joins with stage 2's refill). Nothing refills,
+///       nothing reads the buffer yet - the world moves by the buffer alone.
+void RunHeatingBurn(const HeatingConfig& config, WorldState& world);
 
 /// @brief The world_params keys this file reads, for the assembly's declared-readers check.
 std::span<const std::string_view> HeatingWorldParamKeys();

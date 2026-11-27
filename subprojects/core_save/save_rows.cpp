@@ -377,7 +377,11 @@ static_assert(AggregateArity<ConstructionState>() == 22,
 // Save 181 (#1199's plot): plot_radius_m, a float after the graves - 25 fields,
 // predicted before the build: sizeof unmoved at 168 (the u16 at 160 and the
 // float at 164 share the slot), the units section +4 a unit.
-static_assert(AggregateArity<UnitRow>() == 30,
+// Save 237 (#2261): the fuel buffer, a float at the tail after the u16 flood year - predicted
+// before the build: the two bytes of padding after it are too few, 184 -> 188 padded to 192 -
+// MISSED: 184, measured (the row's tail had four bytes of padding, not two); 31 fields. On the
+// wire +4 a unit.
+static_assert(AggregateArity<UnitRow>() == 31,
               "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 173 (#1089): the settlement's row - predicted 28 bytes (Vec2 8, four
 // u32-sized fields 16, a byte, a byte of padding, a u16) and 7 fields, before
@@ -1663,9 +1667,10 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   out.WriteFloat(row.rick_supply.days_written);
   out.WriteI64(row.rick_supply.grams);
   out.WriteU8(row.rick_supply.threshold_days);
-  out.WriteU16(row.graves);           // save 180 (#1199)
-  out.WriteFloat(row.plot_radius_m);  // save 181: its own plot, 0 = the type's
-  out.WriteU16(row.flood_lost_year);  // save 211 (#1375): the flood's year, the layer's door
+  out.WriteU16(row.graves);            // save 180 (#1199)
+  out.WriteFloat(row.plot_radius_m);   // save 181: its own plot, 0 = the type's
+  out.WriteU16(row.flood_lost_year);   // save 211 (#1375): the flood's year, the layer's door
+  out.WriteFloat(row.heat_buffer_m3);  // save 237 (#2261): the fuel buffer
 }
 
 UnitRow ReadUnitRow(LoadSource& source) {
@@ -1720,9 +1725,13 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.rick_supply.days_written = in.ReadFloat();
   row.rick_supply.grams = in.ReadI64();
   row.rick_supply.threshold_days = in.ReadU8();
-  row.graves = in.ReadU16();           // save 180 (#1199)
-  row.plot_radius_m = in.ReadFloat();  // save 181
-  row.flood_lost_year = in.ReadU16();  // save 211 (#1375)
+  row.graves = in.ReadU16();            // save 180 (#1199)
+  row.plot_radius_m = in.ReadFloat();   // save 181
+  row.flood_lost_year = in.ReadU16();   // save 211 (#1375)
+  row.heat_buffer_m3 = in.ReadFloat();  // save 237 (#2261)
+  if (!(row.heat_buffer_m3 >= 0.0F)) {
+    source.Fail("a unit's fuel buffer is negative or not a number");
+  }
   if (!(row.rick_supply.days_remaining >= 0.0F) || !(row.rick_supply.days_written >= 0.0F) ||
       row.rick_supply.grams < 0) {
     source.Fail("a rick's supply is negative or not a number");
