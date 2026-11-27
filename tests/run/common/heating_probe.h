@@ -60,6 +60,22 @@ class HeatingProbe {
     }
     constexpr std::uint32_t kMonths = core::kDaysPerYear / core::kDaysPerMonth;
     std::array<Month, kMonths> by_month{};
+    // The run's output is one stream every later printer shares: its format is restored on the
+    // way out (hc2261d printed every tally after this one at .1 - a reader-breaking leak).
+    const std::ios_base::fmtflags flags = out.flags();
+    const std::streamsize precision = out.precision();
+
+    struct Restore {
+      std::ostream& out;
+      std::ios_base::fmtflags flags;
+      std::streamsize precision;
+
+      ~Restore() {
+        out.flags(flags);
+        out.precision(precision);
+      }
+    } restore{out, flags, precision};
+
     out << std::fixed << std::setprecision(1);
     for (std::size_t first = 0; first < months_.size(); first += kMonths) {
       Month year;
