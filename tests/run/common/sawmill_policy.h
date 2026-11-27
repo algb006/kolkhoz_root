@@ -67,6 +67,16 @@ class SawmillPolicy {
     const bool parsed = core::ParseTimberCatalog(tables, catalog_, error);
     yard_type_ = RowId<core::UnitTypeIdTag>(tables, "unit_types", "utility_yard");
     firewood_yard_type_ = RowId<core::UnitTypeIdTag>(tables, "unit_types", "firewood_yard");
+    firewood_ = RowId<core::ResourceIdTag>(tables, "resources", "firewood");
+    if (const core::ITable* const resources = tables.FindTable("resources");
+        resources != nullptr && firewood_.value != core::kInvalidDefIdValue) {
+      const std::uint32_t kg = resources->FindColumn("kg_per_unit");
+      firewood_grams_per_m3_ =
+          kg == core::kNoTableColumn
+              ? 0.0
+              : static_cast<double>(resources->CellReal(firewood_.value, kg).value_or(0.0F)) *
+                    1000.0;
+    }
     granary_type_ = RowId<core::UnitTypeIdTag>(tables, "unit_types", "granary");
     house_type_ = RowId<core::UnitTypeIdTag>(tables, "unit_types", "wooden_house");
     craftsman_post_ = RowId<core::ProfessionIdTag>(tables, "professions", "farm_craftsman");
@@ -156,7 +166,7 @@ class SawmillPolicy {
                       ? "y" + std::to_string((*firewood_built_day_ / core::kDaysPerYear) + 1) +
                             "d" + std::to_string(*firewood_built_day_ % core::kDaysPerYear)
                       : std::string("never"))
-              << " (HEAT2261)\n";
+              << ", splitters appointed " << splitters_appointed_ << " (HEAT2261)\n";
     suggested_.Report(run);
   }
 
@@ -402,6 +412,19 @@ class SawmillPolicy {
     return core::kNoRow;
   }
 
+  /// The village's firewood (stores + every buffer) under the coming two months' burn the
+  /// residents' heating wrote (HeatingState::need_2m_m3) - the splitting's own want.
+  bool SplittingWanted(const core::WorldState& world) const {
+    if (firewood_.value == core::kInvalidDefIdValue || !(firewood_grams_per_m3_ > 0.0)) {
+      return false;
+    }
+    double m3 = static_cast<double>(Held(world, firewood_)) / firewood_grams_per_m3_;
+    for (const core::UnitRow& unit : world.units.rows) {
+      m3 += unit.dead == 0 ? static_cast<double>(unit.heat_buffer_m3) : 0.0;
+    }
+    return m3 < static_cast<double>(world.heating.need_2m_m3);
+  }
+
   std::uint32_t Craftsmen(const core::WorldState& world, core::UnitId yard) const {
     std::uint32_t held = 0;
     for (const core::ResidentRow& resident : world.residents.rows) {
@@ -530,6 +553,22 @@ class SawmillPolicy {
       }
       if (world.units.rows[firewood].level > 0 && !firewood_built_day_) {
         firewood_built_day_ = world.calendar.day;
+      }
+      // ITS SPLITTERS (econ: crew 1-2): the yard's craftsmen are the shop's hands, and the saw
+      // policy appoints them only for boards (or none at all where anyone saws) - hc2261k split
+      // on 1 day in 6 years with the yard standing from year 2. Up to two while the village's
+      // firewood is under the coming two months' burn.
+      if (world.units.rows[firewood].level > 0 && Craftsmen(world, world.units.row_ids[yard]) < 2 &&
+          SplittingWanted(world)) {
+        const std::uint32_t candidate = NextCandidate(world);
+        if (candidate != core::kNoRow) {
+          order.kind = core::OrderKind::kAppoint;
+          order.resident = world.residents.row_ids[candidate];
+          order.unit = world.units.row_ids[yard];
+          order.profession = craftsman_post_;
+          ++splitters_appointed_;
+          return true;
+        }
       }
     }
     // R5, ANYONE SAWS (boss, parcel 316): the two-handed saw is a peasant's
@@ -661,6 +700,9 @@ class SawmillPolicy {
   core::UnitTypeId yard_type_;
   core::UnitTypeId firewood_yard_type_;              ///< #2261 stage 3b
   std::optional<std::uint32_t> firewood_built_day_;  ///< the day it first stood
+  core::ResourceId firewood_;
+  double firewood_grams_per_m3_ = 0.0;
+  std::uint32_t splitters_appointed_ = 0;
   core::UnitTypeId granary_type_;
 
   core::UnitTypeId house_type_;
