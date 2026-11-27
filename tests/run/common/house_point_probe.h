@@ -111,7 +111,10 @@ class HousePointProbe {
         }
         if (distance < reach) {
           if (!plot) {
-            culprit = names_[unit.type.value];
+            // The culprit's type and centre (boss: move the points off them).
+            culprit = names_[unit.type.value] + '@' +
+                      std::to_string(static_cast<int>(std::lround(unit.position.x))) + ',' +
+                      std::to_string(static_cast<int>(std::lround(unit.position.y)));
           }
           plot = true;
         }
