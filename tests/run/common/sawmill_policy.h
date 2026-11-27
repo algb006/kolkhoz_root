@@ -66,6 +66,7 @@ class SawmillPolicy {
     std::string error;
     const bool parsed = core::ParseTimberCatalog(tables, catalog_, error);
     yard_type_ = RowId<core::UnitTypeIdTag>(tables, "unit_types", "utility_yard");
+    firewood_yard_type_ = RowId<core::UnitTypeIdTag>(tables, "unit_types", "firewood_yard");
     granary_type_ = RowId<core::UnitTypeIdTag>(tables, "unit_types", "granary");
     house_type_ = RowId<core::UnitTypeIdTag>(tables, "unit_types", "wooden_house");
     craftsman_post_ = RowId<core::ProfessionIdTag>(tables, "professions", "farm_craftsman");
@@ -150,7 +151,12 @@ class SawmillPolicy {
                                                : std::to_string(sawmill_built_day_))
               << ", paused it " << pauses_ << " times and resumed it " << resumes_
               << " times; it stood open " << days_sawing_ << " days; the yard was marked "
-              << yard_attempts_ << " times\n";
+              << yard_attempts_ << " times; the firewood yard stood from "
+              << (firewood_built_day_
+                      ? "y" + std::to_string((*firewood_built_day_ / core::kDaysPerYear) + 1) +
+                            "d" + std::to_string(*firewood_built_day_ % core::kDaysPerYear)
+                      : std::string("never"))
+              << " (HEAT2261)\n";
     suggested_.Report(run);
   }
 
@@ -510,6 +516,22 @@ class SawmillPolicy {
     if (world.units.rows[mill].level == 0) {
       return Start(world, mill, order);
     }
+    // #2261 stage 3b, THE FIREWOOD YARD (econ: the measuring bot plays well - the demand is
+    // certain): marked at the yard as soon as the utility yard and its saw stand, and started;
+    // its splitters are the yard's own craftsmen (production.csv places 2 of the parent's).
+    if (firewood_yard_type_.value != core::kInvalidDefIdValue) {
+      const std::uint32_t firewood = FindOfType(world, firewood_yard_type_);
+      if (firewood == core::kNoRow) {
+        return Mark(firewood_yard_type_, world.units.rows[yard].position, order);
+      }
+      if (world.units.rows[firewood].level == 0 &&
+          world.units.rows[firewood].construction.phase == core::ConstructionPhase::kMarked) {
+        return Start(world, firewood, order);
+      }
+      if (world.units.rows[firewood].level > 0 && !firewood_built_day_) {
+        firewood_built_day_ = world.calendar.day;
+      }
+    }
     // R5, ANYONE SAWS (boss, parcel 316): the two-handed saw is a peasant's
     // winter work, not a trade. No craftsman is appointed; the chairman sends
     // adults to the saw by a standing order, no more than its places and the
@@ -637,6 +659,8 @@ class SawmillPolicy {
   /// The utility yard's point (suggestions.csv).
   SuggestedPlaces suggested_;
   core::UnitTypeId yard_type_;
+  core::UnitTypeId firewood_yard_type_;              ///< #2261 stage 3b
+  std::optional<std::uint32_t> firewood_built_day_;  ///< the day it first stood
   core::UnitTypeId granary_type_;
 
   core::UnitTypeId house_type_;
