@@ -160,6 +160,11 @@ class HelpFundProbe {
       ++short_months_;
       // THE DEPTH (econ): the short month's eaten share in tenths.
       ++depth_[std::min<std::size_t>(static_cast<std::size_t>(eaten * 10.0), depth_.size() - 1U)];
+      // econ's split: TOPPED this month (short last month, so the fund saw it) or the FIRST short
+      // month (the fund never saw it) - by the same tenths.
+      std::array<std::uint32_t, 9>& side =
+          previous_short_.contains(id) ? depth_topped_ : depth_first_;
+      ++side[std::min<std::size_t>(static_cast<std::size_t>(eaten * 10.0), side.size() - 1U)];
       const double gap_g = ((kLine * static_cast<double>(family.month_need_kcal)) -
                             static_cast<double>(family.month_eaten_kcal)) /
                            kGrainKcalPerGram;
@@ -319,6 +324,16 @@ class HelpFundProbe {
       line << ' ' << count;
     }
     depth_ = {};
+    line << " depth_topped";
+    for (const std::uint32_t count : depth_topped_) {
+      line << ' ' << count;
+    }
+    line << " depth_first";
+    for (const std::uint32_t count : depth_first_) {
+      line << ' ' << count;
+    }
+    depth_topped_ = {};
+    depth_first_ = {};
     term_short_ = term_none_ = 0;
     term_line_ = term_given_ = 0.0;
     term_kcal_ = {};
@@ -387,6 +402,8 @@ class HelpFundProbe {
   double term_given_ = 0.0;
   std::array<double, 6> term_kcal_{};
   std::array<std::uint32_t, 9> depth_{};  // eaten share 0.0-0.1 .. 0.8-0.9
+  std::array<std::uint32_t, 9> depth_topped_{};
+  std::array<std::uint32_t, 9> depth_first_{};
   std::vector<double> kcal_;
   std::uint32_t timing_t_ = 0;
   std::uint32_t timing_m_ = 0;
