@@ -68,6 +68,7 @@
 #include "../common/substitute_tally.h"
 #include "../common/timber_flow_tally.h"
 #include "../common/transition_tally.h"
+#include "../common/trough_probe.h"
 #include "core_common/calendar.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
@@ -1013,6 +1014,7 @@ bool Walk(std::uint64_t seed,
   run::FloodTally flood_tally;                          // #1375
   run::PlanThreatTally plan_threat(*world.tables);      // #2190 LAMP2190
   run::HelpFundProbe help_fund(*world.tables);          // #2199 HELPFUND2199 (probe)
+  run::TroughProbe trough;                              // #2199b TROUGH2199 (probe)
   run::FirstPlanTally first_plan(*world.tables);        // #1750
   run::MilkCutTally milk_cut(*world.tables);            // #1737 option 1, every run's door
   run::FallowHarrowTally fallow_harrow(*world.tables);  // #1837
@@ -1176,6 +1178,7 @@ bool Walk(std::uint64_t seed,
       flood_tally.CountDayEnd(*simulation);                     // #1375
       plan_threat.CountDayEnd(*simulation);                     // #2190
       help_fund.CountDay(simulation->CompletedState());         // #2199 (probe)
+      trough.CountDay(*simulation);                             // #2199b (probe)
       first_plan.CountDayEnd(simulation->CompletedState());     // #1750
       milk_cut.CountDayEnd(*simulation);                        // #1737
       fallow_harrow.CountDayEnd(simulation->CompletedState());  // #1837
@@ -1749,6 +1752,7 @@ bool Walk(std::uint64_t seed,
       flood_tally.Print(std::cout, seed);    // #1375
       plan_threat.Print(std::cout, seed);    // #2190
       help_fund.Print(std::cout, seed);      // #2199 (probe)
+      trough.Print(std::cout, seed);         // #2199b (probe)
       first_plan.Print(std::cout, seed);     // #1750
       milk_cut.Print(std::cout, seed);       // #1737
       fallow_harrow.Print(std::cout, seed);  // #1837
