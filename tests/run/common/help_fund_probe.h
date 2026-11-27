@@ -158,6 +158,8 @@ class HelpFundProbe {
         continue;
       }
       ++short_months_;
+      // THE DEPTH (econ): the short month's eaten share in tenths.
+      ++depth_[std::min<std::size_t>(static_cast<std::size_t>(eaten * 10.0), depth_.size() - 1U)];
       const double gap_g = ((kLine * static_cast<double>(family.month_need_kcal)) -
                             static_cast<double>(family.month_eaten_kcal)) /
                            kGrainKcalPerGram;
@@ -312,6 +314,11 @@ class HelpFundProbe {
     for (const double kcal : term_kcal_) {
       line << ' ' << kcal;
     }
+    line << " depth_tenths_0_8";
+    for (const std::uint32_t count : depth_) {
+      line << ' ' << count;
+    }
+    depth_ = {};
     term_short_ = term_none_ = 0;
     term_line_ = term_given_ = 0.0;
     term_kcal_ = {};
@@ -379,6 +386,7 @@ class HelpFundProbe {
   double term_line_ = 0.0;
   double term_given_ = 0.0;
   std::array<double, 6> term_kcal_{};
+  std::array<std::uint32_t, 9> depth_{};  // eaten share 0.0-0.1 .. 0.8-0.9
   std::vector<double> kcal_;
   std::uint32_t timing_t_ = 0;
   std::uint32_t timing_m_ = 0;
