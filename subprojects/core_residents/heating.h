@@ -19,6 +19,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core_common/ids.h"
 #include "core_tables/tables.h"
 
 namespace core {
@@ -85,6 +86,9 @@ struct HeatingConfig {
   std::vector<std::uint8_t> has_heating;
   /// unit_types.csv `class` == housing by type row (a dwelling burns only while inhabited).
   std::vector<std::uint8_t> is_housing;
+  /// resources.csv `firewood` and its grams a m³ (kg_per_unit × 1000); invalid / 0 = absent.
+  ResourceId firewood;
+  double firewood_grams_per_m3 = 0.0;
 };
 
 /// @brief One heated unit's burn today, m³ (heating.md §3): the degrees below the threshold ×

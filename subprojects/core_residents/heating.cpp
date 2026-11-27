@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -60,6 +61,50 @@ constexpr std::array<std::string_view, 42> kHeatingWorldParamKeys = {
     "cold_sick_chill_pct",
     "cold_sick_flu_pct",
     "cold_sick_angina_pct"};
+
+/// A refill that came within this of what was wanted is a whole one (float m³ from grams).
+constexpr float kM3Slack = 1e-3F;
+
+Grams GramsOfM3(const HeatingConfig& config, float m3) {
+  return static_cast<Grams>(std::llround(static_cast<double>(m3) * config.firewood_grams_per_m3));
+}
+
+float M3OfGrams(const HeatingConfig& config, Grams grams) {
+  return config.firewood_grams_per_m3 > 0.0
+             ? static_cast<float>(static_cast<double>(grams) / config.firewood_grams_per_m3)
+             : 0.0F;
+}
+
+/// Up to `wanted` grams of firewood off the standing units that hold it (not the unit being
+/// refilled, not a works' site, above what a works holds back), in unit id order.
+Grams TakeFirewood(const HeatingConfig& config,
+                   WorldState& world,
+                   std::size_t receiver_row,
+                   Grams wanted) {
+  const ResourceId firewood = config.firewood;
+  if (firewood.value == kInvalidDefIdValue || wanted <= 0) {
+    return 0;
+  }
+  Grams taken = 0;
+  for (const std::uint32_t row : RowsById(world.units)) {
+    if (taken >= wanted) {
+      break;
+    }
+    UnitRow& unit = world.units.rows[row];
+    if (row == receiver_row || unit.dead != 0 || unit.level == 0 ||
+        unit.construction.phase != ConstructionPhase::kNone ||
+        unit.stock.size() <= firewood.value) {
+      continue;
+    }
+    const Grams free = UnreservedOf(unit, firewood);
+    const Grams take = std::min(free, wanted - taken);
+    if (take > 0) {
+      unit.stock[firewood.value] -= take;
+      taken += take;
+    }
+  }
+  return taken;
+}
 
 }  // namespace
 
@@ -172,6 +217,16 @@ bool ParseHeatingConfig(const ITableSet& tables, HeatingConfig& config, std::str
       return false;
     }
   }
+  // The firewood resource and its grams a m³ (resources.csv kg_per_unit; measure m3).
+  if (const ITable* const resources = tables.FindTable("resources")) {
+    const std::uint32_t row = resources->FindRowByKey("firewood");
+    const std::uint32_t kg = resources->FindColumn("kg_per_unit");
+    if (row != kNoTableRow && kg != kNoTableColumn) {
+      config.firewood = ResourceId{static_cast<std::uint16_t>(row)};
+      config.firewood_grams_per_m3 =
+          static_cast<double>(resources->CellReal(row, kg).value_or(0.0F)) * 1000.0;
+    }
+  }
   // unit_types.csv heat_size_factor: empty = 1.0 (a house's worth). Absent column: all 1.0.
   // And has_heating (construction_config.cpp validates it 0/1 for the insulation; read here
   // again for the burn - one column, two readers, the same truth).
@@ -268,6 +323,21 @@ void RunHeatingBurn(const HeatingConfig& config, WorldState& world) {
     const float want = HeatingBurnToday(config, unit, outdoor);
     if (!(want > 0.0F)) {
       continue;
+    }
+    // STAGE 2, THE REFILL (heating §1; econ: under heat_refill_below_m3 back to heat_buffer_m3,
+    // from the first day the burn wants fuel): from the village's stores, in unit id order.
+    // STUB: the firewood arrives the same day with no cart and no hand - its carrying is
+    // logistics' (the cart's trip), not priced here; the probe counts what moved.
+    if (unit.heat_buffer_m3 < config.heat_refill_below_m3) {
+      const float wanted_m3 = config.heat_buffer_m3 - unit.heat_buffer_m3;
+      const Grams got = TakeFirewood(config, world, row, GramsOfM3(config, wanted_m3));
+      const float got_m3 = M3OfGrams(config, got);
+      unit.heat_buffer_m3 += got_m3;
+      heating.probe_refill_m3 += static_cast<double>(got_m3);
+      ++heating.probe_refills;
+      if (got_m3 + kM3Slack < wanted_m3) {
+        ++heating.probe_refill_short;
+      }
     }
     const float burnt = std::min(want, unit.heat_buffer_m3);
     unit.heat_buffer_m3 -= burnt;

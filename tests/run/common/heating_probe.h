@@ -38,6 +38,9 @@ class HeatingProbe {
     month.empty_house = heating.probe_empty_house_days - last_.probe_empty_house_days;
     month.burnt = heating.probe_burnt_m3 - last_.probe_burnt_m3;
     month.short_m3 = heating.probe_short_m3 - last_.probe_short_m3;
+    month.refills = heating.probe_refills - last_.probe_refills;
+    month.refill_short = heating.probe_refill_short - last_.probe_refill_short;
+    month.refill_m3 = heating.probe_refill_m3 - last_.probe_refill_m3;
     months_.push_back(month);
     last_ = heating;
     // The buffers standing at the month's end, m³, and how many heated units hold any.
@@ -104,6 +107,9 @@ class HeatingProbe {
     std::uint64_t empty_house = 0;
     double burnt = 0.0;
     double short_m3 = 0.0;
+    std::uint64_t refills = 0;
+    std::uint64_t refill_short = 0;
+    double refill_m3 = 0.0;
     double standing = 0.0;
     std::uint32_t holding = 0;
   };
@@ -115,6 +121,9 @@ class HeatingProbe {
     into.empty_house += month.empty_house;
     into.burnt += month.burnt;
     into.short_m3 += month.short_m3;
+    into.refills += month.refills;
+    into.refill_short += month.refill_short;
+    into.refill_m3 += month.refill_m3;
   }
 
   static double Pct(std::uint64_t part, std::uint64_t whole) {
@@ -125,7 +134,8 @@ class HeatingProbe {
     out << "want_unit_days " << m.want << " empty " << m.empty << " (" << Pct(m.empty, m.want)
         << "%) house_days " << m.want_house << " empty " << m.empty_house << " ("
         << Pct(m.empty_house, m.want_house) << "%) burnt_m3 " << m.burnt << " short_m3 "
-        << m.short_m3;
+        << m.short_m3 << " refills " << m.refills << " refill_short " << m.refill_short
+        << " refill_m3 " << m.refill_m3;
   }
 
   core::HeatingState last_;

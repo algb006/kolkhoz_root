@@ -103,8 +103,46 @@ int CheckTheDay() {
   return failures;
 }
 
+/// Stage 2: a house under 3 m³ refills to 8 from a store holding firewood (500 kg a m³).
+int CheckTheRefill() {
+  int failures = 0;
+  core::HeatingConfig config = Config();
+  config.firewood = core::ResourceId{0};
+  config.firewood_grams_per_m3 = 500'000.0;
+  core::WorldState world;
+  world.heating.seeded = 1;  // no start seed: the buffers begin empty
+  world.weather.air_temperature_celsius = -10.0F;
+  const core::UnitId lived = core::AppendRow(world.units, Unit(kHouse));
+  core::UnitRow store = Unit(kBarn);
+  store.stock = {5'000'000};  // 10 m³
+  core::AppendRow(world.units, store);
+  core::FamilyRow family;
+  family.house = lived;
+  core::AppendRow(world.families, family);
+
+  core::RunHeatingBurn(config, world);
+  // 8 m³ brought, 0.8 burnt: 7.2 left; the store keeps 2 m³.
+  failures += Expect(Near(world.units.rows[0].heat_buffer_m3, 7.2F), "refilled to 8, burnt 0.8");
+  failures += Expect(world.units.rows[1].stock[0] == 1'000'000, "the store gave 8 m³");
+  failures += Expect(world.heating.probe_refills == 1 && world.heating.probe_refill_short == 0,
+                     "one whole refill");
+  // 7.2 → 2.4 over six days (no refill at 3.2), then day 8 starts under 3: wants 5.6, gets 2.
+  for (int day = 0; day < 7; ++day) {
+    core::RunHeatingBurn(config, world);
+  }
+  failures += Expect(world.units.rows[1].stock[0] == 0, "the store emptied");
+  failures += Expect(world.heating.probe_refills == 2 && world.heating.probe_refill_short == 1,
+                     "the second refill came short");
+  failures += Expect(Near(world.units.rows[0].heat_buffer_m3, 2.4F + 2.0F - 0.8F), "2.4 + 2 − 0.8");
+  // A warm day: nothing wanted, nothing refilled.
+  world.weather.air_temperature_celsius = 15.0F;
+  core::RunHeatingBurn(config, world);
+  failures += Expect(world.heating.probe_refills == 2, "no refill above the threshold");
+  return failures;
+}
+
 }  // namespace
 
 int CheckTheHeatingBurn() {
-  return CheckTheFormula() + CheckTheDay();
+  return CheckTheFormula() + CheckTheDay() + CheckTheRefill();
 }

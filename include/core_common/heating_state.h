@@ -28,6 +28,10 @@ struct HeatingState {
   /// m³ burnt, and m³ wanted and not there.
   double probe_burnt_m3 = 0.0;
   double probe_short_m3 = 0.0;
+  /// Stage 2's refills: how many, m³ brought, and how many came short of the buffer.
+  std::uint64_t probe_refills = 0;
+  std::uint64_t probe_refill_short = 0;
+  double probe_refill_m3 = 0.0;
 };
 
 }  // namespace core
