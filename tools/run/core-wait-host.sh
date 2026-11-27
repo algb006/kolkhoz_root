@@ -11,9 +11,15 @@ for i in $(seq 1 240); do
   left=0
   for n in "$@"; do
     line=$(XEON_HOST=$node bash tools/xeon.sh status 2>&1 | grep "core-$n\b")
+    # NO SUCH JOB on this node (a wrong node, a typo): say so and stop waiting for it - without
+    # this the loop waited its whole 240 minutes for nothing (boss's xeon-run.sh guard, 27 Nov).
+    if [ -z "$line" ]; then
+      echo "WAIT: NOT FOUND - no core-$n on $node"
+      continue
+    fi
     case "$line" in
       *done*|*failed*|*cancelled*) ;;
-      *) left=1 ;;
+      *) left=1 ;;  # waiting or running: not done
     esac
   done
   [ $left -eq 0 ] && break
