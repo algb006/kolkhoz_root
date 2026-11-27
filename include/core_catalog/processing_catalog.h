@@ -64,6 +64,13 @@ enum class ProcessingRule : std::uint8_t {
   /// (boss seq 184, question 2).
   kCooperage,
 
+  /// `firewood_splitting` (#2261 stage 3b; econ): firewood on demand - while the village's
+  /// firewood (the stores and every heated unit's buffer) is under the coming two months' burn
+  /// (HeatingState::need_2m_m3), and with logs only above what the started building sites still
+  /// lack - unless it is under ONE month's burn (need_1m_m3): then the cold goes ahead of the
+  /// builders and the sites' logs may be split.
+  kFirewoodSplitting,
+
   /// NOT A RULE: the count, for a consumer's mirror.
   kProcessingRuleCount,
 };

@@ -28,6 +28,7 @@ constexpr std::array<std::string_view, 7> kProcessingWorldParamKeys = {"barrel_c
 /// The recipes the design gives a rule of their own (processing_catalog.h).
 constexpr std::string_view kPicklingKey = "pickling";
 constexpr std::string_view kCooperageKey = "cooperage";
+constexpr std::string_view kFirewoodSplittingKey = "firewood_splitting";
 
 /// Past this a batch's man-days or a recipe's places are a typo.
 constexpr float kMostLaborDaysPerBatch = 100.0F;
@@ -43,6 +44,9 @@ ProcessingRule RuleOfKey(std::string_view key) {
   }
   if (key == kCooperageKey) {
     return ProcessingRule::kCooperage;
+  }
+  if (key == kFirewoodSplittingKey) {
+    return ProcessingRule::kFirewoodSplitting;
   }
   return ProcessingRule::kPlain;
 }

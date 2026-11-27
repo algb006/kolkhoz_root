@@ -13,6 +13,7 @@
 #ifndef CORE_RESIDENTS_HEATING_H_
 #define CORE_RESIDENTS_HEATING_H_
 
+#include <array>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -86,6 +87,9 @@ struct HeatingConfig {
   std::vector<std::uint8_t> has_heating;
   /// unit_types.csv `class` == housing by type row (a dwelling burns only while inhabited).
   std::vector<std::uint8_t> is_housing;
+  /// weather.csv's season means, °C, by Season (winter, spring, summer, autumn): the coming
+  /// months' burn for the splitting's demand (stage 3b). Defaults = the shipped table.
+  std::array<float, 4> season_mean_c = {-10.0F, 5.0F, 19.0F, 6.0F};
   /// resources.csv `firewood` and its grams a m³ (kg_per_unit × 1000); invalid / 0 = absent.
   ResourceId firewood;
   double firewood_grams_per_m3 = 0.0;

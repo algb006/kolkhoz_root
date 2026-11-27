@@ -251,6 +251,47 @@ double CooperageWant(const ProductionConfig& config,
   return (needed - free) / barrels_per_batch;
 }
 
+/// #2261 stage 3b: the village's firewood, m³ - what the stores hold and every buffer.
+double VillageFirewoodM3(const ProductionConfig& config, const WorldState& world) {
+  if (config.firewood_resource.value == kInvalidDefIdValue ||
+      !(config.firewood_grams_per_m3 > 0.0)) {
+    return 0.0;
+  }
+  double m3 = static_cast<double>(TakeableGrams(world, config, config.firewood_resource)) /
+              config.firewood_grams_per_m3;
+  for (const UnitRow& unit : world.units.rows) {
+    if (unit.dead == 0) {
+      m3 += static_cast<double>(unit.heat_buffer_m3);
+    }
+  }
+  return m3;
+}
+
+/// The splitting's floor (econ): the village holds less than a month's burn - the cold goes
+/// ahead of the builders, and the sites' logs may be split.
+bool SplittingFloor(const ProductionConfig& config, const WorldState& world) {
+  return VillageFirewoodM3(config, world) < static_cast<double>(world.heating.need_1m_m3);
+}
+
+/// The splitting's batches wanted: the coming two months' burn less what the village holds,
+/// over the m³ a batch yields.
+double SplittingWant(const ProductionConfig& config,
+                     const WorldState& world,
+                     const ProcessingRecipe& splitting) {
+  if (splitting.outputs.empty() || !(config.firewood_grams_per_m3 > 0.0) ||
+      splitting.outputs.front().grams <= 0) {
+    return 0.0;
+  }
+  const double short_m3 =
+      static_cast<double>(world.heating.need_2m_m3) - VillageFirewoodM3(config, world);
+  if (!(short_m3 > 0.0)) {
+    return 0.0;
+  }
+  const double batch_m3 =
+      static_cast<double>(splitting.outputs.front().grams) / config.firewood_grams_per_m3;
+  return short_m3 / batch_m3;
+}
+
 /// The tightest bound on a recipe's batches so far, and what set it.
 struct Limit {
   double batches = std::numeric_limits<double>::infinity();
@@ -299,14 +340,16 @@ void LimitByInputs(const ProductionConfig& config,
     if (recipe.rule == ProcessingRule::kPickling && line == 0) {
       available -= PicklingReserve(config, world, input.resource);
     }
-    if (recipe.rule == ProcessingRule::kCooperage) {
+    if (recipe.rule == ProcessingRule::kCooperage ||
+        (recipe.rule == ProcessingRule::kFirewoodSplitting && !SplittingFloor(config, world))) {
       available -= OwedToSites(config, world, input.resource);
     }
     available -= SaltTableReserve(config, world, input.resource);
     const double by = available > 0 && input.grams > 0
                           ? static_cast<double>(available) / static_cast<double>(input.grams)
                           : 0.0;
-    const bool main = line == 0 && recipe.rule != ProcessingRule::kCooperage;
+    const bool main = line == 0 && recipe.rule != ProcessingRule::kCooperage &&
+                      recipe.rule != ProcessingRule::kFirewoodSplitting;
     if (main) {
       has_work = by > kNoBatch;
     }
@@ -431,6 +474,10 @@ Availability Available(const ProductionConfig& config,
     limit.batches = CooperageWant(config, world, recipe);
     out.has_work = limit.batches > kNoBatch;
   }
+  if (recipe.rule == ProcessingRule::kFirewoodSplitting) {
+    limit.batches = SplittingWant(config, world, recipe);
+    out.has_work = limit.batches > kNoBatch;
+  }
   LimitByInputs(config, world, recipe, limit, out.has_work);
   LimitByOutputs(config, world, recipe, limit);
   out.batches = std::isfinite(limit.batches) && limit.batches > kNoBatch ? limit.batches : 0.0;
@@ -522,6 +569,16 @@ void SettleProcessing(const ProductionConfig& config, WorldState& current) {
           continue;
         }
         left -= days;
+        if (recipe.rule == ProcessingRule::kFirewoodSplitting) {
+          // HEAT2261's splitting tallies (probe, not saved), read before the batches move it.
+          ++current.heating.probe_split_days;
+          current.heating.probe_split_floor_days += SplittingFloor(config, current) ? 1U : 0U;
+          if (!recipe.outputs.empty() && config.firewood_grams_per_m3 > 0.0) {
+            current.heating.probe_split_m3 += days / static_cast<double>(recipe.labor_days) *
+                                              static_cast<double>(recipe.outputs.front().grams) /
+                                              config.firewood_grams_per_m3;
+          }
+        }
         WorkBatches(config, current, recipe, days / static_cast<double>(recipe.labor_days), wear);
       }
     }

@@ -10,6 +10,7 @@
 #include <optional>
 
 #include "core_catalog/table_value.h"
+#include "core_common/calendar.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 
@@ -217,6 +218,17 @@ bool ParseHeatingConfig(const ITableSet& tables, HeatingConfig& config, std::str
       return false;
     }
   }
+  // weather.csv's season means (the splitting's demand reads the coming months by them).
+  if (const ITable* const weather = tables.FindTable("weather")) {
+    const std::uint32_t mean = weather->FindColumn("temp_mean_c");
+    constexpr std::array<std::string_view, 4> kSeasons = {"winter", "spring", "summer", "autumn"};
+    for (std::size_t season = 0; season < kSeasons.size() && mean != kNoTableColumn; ++season) {
+      const std::uint32_t row = weather->FindRowByKey(kSeasons[season]);
+      if (row != kNoTableRow) {
+        config.season_mean_c[season] = weather->CellReal(row, mean).value_or(0.0F);
+      }
+    }
+  }
   // The firewood resource and its grams a m³ (resources.csv kg_per_unit; measure m3).
   if (const ITable* const resources = tables.FindTable("resources")) {
     const std::uint32_t row = resources->FindRowByKey("firewood");
@@ -308,6 +320,9 @@ void RunHeatingBurn(const HeatingConfig& config, WorldState& world) {
     heating.seeded = 1;
   }
   const float outdoor = world.weather.air_temperature_celsius;
+  // THE SPLITTING'S DEMAND (stage 3b): Σ of each burning unit's m³ a degree-day, times the
+  // coming days' degrees below the threshold at their season's mean.
+  double per_degree_day = 0.0;
   for (std::size_t row = 0; row < world.units.rows.size(); ++row) {
     UnitRow& unit = world.units.rows[row];
     if (!heated(unit)) {
@@ -320,6 +335,9 @@ void RunHeatingBurn(const HeatingConfig& config, WorldState& world) {
       continue;
     }
     const bool house = dwelling;
+    // One degree below the threshold: the unit's m³ a degree-day.
+    per_degree_day +=
+        static_cast<double>(HeatingBurnToday(config, unit, config.heat_threshold_c - 1.0F));
     const float want = HeatingBurnToday(config, unit, outdoor);
     if (!(want > 0.0F)) {
       continue;
@@ -355,6 +373,21 @@ void RunHeatingBurn(const HeatingConfig& config, WorldState& world) {
       }
     }
   }
+  // The coming month and two (kDaysPerMonth days each), from tomorrow.
+  double degrees_1m = 0.0;
+  double degrees_2m = 0.0;
+  for (std::uint32_t ahead = 1; ahead <= 2U * kDaysPerMonth; ++ahead) {
+    const Season season = SeasonOfMonth(DateFromDay(world.calendar.day + ahead).month);
+    const auto index = static_cast<std::size_t>(season);
+    const double below =
+        std::max(0.0, static_cast<double>(config.heat_threshold_c - config.season_mean_c[index]));
+    degrees_2m += below;
+    if (ahead <= kDaysPerMonth) {
+      degrees_1m += below;
+    }
+  }
+  heating.need_1m_m3 = static_cast<float>(per_degree_day * degrees_1m);
+  heating.need_2m_m3 = static_cast<float>(per_degree_day * degrees_2m);
 }
 
 }  // namespace core
