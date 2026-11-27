@@ -2338,8 +2338,8 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // Save 237 (#2261): the heating's seeded byte (set to 1) - 1691 -> 1692, measured on
     // hh2261b with it 0; the hash read off hh2261c with the fixture's 1.
     // And the splitting's demand, two floats (stage 3b, the same unshipped 237): 1692 -> 1700
-    // measured on hh2261k; the hash re-read owed with the fixture's 12.5 / 30.25.
-    {"world", 1700, 0x1ae257c3d442089bULL},
+    // measured on hh2261k; the hash read off hh2261l with the fixture's 12.5 / 30.25.
+    {"world", 1700, 0x6aad940cf1c785bdULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
