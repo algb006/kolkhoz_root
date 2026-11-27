@@ -6,7 +6,7 @@
 /// @threading SINGLE_THREADED
 /// Read once at assembly; the config is copied into the residents system.
 ///
-/// STAGE 0 (this file): THE READER ONLY. The core reads the 38 world_params rows and
+/// STAGE 0 (this file): THE READER ONLY. The core reads the 42 world_params rows and
 /// unit_types' heat_size_factor so the table export can land (the assembly refuses a `core` row
 /// nobody reads); nothing burns, nobody gets cold yet - ResidentRow::cold stays the STUB of
 /// residents_system.cpp until stage 4. Build order (boss): burn → buffer/refill → supply → cold.
@@ -53,7 +53,12 @@ struct HeatingConfig {
   float cold_work_penalty_pct = 15.0F;
   float cold_mood_penalty = 5.0F;
   float cold_sickness_pct_day = 0.5F;
-  float cold_sickness_frozen_pct_day = 2.0F;
+  /// The chance of falling ill on reaching «Замёрз», once an episode (econ: replaces the daily
+  /// frozen rate), and the sickness's split among the cold diseases.
+  float cold_frozen_sick_chance_pct = 90.0F;
+  float cold_sick_chill_pct = 50.0F;
+  float cold_sick_flu_pct = 35.0F;
+  float cold_sick_angina_pct = 15.0F;
   float cold_hardy_offset = 15.0F;
   float cold_weak_offset = -15.0F;
   float cold_era1_offset = 10.0F;
@@ -67,6 +72,8 @@ struct HeatingConfig {
   float deadwood_zero_at_m = 3000.0F;
   float cook_home_m3_per_resident_day = 0.005F;
   float cook_meal_m3 = 0.002F;
+  /// The bath day's extra burn at the bathhouse, m³.
+  float bath_day_extra_m3 = 0.4F;
   /// unit_types.csv `heat_size_factor` by type row (empty → 1.0): a non-house heated type burns
   /// this many houses' worth.
   std::vector<float> heat_size_factor;
@@ -75,7 +82,7 @@ struct HeatingConfig {
 /// @brief The world_params keys this file reads, for the assembly's declared-readers check.
 std::span<const std::string_view> HeatingWorldParamKeys();
 
-/// @brief Reads the 38 knobs (each optional, its default kept) and unit_types' heat_size_factor.
+/// @brief Reads the 42 knobs (each optional, its default kept) and unit_types' heat_size_factor.
 /// @return false with `error` naming the key for a value out of its range.
 bool ParseHeatingConfig(const ITableSet& tables, HeatingConfig& config, std::string& error);
 

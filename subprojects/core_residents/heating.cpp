@@ -12,7 +12,7 @@ namespace core {
 namespace {
 
 /// The keys in the order ParseHeatingConfig reads them (design.db world_param, sort 410).
-constexpr std::array<std::string_view, 38> kHeatingWorldParamKeys = {
+constexpr std::array<std::string_view, 42> kHeatingWorldParamKeys = {
     "heat_threshold_c",
     "burn_m3_per_degree_day",
     "burn_dilapidated_factor",
@@ -38,7 +38,7 @@ constexpr std::array<std::string_view, 38> kHeatingWorldParamKeys = {
     "cold_work_penalty_pct",
     "cold_mood_penalty",
     "cold_sickness_pct_day",
-    "cold_sickness_frozen_pct_day",
+    "cold_frozen_sick_chance_pct",  // econ 27 Nov: replaces cold_sickness_frozen_pct_day
     "cold_hardy_offset",
     "cold_weak_offset",
     "cold_era1_offset",
@@ -50,7 +50,12 @@ constexpr std::array<std::string_view, 38> kHeatingWorldParamKeys = {
     "deadwood_full_within_m",
     "deadwood_zero_at_m",
     "cook_home_m3_per_resident_day",
-    "cook_meal_m3"};
+    "cook_meal_m3",
+    // econ's five follow-ups (27 Nov): the bath day's extra burn, the cold sickness's split.
+    "bath_day_extra_m3",
+    "cold_sick_chill_pct",
+    "cold_sick_flu_pct",
+    "cold_sick_angina_pct"};
 
 }  // namespace
 
@@ -120,7 +125,7 @@ bool ParseHeatingConfig(const ITableSet& tables, HeatingConfig& config, std::str
          .value = &config.cold_sickness_pct_day,
          .range = r(0, 100)},
         {.key = kHeatingWorldParamKeys[25],
-         .value = &config.cold_sickness_frozen_pct_day,
+         .value = &config.cold_frozen_sick_chance_pct,
          .range = r(0, 100)},
         {.key = kHeatingWorldParamKeys[26], .value = &config.cold_hardy_offset, .range = r(0, 100)},
         {.key = kHeatingWorldParamKeys[27], .value = &config.cold_weak_offset, .range = r(-100, 0)},
@@ -150,6 +155,14 @@ bool ParseHeatingConfig(const ITableSet& tables, HeatingConfig& config, std::str
          .value = &config.cook_home_m3_per_resident_day,
          .range = r(0, 1)},
         {.key = kHeatingWorldParamKeys[37], .value = &config.cook_meal_m3, .range = r(0, 1)},
+        {.key = kHeatingWorldParamKeys[38], .value = &config.bath_day_extra_m3, .range = r(0, 5)},
+        {.key = kHeatingWorldParamKeys[39],
+         .value = &config.cold_sick_chill_pct,
+         .range = r(0, 100)},
+        {.key = kHeatingWorldParamKeys[40], .value = &config.cold_sick_flu_pct, .range = r(0, 100)},
+        {.key = kHeatingWorldParamKeys[41],
+         .value = &config.cold_sick_angina_pct,
+         .range = r(0, 100)},
     }};
     if (!ReadKnobs(*world, "world_params", knobs, error)) {
       return false;
