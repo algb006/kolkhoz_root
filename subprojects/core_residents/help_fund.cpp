@@ -32,6 +32,23 @@ Grams HeldOf(const HelpFundState& fund, ResourceId resource) {
   return resource.value < fund.held.size() ? fund.held[resource.value] : 0;
 }
 
+/// The share of the winter store the meal will eat this month (family_meal.cpp,
+/// EatTheWinterStore: the store over the days left to its window's end, and nothing outside
+/// the window): the month's days over the days left, from the month's first day; 0 outside.
+double WinterStoreMonthShare(const FoodConfig& config, const WorldState& current) {
+  const PlotConfig& plot = config.plot;
+  const auto month = static_cast<std::uint32_t>(current.calendar.date.month);
+  const std::uint32_t from = plot.dried_eaten_from_month;
+  const std::uint32_t to = plot.dried_eaten_to_month;
+  const bool inside = from <= to ? (month >= from && month <= to) : (month >= from || month <= to);
+  if (!inside) {
+    return 0.0;
+  }
+  const std::uint32_t months_after = (to + kMonthsPerYear - month) % kMonthsPerYear;
+  const std::uint32_t days_left = (months_after + 1U) * kDaysPerMonth;
+  return std::min(1.0, static_cast<double>(kDaysPerMonth) / static_cast<double>(days_left));
+}
+
 /// The fund set to the target of its share, and «empty» may be said again.
 void SetToTarget(const FoodConfig& config, WorldState& current) {
   current.help_fund.held = HelpFundTarget(config, current);
@@ -104,8 +121,13 @@ void IssueFromHelpFund(const FoodConfig& config,
     double pantry_kcal = 0.0;
     for (std::size_t food = 0; food < family.pantry.size() && food < config.resources.size();
          ++food) {
+      // THE WINTER STORE COUNTS ONLY WHAT THE MEAL WILL TAKE OF IT THIS MONTH (econ's W, after
+      // #2199b's term split: 15 % of the term was the dried store, eaten Dec-May at its pace and
+      // not at all outside it - a family holding it read «full» and was short on day 1).
+      const double share =
+          food == config.dried_forage_resource.value ? WinterStoreMonthShare(config, current) : 1.0;
       pantry_kcal += static_cast<double>(family.pantry[food]) *
-                     static_cast<double>(config.resources[food].kcal_per_gram);
+                     static_cast<double>(config.resources[food].kcal_per_gram) * share;
     }
     double gap_kcal = line_kcal - pantry_kcal;
     {
