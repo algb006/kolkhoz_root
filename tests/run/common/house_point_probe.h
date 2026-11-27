@@ -60,7 +60,9 @@ class HousePointProbe {
     const core::WorldState& world = simulation.CompletedState();
     const std::uint32_t day = world.calendar.day;
     // Day 1 (the day-end hook's first call reads day 1; day 0 never prints - hp1907a).
-    if ((day != 1 && day != 7U * core::kDaysPerYear) || house_ == core::kNoTableRow) {
+    // And year 16's last day (boss: which points kept losing by y16).
+    if ((day != 1 && day != 7U * core::kDaysPerYear && day != (16U * core::kDaysPerYear) - 1U) ||
+        house_ == core::kNoTableRow) {
       return;
     }
     const float own = house_ < radii_.size() ? radii_[house_] : 0.0F;
