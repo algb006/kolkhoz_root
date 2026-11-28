@@ -556,10 +556,14 @@ class SawmillPolicy {
       }
       // ITS SPLITTERS (econ: crew 1-2): the yard's craftsmen are the shop's hands, and the saw
       // policy appoints them only for boards (or none at all where anyone saws) - hc2261k split
-      // on 1 day in 6 years with the yard standing from year 2. Up to two while the village's
-      // firewood is under the coming two months' burn.
-      if (world.units.rows[firewood].level > 0 && Craftsmen(world, world.units.row_ids[yard]) < 2 &&
-          SplittingWanted(world)) {
+      // on 1 day in 6 years with the yard standing from year 2. TWO BEYOND THE SAW'S PLACES
+      // while the village's firewood is under the coming two months' burn: a holder takes the
+      // first module in row order with work (labor_system.cpp PutOnModuleWork), the sawmill
+      // stands first and has 4 places, and hd2261a showed the yard's work written and never
+      // drained with 4 craftsmen, all at the saw.
+      const auto splitters_cap = static_cast<std::uint32_t>(catalog_.sawyers_max) + 2U;
+      if (world.units.rows[firewood].level > 0 &&
+          Craftsmen(world, world.units.row_ids[yard]) < splitters_cap && SplittingWanted(world)) {
         const std::uint32_t candidate = NextCandidate(world);
         if (candidate != core::kNoRow) {
           order.kind = core::OrderKind::kAppoint;
