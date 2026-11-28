@@ -74,6 +74,19 @@ class HeatingProbe {
       }
       band_lines_.push_back(bands);
     }
+    // econ's C3 denominator: resident-days at work on a cold day (outdoor under +10, the burn's
+    // threshold) - every resident with a work assignment that day.
+    if (world.weather.air_temperature_celsius < 10.0F) {
+      for (const core::ResidentRow& resident : world.residents.rows) {
+        cold_work_days_ += resident.work.kind != core::WorkKind::kNone ? 1U : 0U;
+      }
+    }
+    if ((day + 1U) % core::kDaysPerYear == 0) {
+      year_work_days_.push_back(cold_work_days_);
+      year_fuel_felled_.push_back(world.heating.probe_fuel_felled_m3 - fuel_felled_mark_);
+      fuel_felled_mark_ = world.heating.probe_fuel_felled_m3;
+      cold_work_days_ = 0;
+    }
     if ((day + 1U) % core::kDaysPerMonth != 0) {
       return;
     }
@@ -153,6 +166,12 @@ class HeatingProbe {
     if (months_.empty()) {
       out << "HEAT2261 seed " << seed << " NOT MEASURED (no month closed)\n";
       return;
+    }
+    // C3's parts (econ): the cold-season resident-days at work, and the m³ felled for fuel; the
+    // reader turns them into man-days (felling_days_per_m3, the splitting's labor_days).
+    for (std::size_t year = 0; year < year_work_days_.size(); ++year) {
+      out << "HEAT2261 seed " << seed << " year " << year + 1 << " c3 cold_work_resident_days "
+          << year_work_days_[year] << " fuel_felled_m3 " << year_fuel_felled_[year] << '\n';
     }
     for (const std::string& line : yard_lines_) {
       out << "HEAT2261 seed " << seed << " yard " << line << '\n';
@@ -270,6 +289,10 @@ class HeatingProbe {
   core::HeatingState last_;
   std::vector<Month> months_;
   float life_speedup_ = 4.0F;
+  std::uint64_t cold_work_days_ = 0;
+  double fuel_felled_mark_ = 0.0;
+  std::vector<std::uint64_t> year_work_days_;
+  std::vector<double> year_fuel_felled_;
   std::uint32_t firewood_yard_ = core::kNoTableRow;
   std::uint32_t craftsman_ = core::kNoTableRow;
   std::vector<std::string> yard_lines_;

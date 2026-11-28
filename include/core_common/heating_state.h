@@ -8,6 +8,8 @@
 
 #include <cstdint>
 
+#include "core_common/quantities.h"
+
 namespace core {
 
 /// @brief The heating's world record.
@@ -22,6 +24,12 @@ struct HeatingState {
   /// lived in today. SAVED (save 237): the yard's next day reads it.
   float need_1m_m3 = 0.0F;
   float need_2m_m3 = 0.0F;
+
+  /// #2261: FUEL LOGS, grams - logs a fuel felling (kMarkFuelFelling) laid down and the firewood
+  /// yard has not split yet. The yard splits up to these whatever the building sites owe; the
+  /// logs themselves lie with every other log (a builder may still take them - then the yard
+  /// finds fewer than this, and reads the smaller). SAVED (save 237).
+  Grams fuel_log_grams = 0;
 
   // -- THE PROBE'S TALLIES (HEAT2261; cumulative from the game's start, NOT SAVED - a run
   // reads them, a game never does) --
@@ -46,6 +54,8 @@ struct HeatingState {
   double probe_split_m3 = 0.0;
   /// Stage 3c: m³ of deadwood brought into the houses.
   double probe_deadwood_m3 = 0.0;
+  /// Fuel felling: m³ felled under fuel marks.
+  double probe_fuel_felled_m3 = 0.0;
   /// Stage 4 (econ's C1/C2): resident-days on a cold day (outdoor under the threshold), of
   /// them days in «Холодно» and in «Замёрз», and the cold's health hits.
   std::uint64_t probe_cold_season_days = 0;

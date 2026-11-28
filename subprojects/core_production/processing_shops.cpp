@@ -342,7 +342,13 @@ void LimitByInputs(const ProductionConfig& config,
     }
     if (recipe.rule == ProcessingRule::kCooperage ||
         (recipe.rule == ProcessingRule::kFirewoodSplitting && !SplittingFloor(config, world))) {
+      const Grams all = available;
       available -= OwedToSites(config, world, input.resource);
+      // #2261: the FUEL LOGS (a fuel felling's) are the yard's whatever the sites owe - up to
+      // what still lies in the stores.
+      if (recipe.rule == ProcessingRule::kFirewoodSplitting) {
+        available = std::max(available, std::min(all, world.heating.fuel_log_grams));
+      }
     }
     available -= SaltTableReserve(config, world, input.resource);
     const double by = available > 0 && input.grams > 0
@@ -501,6 +507,10 @@ void WorkBatches(const ProductionConfig& config,
         static_cast<Grams>(std::llround(batches * static_cast<double>(input.grams)));
     const Grams taken = TakeFromStorage(current, config, input.resource, wanted);
     AddLedgerAmount(book.processed, input.resource, taken);
+    // #2261: the splitting spends the fuel logs first.
+    if (recipe.rule == ProcessingRule::kFirewoodSplitting) {
+      current.heating.fuel_log_grams = std::max<Grams>(0, current.heating.fuel_log_grams - taken);
+    }
   }
   for (const ProcessingAmount& output : recipe.outputs) {
     // Rounded, not floored: batches come back from man-days ÷ days-per-batch

@@ -615,6 +615,7 @@ void ConsumeProductionOrders(const ProductionConfig& config, WorldState& current
         Settle(order, SetRotation(config, current, order));
         break;
       case OrderKind::kMarkFelling:
+      case OrderKind::kMarkFuelFelling:  // #2261: MarkFelling reads the kind
         Settle(order, MarkFelling(config, current, order));
         break;
       case OrderKind::kPlantForest:

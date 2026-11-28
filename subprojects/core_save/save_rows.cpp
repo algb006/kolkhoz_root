@@ -540,9 +540,12 @@ static_assert(AggregateArity<WeddingWaitRow>() == 3,
 // fields -> fourteen; predicted before the build.
 // Save 153 (stage В, F3): haul_to, a point after the seam — 72 -> 80 and
 // 14 -> 15 fields, predicted before the build.
+// Save 237 (#2261): fuel_mark, a byte after work_days_remaining (a float) before the 8-byte
+// load - predicted before the build: it takes the 4 bytes of padding already there, 80 held;
+// 16 fields.
 static_assert(sizeof(TimberStandRow) == 80,
               "TimberStandRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<TimberStandRow>() == 15,
+static_assert(AggregateArity<TimberStandRow>() == 16,
               "TimberStandRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 153 (stage В, F3): haul_to, a point after the seam — 64 -> 72 and
 // 10 -> 11 fields, predicted before the build.
@@ -2008,6 +2011,7 @@ void WriteTimberStandRow(SaveSink& sink, const TimberStandRow& row) {
   out.WriteFloat(row.stock_m3);
   out.WriteFloat(row.marked_m3);
   out.WriteFloat(row.work_days_remaining);
+  out.WriteU8(row.fuel_mark);  // save 237 (#2261): a fuel felling's mark
   out.WriteU64(static_cast<std::uint64_t>(row.load_grams));
   out.WriteFloat(row.haul_days_remaining);
   out.WriteFloat(row.haul_days_written);
@@ -2032,6 +2036,7 @@ TimberStandRow ReadTimberStandRow(LoadSource& source) {
   row.stock_m3 = in.ReadFloat();
   row.marked_m3 = in.ReadFloat();
   row.work_days_remaining = in.ReadFloat();
+  row.fuel_mark = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "a fuel felling's mark"));
   row.load_grams = static_cast<Grams>(in.ReadU64());
   row.haul_days_remaining = in.ReadFloat();
   row.haul_days_written = in.ReadFloat();

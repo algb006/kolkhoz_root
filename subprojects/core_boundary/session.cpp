@@ -238,6 +238,7 @@ bool ShapeIsValid(const OrderRow& order) {
       // still runs negative until the map editor's export lands.
       return order.unit_type.value != kInvalidDefIdValue;
     case OrderKind::kMarkFelling:
+    case OrderKind::kMarkFuelFelling:  // #2261: the same shape
       // A stand and a volume above nothing: the chairman names a figure, as
       // with an unsealing. Whether the stand holds that much unmarked timber,
       // and whether another felling is still going, change with the day —

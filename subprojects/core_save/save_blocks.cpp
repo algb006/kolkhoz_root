@@ -775,6 +775,7 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU8(world.heating.seeded);         // save 237 (#2261)
   out.WriteFloat(world.heating.need_1m_m3);  // save 237, the splitting's demand (stage 3b)
   out.WriteFloat(world.heating.need_2m_m3);
+  out.WriteI64(world.heating.fuel_log_grams);  // save 237, the fuel logs
   // The tally clerk's post record (#589, save 219).
   out.WriteU32(world.clerk.since_day);
   out.WriteU8(static_cast<std::uint8_t>(world.clerk.vacancy));
@@ -1213,6 +1214,10 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the heating's seeded flag"));  // 237
   world->heating.need_1m_m3 = in.ReadFloat();  // save 237 (stage 3b)
   world->heating.need_2m_m3 = in.ReadFloat();
+  world->heating.fuel_log_grams = in.ReadI64();  // save 237, the fuel logs
+  if (world->heating.fuel_log_grams < 0) {
+    source.Fail("the fuel logs are negative");
+  }
   if (!(world->heating.need_1m_m3 >= 0.0F) || !(world->heating.need_2m_m3 >= 0.0F)) {
     source.Fail("the splitting's demand is negative or not a number");
   }

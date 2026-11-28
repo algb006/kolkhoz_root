@@ -1072,6 +1072,14 @@ enum class OrderKind : std::uint8_t {
   /// Seam key `set_help_fund_share`. Consumer: core_residents (help_fund.h).
   kSetHelpFundShare,
 
+  /// MARK A FELLING FOR FUEL (#2261; econ: «заготовка отнимает бригаду на всю зиму»): as
+  /// kMarkFelling - `stand`, `volume_m3`, the same refusals and the same crew - but the logs it
+  /// lays down are FUEL LOGS: the firewood yard may split them whatever the building sites owe
+  /// (HeatingState::fuel_log_grams), where ordinary logs go to the yard only above the sites'
+  /// need. The felling's own firewood share goes to the stores as any felling's. Seam key
+  /// `mark_fuel_felling`. Consumer: core_production (timber_felling.h).
+  kMarkFuelFelling,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).

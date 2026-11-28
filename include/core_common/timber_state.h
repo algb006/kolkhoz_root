@@ -104,6 +104,10 @@ struct TimberStandRow {
   /// mark go down and the logs are laid on the stand as a load.
   float work_days_remaining = 0.0F;
 
+  /// 1 while the open mark is a FUEL felling (#2261, kMarkFuelFelling): the logs it lays down
+  /// are added to HeatingState::fuel_log_grams. Cleared with the mark. SAVED (save 237).
+  std::uint8_t fuel_mark = 0;
+
   /// Logs lying on the stand, unfetched, grams. The firewood the same trees
   /// give is counted and has no holder yet (STUB, timber design §8a).
   Grams load_grams = 0;

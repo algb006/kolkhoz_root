@@ -90,6 +90,7 @@ OrderRefusal MarkFelling(const ProductionConfig& config,
   }
   stand.marked_m3 = order.volume_m3;
   stand.work_days_remaining = order.volume_m3 * config.timber.felling_days_per_m3;
+  stand.fuel_mark = order.kind == OrderKind::kMarkFuelFelling ? 1 : 0;  // #2261
   return OrderRefusal::kNone;
 }
 
@@ -115,10 +116,15 @@ void FellFinishedStands(const ProductionConfig& config, WorldState& current) {
       // volume less the logs' volume. STUB: it reaches its store the day it is felled, with no
       // cart - the logs' own carting is not shared with it; what no store takes is booked lost.
       DeliverFellingFirewood(config, current, felled, logs);
+      if (stand.fuel_mark != 0) {
+        current.heating.fuel_log_grams += logs;  // #2261: the yard may split these whatever
+        current.heating.probe_fuel_felled_m3 += static_cast<double>(felled);
+      }
     }
     stand.stock_m3 = std::max(stand.stock_m3 - felled, 0.0F);
     stand.marked_m3 = 0.0F;
     stand.work_days_remaining = 0.0F;
+    stand.fuel_mark = 0;
   }
 }
 
@@ -159,11 +165,16 @@ void ReleaseUnreachableMarks(const ProductionConfig& config, WorldState& current
       const Grams logs = LogGramsFromVolume(config.timber, *def, felled);
       stand.load_grams += logs;
       DeliverFellingFirewood(config, current, felled, logs);  // #2261, as a finished felling
+      if (stand.fuel_mark != 0) {
+        current.heating.fuel_log_grams += logs;
+        current.heating.probe_fuel_felled_m3 += static_cast<double>(felled);
+      }
     }
     stand.stock_m3 = std::max(stand.stock_m3 - felled, 0.0F);
     stand.marked_m3 = 0.0F;
     stand.work_days_remaining = 0.0F;
     stand.unreached_days = 0;
+    stand.fuel_mark = 0;
     constexpr float kLitresPerM3 = 1000.0F;
     SimEvent& event = EmitEvent(current, EventKind::kFellingMarkReleased, EventSeverity::kNotable);
     event.stand = current.stands.row_ids[row];
