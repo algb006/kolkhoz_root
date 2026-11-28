@@ -257,6 +257,11 @@ class FellingPolicy {
       std::cout << ' ' << foot.year << ':' << std::lround(foot.logs) << '@' << foot.daylight;
     }
     std::cout << '\n';
+  }
+
+  /// @brief FUEL2261 lines, printed on every run (the Report above prints only under the
+  ///        winter-stock levers - hx2261j printed no FUEL2261 line).
+  void PrintFuel(const core::WorldState& world) const {
     // FUEL2261 (econ after hx2261h): per calendar year, the fuel brigade's season days - mean
     // target (m3: last winter's WANT x houses ratio), mean wood on hand, mean last want; days
     // met by the wood on hand, short with no mannable stand, marks made.

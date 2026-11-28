@@ -1721,29 +1721,30 @@ bool Walk(std::uint64_t seed,
       funerals.Print(std::cout, seed);
       herds.Print(std::cout, seed);
       crime.Print(std::cout, seed);
-      bans.Print(std::cout, seed);                          // #1788
-      salt.Print(std::cout);                                // #1630 (B)
-      builder.smokehouse.Print(std::cout, seed);            // #1644
-      builder.hay_arm.Print(std::cout, seed);               // #307
-      builder.fallow.PrintHolds(std::cout, seed);           // #1692's hold print
-      builder.fallow.PrintSpringBuilding(std::cout, seed);  // #1726's B1 and B5
-      builder.houses_first.Print(std::cout, seed);          // #1677
-      builder.dry_pantry.Print(std::cout, seed);            // #1922
-      builder.family_food.Print(std::cout, seed);           // #1953
-      builder.low_earners.Print(std::cout, seed);           // #1953's LOW1953
-      builder.trails.Print(std::cout, seed);                // #2072's TRAIL2072
-      builder.trail_legs.Print(std::cout, seed);            // #2072's LEGS2072
-      builder.decomp.Print(std::cout, seed);                // #2072's DECOMP2072
-      builder.road_holds.Print(std::cout, seed);            // #2129's HOLD2129
-      builder.authority.Print(std::cout, seed);             // #2164's AUTH2164
-      builder.pressure.Print(std::cout, seed);              // #2164's PRESS2164
-      builder.issue_raise.Print(std::cout, seed);           // #2164's IR2164
-      builder.winter_felling.Print(std::cout, seed);        // WFELL2072
-      builder.winter_horses.Print(std::cout, seed);         // WHORSE2072
-      builder.econ_side.Print(std::cout, seed);             // S2072
-      builder.plan_years.Print(std::cout, seed);            // PLANY2072
-      builder.catches.Print(std::cout, seed);               // CATCH2191 (#2191's arm)
-      if (g_winter_log_stock || g_season_stand_order) {     // the levers' own ground
+      bans.Print(std::cout, seed);                              // #1788
+      salt.Print(std::cout);                                    // #1630 (B)
+      builder.smokehouse.Print(std::cout, seed);                // #1644
+      builder.hay_arm.Print(std::cout, seed);                   // #307
+      builder.fallow.PrintHolds(std::cout, seed);               // #1692's hold print
+      builder.fallow.PrintSpringBuilding(std::cout, seed);      // #1726's B1 and B5
+      builder.houses_first.Print(std::cout, seed);              // #1677
+      builder.dry_pantry.Print(std::cout, seed);                // #1922
+      builder.family_food.Print(std::cout, seed);               // #1953
+      builder.low_earners.Print(std::cout, seed);               // #1953's LOW1953
+      builder.trails.Print(std::cout, seed);                    // #2072's TRAIL2072
+      builder.trail_legs.Print(std::cout, seed);                // #2072's LEGS2072
+      builder.decomp.Print(std::cout, seed);                    // #2072's DECOMP2072
+      builder.road_holds.Print(std::cout, seed);                // #2129's HOLD2129
+      builder.authority.Print(std::cout, seed);                 // #2164's AUTH2164
+      builder.pressure.Print(std::cout, seed);                  // #2164's PRESS2164
+      builder.issue_raise.Print(std::cout, seed);               // #2164's IR2164
+      builder.winter_felling.Print(std::cout, seed);            // WFELL2072
+      builder.winter_horses.Print(std::cout, seed);             // WHORSE2072
+      builder.econ_side.Print(std::cout, seed);                 // S2072
+      builder.plan_years.Print(std::cout, seed);                // PLANY2072
+      builder.catches.Print(std::cout, seed);                   // CATCH2191 (#2191's arm)
+      builder.felling.PrintFuel(simulation->CompletedState());  // #2261 FUEL2261
+      if (g_winter_log_stock || g_season_stand_order) {         // the levers' own ground
         builder.felling.Report(("population_curve (seed " + std::to_string(seed) + ")").c_str(),
                                simulation->CompletedState());
       }
