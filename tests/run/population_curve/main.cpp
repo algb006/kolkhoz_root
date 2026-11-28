@@ -43,6 +43,7 @@
 #include "../common/births_herd_tally.h"
 #include "../common/build_bans.h"
 #include "../common/building_chairman.h"
+#include "../common/commute_census.h"
 #include "../common/crime_tally.h"
 #include "../common/env_value.h"
 #include "../common/fallow_harrow_tally.h"
@@ -1011,6 +1012,7 @@ bool Walk(std::uint64_t seed,
   run::HorseTailTally horse_tail(*world.tables);
   run::FloodTally flood_tally;                          // #1375
   run::PlanThreatTally plan_threat(*world.tables);      // #2190 LAMP2190
+  run::CommuteCensus commute(*world.tables);            // COMMUTE2261 (econ, the base's)
   run::FirstPlanTally first_plan(*world.tables);        // #1750
   run::MilkCutTally milk_cut(*world.tables);            // #1737 option 1, every run's door
   run::FallowHarrowTally fallow_harrow(*world.tables);  // #1837
@@ -1173,6 +1175,7 @@ bool Walk(std::uint64_t seed,
       horse_tail.CountDayEnd(*simulation);
       flood_tally.CountDayEnd(*simulation);                     // #1375
       plan_threat.CountDayEnd(*simulation);                     // #2190
+      commute.CountDay(simulation->CompletedState());           // COMMUTE2261
       first_plan.CountDayEnd(simulation->CompletedState());     // #1750
       milk_cut.CountDayEnd(*simulation);                        // #1737
       fallow_harrow.CountDayEnd(simulation->CompletedState());  // #1837
@@ -1745,6 +1748,7 @@ bool Walk(std::uint64_t seed,
       horse_tail.Print(std::cout, seed);     // #1573's horse tail
       flood_tally.Print(std::cout, seed);    // #1375
       plan_threat.Print(std::cout, seed);    // #2190
+      commute.Print(std::cout, seed);        // COMMUTE2261
       first_plan.Print(std::cout, seed);     // #1750
       milk_cut.Print(std::cout, seed);       // #1737
       fallow_harrow.Print(std::cout, seed);  // #1837
