@@ -2355,8 +2355,9 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // And (the same unshipped 237, #2261's fuel felling) fuel_log_grams (8) and the heating
     // year's burn (two floats + a u16 = 10): 1700 -> 1718 predicted, held; the hash read off
     // hh2261q.
-    // And covered_2m_m3, a float (econ's (A)): 1718 -> 1722 predicted; the hash re-read owed.
-    {"world", 1722, 0x833d9f4cab64fb68ULL},
+    // And covered_2m_m3, a float (econ's (A)): 1718 -> 1722 predicted, held; the hash read off
+    // hh2261s.
+    {"world", 1722, 0x11d4c6fe293a24b5ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
