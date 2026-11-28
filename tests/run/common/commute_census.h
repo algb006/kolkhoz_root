@@ -49,6 +49,13 @@ class CommuteCensus {
     if ((!winter && !summer) || !(light > 0.0F)) {
       return;
     }
+    // econ's C3 denominator (#2261): winter's idle hands - resident-days in Dec-Feb with no work
+    // assigned, beside those with work.
+    if (winter) {
+      for (const core::ResidentRow& resident : world.residents.rows) {
+        (resident.work.kind == core::WorkKind::kNone ? winter_idle_days_ : winter_work_days_) += 1;
+      }
+    }
     for (const core::ResidentRow& resident : world.residents.rows) {
       const core::WorkAssignment& work = resident.work;
       if (work.kind == core::WorkKind::kNone || work.kind >= core::WorkKind::kWorkKindCount ||
@@ -67,6 +74,8 @@ class CommuteCensus {
     for (const auto& [key, v] : summer_) {
       keys[key] = true;
     }
+    out << "population_curve: COMMUTE2261 seed " << seed << " winter_resident_days idle "
+        << winter_idle_days_ << " working " << winter_work_days_ << '\n';
     for (const auto& [key, unused] : keys) {
       out << "population_curve: COMMUTE2261 seed " << seed << ' ' << key << " winter "
           << Quantiles(winter_, key) << " summer " << Quantiles(summer_, key) << '\n';
@@ -121,6 +130,8 @@ class CommuteCensus {
   }
 
   std::vector<std::string> names_;
+  std::uint64_t winter_idle_days_ = 0;
+  std::uint64_t winter_work_days_ = 0;
   std::map<std::string, std::vector<float>> winter_;
   std::map<std::string, std::vector<float>> summer_;
 };

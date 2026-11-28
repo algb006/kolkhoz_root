@@ -131,7 +131,7 @@ class FellingPolicy {
       return;
     }
     stock_free_days_ += stock_winter ? 1U : 0U;
-    // #2261 FUEL FELLING FIRST, IN ITS SEASON (econ, STUB): June to February, while the
+    // #2261 FUEL FELLING FIRST, IN ITS SEASON (econ, STUB): November to March, while the
     // village's firewood (stores + buffers + the fuel logs not yet split) is under the coming
     // winter's burn - last winter's at this house count - the crew fells for fuel.
     if (FuelMark(simulation, world)) {
@@ -368,7 +368,7 @@ class FellingPolicy {
 
   /// The fuel mark of the day, if one is due: tracks the heating year's burn (want = burnt +
   /// short, HeatingState's saved heating-year record, the year turning in September), and from
-  /// June to February marks the nearest stand for the logs the shortfall asks.
+  /// November to March marks the nearest stand for this winter's rest and the next winter.
   bool FuelMark(core::ISimulation& simulation, const core::WorldState& world) {
     if (!(firewood_grams_per_m3_ > 0.0) || !(m3_per_log_ > 0.0)) {
       return false;
@@ -381,10 +381,14 @@ class FellingPolicy {
     for (const core::FamilyRow& family : world.families.rows) {
       houses += family.house.value != core::kInvalidEntityIdValue ? 1U : 0U;
     }
-    // FROM JUNE (econ after hd2261d: the horizon wanted from July and the yard had no wood
-    // until September - the summer felling, split in the long days, is the period's practice).
-    const bool season = month >= static_cast<std::uint32_t>(core::Month::kJune) ||
-                        month <= static_cast<std::uint32_t>(core::Month::kFebruary);
+    // THE WINTER FUEL BRIGADE, A YEAR AHEAD (econ after hp2261g: the June felling took the crew
+    // and the logs from the houses - built 40-60 % of the base's from year 2): November to
+    // March, when the fields stand and the sleds run, for THE REST OF THIS WINTER AND ALL OF THE
+    // NEXT; split from June against the coming winter (the yard's horizon). Its crew is the
+    // accountant's own pool - in winter the idle hands; the construction marks and the house
+    // queue keep their logs (fuel logs are their own, HeatingState::fuel_log_grams).
+    const bool season = month >= static_cast<std::uint32_t>(core::Month::kNovember) ||
+                        month <= static_cast<std::uint32_t>(core::Month::kMarch);
     if (!season || heating.last_season_houses == 0 || !(heating.last_season_want_m3 > 0.0F)) {
       return false;  // out of season, or no heating year closed yet (the start's wood: year 1)
     }
@@ -403,8 +407,10 @@ class FellingPolicy {
     }
     on_hand += static_cast<double>(world.heating.fuel_log_grams) /
                static_cast<double>(catalog_.log_grams) * m3_per_log_;
-    // What the season still burns: the target less what this heating year burnt already.
-    const double still = target - static_cast<double>(heating.season_want_m3);
+    // What is still to burn: the rest of this heating year (the target less what it burnt
+    // already) and the whole of the next one at the same pace.
+    const double still =
+        std::max(0.0, target - static_cast<double>(heating.season_want_m3)) + target;
     const double short_m3 = still - on_hand;
     if (!(short_m3 > 0.0)) {
       return false;
