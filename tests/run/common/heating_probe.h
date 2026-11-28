@@ -12,6 +12,8 @@
 #include <cstdint>
 #include <iomanip>
 #include <ostream>
+#include <sstream>
+#include <string>
 #include <vector>
 
 #include "core_catalog/world_conventions.h"
@@ -25,7 +27,14 @@ namespace run {
 class HeatingProbe {
  public:
   explicit HeatingProbe(const core::ITableSet& tables)
-      : life_speedup_(core::LifeSpeedupOr(tables, 4.0F)) {}
+      : life_speedup_(core::LifeSpeedupOr(tables, 4.0F)) {
+    if (const core::ITable* const types = tables.FindTable("unit_types")) {
+      firewood_yard_ = types->FindRowByKey("firewood_yard");
+    }
+    if (const core::ITable* const professions = tables.FindTable("professions")) {
+      craftsman_ = professions->FindRowByKey("farm_craftsman");
+    }
+  }
 
   /// @brief Once a day after the step: on a month's last day, the month's deltas.
   void CountDayEnd(const core::ISimulation& simulation) {
@@ -81,6 +90,34 @@ class HeatingProbe {
     }
     months_.back().standing = standing;
     months_.back().holding = holding;
+    // WHY THE YARD DOES NOT SPLIT (hc2261k/m: 1 day in 6 years): the firewood yard's state at
+    // the month's close - level, work written / remaining, its parent's farm craftsmen - beside
+    // the demand and what the village holds.
+    if (firewood_yard_ != core::kNoTableRow) {
+      for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+        const core::UnitRow& yard = world.units.rows[row];
+        if (yard.type.value != firewood_yard_ || yard.dead != 0) {
+          continue;
+        }
+        std::uint32_t craftsmen = 0;
+        for (const core::ResidentRow& resident : world.residents.rows) {
+          craftsmen += resident.post.profession.value == craftsman_ &&
+                               resident.post.unit.value == yard.parent.value
+                           ? 1U
+                           : 0U;
+        }
+        std::ostringstream line;
+        line << "month " << (day / core::kDaysPerMonth) + 1U << " yard level "
+             << static_cast<int>(yard.level) << " phase "
+             << static_cast<int>(yard.construction.phase) << " paused "
+             << static_cast<int>(yard.paused) << " written " << yard.production_days_written
+             << " remaining " << yard.production_days_remaining << " parent_craftsmen " << craftsmen
+             << " need_2m " << world.heating.need_2m_m3 << " need_1m " << world.heating.need_1m_m3
+             << " buffers_m3 " << standing;
+        yard_lines_.push_back(line.str());
+        break;
+      }
+    }
     // econ's C2 second half: the village's mean health on month 5's first day (the month that
     // closes now is month 4 - its last day is the eve).
     if (world.calendar.date.month == core::Month::kApril && !world.residents.rows.empty()) {
@@ -96,6 +133,9 @@ class HeatingProbe {
     if (months_.empty()) {
       out << "HEAT2261 seed " << seed << " NOT MEASURED (no month closed)\n";
       return;
+    }
+    for (const std::string& line : yard_lines_) {
+      out << "HEAT2261 seed " << seed << " yard " << line << '\n';
     }
     for (std::size_t year = 0; year < band_lines_.size(); ++year) {
       const std::array<std::uint32_t, 3>& b = band_lines_[year];
@@ -210,6 +250,9 @@ class HeatingProbe {
   core::HeatingState last_;
   std::vector<Month> months_;
   float life_speedup_ = 4.0F;
+  std::uint32_t firewood_yard_ = core::kNoTableRow;
+  std::uint32_t craftsman_ = core::kNoTableRow;
+  std::vector<std::string> yard_lines_;
   std::vector<std::array<std::uint32_t, 3>> band_lines_;
 };
 
