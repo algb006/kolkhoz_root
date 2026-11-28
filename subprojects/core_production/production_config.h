@@ -1301,6 +1301,12 @@ struct ProductionConfig {
   /// firewood share (#2261 stage 3). Invalid / 0 = no firewood in the tables.
   ResourceId firewood_resource;
   double firewood_grams_per_m3 = 0.0;
+  /// unit_types.csv "firewood_yard": the ONLY store the felling's and the splitting's firewood
+  /// goes to (DeliverFirewood). resource_stores names the utility yard too - «firewood_yard
+  /// inside utility_yard» makes both types homes - and the utility yard's 30 t is the boards'
+  /// home as well: the bisect (hb2261b) saw the felling's firewood fill it and the houses' board
+  /// days triple.
+  UnitTypeId firewood_yard_type;
 
   ResourceId pelt_resource;  ///< resources.csv "mink_pelt" row.
 

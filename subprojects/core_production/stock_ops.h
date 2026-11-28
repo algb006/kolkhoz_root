@@ -469,6 +469,12 @@ inline bool SomeStoreAccepts(const WorldState& world,
 /// Taking is wider than delivering and stays that way (TakeFromStorage): a
 /// delivery needs a destination with a number to clamp against, taking does
 /// not. A level-0 row is a site and stores nothing for anybody.
+/// @brief #2261: firewood into the firewood yards ONLY (ProductionConfig::firewood_yard_type),
+///        built and within their room, in id order; returns what was placed (the rest is the
+///        caller's lost line). The general door would also put it into the utility yard - its
+///        parent is a home by resource_stores - where it took the boards' room (hb2261b).
+inline Grams DeliverFirewood(WorldState& world, const ProductionConfig& config, Grams amount);
+
 inline Grams DeliverToStores(WorldState& world,
                              const ProductionConfig& config,
                              ResourceId resource,
@@ -526,6 +532,30 @@ inline Grams DeliverToStores(WorldState& world,
       continue;
     }
     placed += AddToStock(unit.stock, resource, amount - placed);
+  }
+  return placed;
+}
+
+inline Grams DeliverFirewood(WorldState& world, const ProductionConfig& config, Grams amount) {
+  const ResourceId firewood = config.firewood_resource;
+  if (amount <= 0 || firewood.value == kInvalidDefIdValue ||
+      config.firewood_yard_type.value == kInvalidDefIdValue) {
+    return 0;
+  }
+  Grams placed = 0;
+  for (const std::uint32_t row : RowsById(world.units)) {
+    if (placed >= amount) {
+      break;
+    }
+    UnitRow& unit = world.units.rows[row];
+    if (unit.type.value != config.firewood_yard_type.value ||
+        !NumberedStoreAccepts(world, unit, config, firewood)) {
+      continue;
+    }
+    const Grams room = GramsFitting(config.processing, firewood, FreeRoomGrams(unit, config));
+    if (room > 0) {
+      placed += AddToStock(unit.stock, firewood, std::min(room, amount - placed));
+    }
   }
   return placed;
 }

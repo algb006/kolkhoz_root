@@ -1838,6 +1838,11 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   config.hay_resource = ResourceByKey(resources, "hay");
   // #2261 stage 3: the felling's firewood, in m³ of the resource's measure.
   config.firewood_resource = ResourceByKey(resources, "firewood");
+  if (const ITable* const types = tables.FindTable("unit_types")) {
+    const std::uint32_t yard = types->FindRowByKey("firewood_yard");
+    config.firewood_yard_type =
+        yard == kNoTableRow ? UnitTypeId{} : DefIdFromRow<UnitTypeIdTag>(yard);
+  }
   if (resources != nullptr && config.firewood_resource.value != kInvalidDefIdValue) {
     const std::uint32_t kg = resources->FindColumn("kg_per_unit");
     config.firewood_grams_per_m3 =

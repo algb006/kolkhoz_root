@@ -457,6 +457,19 @@ void LimitByOutputs(const ProductionConfig& config,
       continue;
     }
     const auto grams = static_cast<double>(output.grams);
+    // #2261: the splitting's firewood fits only the firewood yards' room (DeliverFirewood).
+    if (recipe.rule == ProcessingRule::kFirewoodSplitting &&
+        output.resource.value == config.firewood_resource.value) {
+      Grams room = 0;
+      for (const UnitRow& unit : world.units.rows) {
+        if (unit.type.value == config.firewood_yard_type.value &&
+            NumberedStoreAccepts(world, unit, config, output.resource)) {
+          room += FreeRoomGrams(unit, config);
+        }
+      }
+      limit.Tighten(static_cast<double>(room) / grams, output.resource, true);
+      continue;
+    }
     limit.Tighten(
         BatchesTheRoomTakes(config, world, recipe, output, limit.batches), output.resource, true);
     if (InBarrel(config.processing, output.resource)) {
@@ -516,7 +529,11 @@ void WorkBatches(const ProductionConfig& config,
     // The room and the barrels were checked for the whole batches already.
     const auto made = static_cast<Grams>(std::llround(batches * static_cast<double>(output.grams) *
                                                       static_cast<double>(wear_factor)));
-    const Grams placed = DeliverToStores(current, config, output.resource, made);
+    // #2261: the splitting's firewood into the firewood yard only (DeliverFirewood, hb2261b).
+    const Grams placed = output.resource.value == config.firewood_resource.value &&
+                                 recipe.rule == ProcessingRule::kFirewoodSplitting
+                             ? DeliverFirewood(current, config, made)
+                             : DeliverToStores(current, config, output.resource, made);
     AddLedgerAmount(book.made, output.resource, made);
     AddLedgerAmount(book.lost_no_room, output.resource, made - placed);
   }

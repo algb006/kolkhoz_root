@@ -39,7 +39,8 @@ void DeliverFellingFirewood(const ProductionConfig& config,
     return;
   }
   const auto grams = static_cast<Grams>(std::llround(firewood_m3 * config.firewood_grams_per_m3));
-  const Grams placed = DeliverToStores(current, config, config.firewood_resource, grams);
+  // The firewood yard only (stock_ops.h DeliverFirewood, hb2261b): never the boards' room.
+  const Grams placed = DeliverFirewood(current, config, grams);
   if (grams > placed) {
     AddLedgerAmount(current.ledger.current.lost_no_room, config.firewood_resource, grams - placed);
   }
