@@ -40,6 +40,12 @@ class YardRoomProbe {
         watched_.push_back(Watched{.name = key, .row = resources->FindRowByKey(key)});
       }
     }
+    // econ's lot door: the two lots the 24 Sep STUB was for.
+    if (const core::ITable* const lots = tables.FindTable("limit_catalog")) {
+      for (std::size_t i = 0; i < kLots; ++i) {
+        lot_rows_[i] = lots->FindRowByKey(kLotKeys[i]);
+      }
+    }
     if (const core::ITable* const levels = tables.FindTable("unit_levels")) {
       const std::uint32_t unit_col = levels->FindColumn("unit");
       const std::uint32_t level_col = levels->FindColumn("level");
@@ -73,6 +79,28 @@ class YardRoomProbe {
       years_.resize(year + 1U);
     }
     Year& line = years_[year];
+    // THE LOT DOOR (econ): days the office's own answer for the lot is kNowhereToStore (an
+    // order would be refused at the door), and the lots actually bought (new delivery rows).
+    const core::LimitBook book = simulation.OfficeLimit();
+    for (const core::LimitLotLine& lot_line : book.catalogue) {
+      for (std::size_t i = 0; i < kLots; ++i) {
+        if (lot_line.lot.value == lot_rows_[i]) {
+          line.lot_door_refused_days[i] +=
+              lot_line.orderable == core::OrderRefusal::kNowhereToStore ? 1U : 0U;
+          line.lot_door_open_days[i] += lot_line.orderable == core::OrderRefusal::kNone ? 1U : 0U;
+        }
+      }
+    }
+    const core::LimitDeliveryTable& deliveries = world.limit_deliveries;
+    for (std::size_t row = 0; row < deliveries.rows.size(); ++row) {
+      if (deliveries.row_ids[row].value < seen_delivery_id_) {
+        continue;
+      }
+      for (std::size_t i = 0; i < kLots; ++i) {
+        line.lots_bought[i] += deliveries.rows[row].lot.value == lot_rows_[i] ? 1U : 0U;
+      }
+    }
+    seen_delivery_id_ = deliveries.next_id_value;
     double held = 0.0;
     double room = 0.0;
     bool goods_store = false;
@@ -136,6 +164,14 @@ class YardRoomProbe {
     }
     out << "\n";
     for (std::size_t year = 0; year < years_.size(); ++year) {
+      out << "YARD2311 seed " << seed << " year " << (year + 1U) << " lots";
+      for (std::size_t i = 0; i < kLots; ++i) {
+        out << " " << kLotKeys[i]
+            << (lot_rows_[i] == core::kNoTableRow ? std::string(" no_lot") : std::string())
+            << " door_refused_days " << years_[year].lot_door_refused_days[i] << " door_open_days "
+            << years_[year].lot_door_open_days[i] << " bought " << years_[year].lots_bought[i];
+      }
+      out << "\n";
       out << "YARD2311 seed " << seed << " year " << (year + 1U) << " lost";
       for (std::size_t i = 0; i < watched_.size() && i < kWatched; ++i) {
         out << " " << watched_[i].name << " days " << years_[year].lost_days[i] << " t "
@@ -167,8 +203,16 @@ class YardRoomProbe {
   static constexpr double kFullShare = 0.99;
 
   static constexpr std::size_t kWatched = 3;
+  static constexpr std::size_t kLots = 2;
+  static constexpr std::array<const char*, kLots> kLotKeys = {"coal_lot", "consumer_goods_lot"};
+
+  std::array<std::uint32_t, kLots> lot_rows_{core::kNoTableRow, core::kNoTableRow};
+  std::uint32_t seen_delivery_id_ = 0;
 
   struct Year {
+    std::array<std::uint32_t, kLots> lot_door_refused_days{};
+    std::array<std::uint32_t, kLots> lot_door_open_days{};
+    std::array<std::uint32_t, kLots> lots_bought{};
     std::uint32_t yard_days = 0;
     std::uint32_t full_days = 0;
     double fill_sum = 0.0;
