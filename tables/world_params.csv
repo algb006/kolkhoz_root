@@ -465,4 +465,3 @@ heat_indoor_warm_offset_c,25,core
 heat_refill_below_m3,3,core
 heat_start_buffer_m3,14,core
 heat_threshold_c,10,core
-utility_yard_wood_held_t,20,core
