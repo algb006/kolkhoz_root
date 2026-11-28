@@ -2351,8 +2351,9 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // And the splitting's demand, two floats (stage 3b, the same unshipped 237): 1692 -> 1700
     // measured on hh2261k; the hash read off hh2261l with the fixture's 12.5 / 30.25.
     // And (the same unshipped 237, #2261's fuel felling) fuel_log_grams (8) and the heating
-    // year's burn (two floats + a u16 = 10): 1700 -> 1718 predicted; the hash re-read owed.
-    {"world", 1718, 0x79e2552bd77ab9dULL},
+    // year's burn (two floats + a u16 = 10): 1700 -> 1718 predicted, held; the hash read off
+    // hh2261q.
+    {"world", 1718, 0x833d9f4cab64fb68ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2677,8 +2678,8 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // unmoved before the build; held, and the hash recorded from that run.
     // Save 153: +8 a stand — haul_to; 71 -> 79, held.
     // Save 237 (#2261): fuel_mark, a byte a stand, one - 79 -> 80 measured on hh2261p; the hash
-    // re-read owed with the fixture's 1.
-    {"stands", 80, 0xd32d4d08fe250689ULL},
+    // read off hh2261q with the fixture's 1.
+    {"stands", 80, 0x57baa6d570d7bebeULL},
     // Save 98: +9 — own_carts and the carting seam's two floats on the one
     // cart of the fixture; predicted 44 -> 53 before the build, held.
     // Save 153: +8 a lot — haul_to; 53 -> 61, held.
