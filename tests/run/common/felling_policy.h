@@ -382,6 +382,10 @@ class FellingPolicy {
   /// short, HeatingState's saved heating-year record, the year turning in September), and from
   /// November to March marks the nearest stand for this winter's rest and the next winter.
   bool FuelMark(core::ISimulation& simulation, const core::WorldState& world) {
+    // DIAGNOSIS ARM B (econ): the fuel brigade off.
+    if (world.calendar.day < core::kDaysPerYear * 1000U) {
+      return false;
+    }
     if (!(firewood_grams_per_m3_ > 0.0) || !(m3_per_log_ > 0.0)) {
       return false;
     }
