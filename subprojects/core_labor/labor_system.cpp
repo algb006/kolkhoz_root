@@ -1937,12 +1937,12 @@ class LaborSystem final : public ILaborSystem {
   /// served before the rest; the sauerkraut keeps, the meat does not.
   /// `same_day_only` asks for those alone. Returns whether he was placed.
   ///
-  /// AND THEN THE NEED (#2261; econ's default-fill rule, accepted by boss 28 Nov): after the
-  /// same-day shops, a module covering a resident need - the firewood yard, whose work exists
-  /// only while the village's firewood is under the coming two months' burn - before the rest in
-  /// row order. hd2261a: the 4-place sawmill stood first and took all 4 yard craftsmen, the yard's
-  /// work written and never drained. The player's own assignment always wins: a holder with work
-  /// never reaches here.
+  /// THE FIREWOOD MODULE IS LEFT OUT (#2261): it is staffed from any adults by standing order
+  /// (production.md «Колка дров посильна пожилым»). The «need first» fill accepted on 28 Nov
+  /// (hd2261a: the saw took all 4 yard craftsmen, the yard's work never drained) put the
+  /// craftsmen on the yard instead and took the saw's hands (hx2261k vs hx2261m: +57 residents
+  /// y16 without it). The player's own assignment always wins: a holder with work never reaches
+  /// here.
   bool PutOnModuleWork(WorldState& current,
                        ResidentRow& resident,
                        std::vector<std::uint32_t>& places_taken,
@@ -1950,8 +1950,8 @@ class LaborSystem final : public ILaborSystem {
     if (resident.post.unit.value == kInvalidEntityIdValue) {
       return false;
     }
-    // Pass 0 the same-day shops, 1 the need modules, 2 the rest.
-    for (const int pass : {0, 1, 2}) {
+    // Pass 0 the same-day shops, 1 the rest - never the firewood module (below).
+    for (const int pass : {0, 1}) {
       if (pass > 0 && same_day_only) {
         break;
       }
@@ -1962,13 +1962,14 @@ class LaborSystem final : public ILaborSystem {
         const std::uint32_t places = std::max(UnitWorkPlaces(config_.timber, unit.type),
                                               ProcessingPlaces(config_.processing, unit.type));
         const bool same_day = IsSameDayModule(unit.type);
-        const bool need = !same_day && IsNeedModule(unit.type);
-        // DIAGNOSIS ARM A (econ, «Колка дров посильна пожилым»): the yard's craftsmen are never
-        // put on the firewood module by the default fill - the splitters come by standing order.
-        if (need) {
+        // THE FIREWOOD MODULE IS NOT CRAFTSMEN'S WORK (production.md «Колка дров посильна
+        // пожилым»; econ after hx2261k: any adults by standing order, eldest first, +57 residents
+        // y16 and the houses of y3-4 back against the craftsmen-first fill, which took the saw's
+        // hands): the default fill never puts a craftsman there.
+        if (IsNeedModule(unit.type)) {
           continue;
         }
-        const int unit_pass = same_day ? 0 : (need ? 1 : 2);
+        const int unit_pass = same_day ? 0 : 1;
         if (unit.parent.value != resident.post.unit.value || places_taken[row] >= places ||
             unit_pass != pass) {
           continue;

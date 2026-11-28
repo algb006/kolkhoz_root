@@ -1744,7 +1744,8 @@ bool Walk(std::uint64_t seed,
       builder.plan_years.Print(std::cout, seed);                // PLANY2072
       builder.catches.Print(std::cout, seed);                   // CATCH2191 (#2191's arm)
       builder.felling.PrintFuel(simulation->CompletedState());  // #2261 FUEL2261
-      if (g_winter_log_stock || g_season_stand_order) {         // the levers' own ground
+      builder.sawmill.Report(("population_curve (seed " + std::to_string(seed) + ")").c_str());
+      if (g_winter_log_stock || g_season_stand_order) {  // the levers' own ground
         builder.felling.Report(("population_curve (seed " + std::to_string(seed) + ")").c_str(),
                                simulation->CompletedState());
       }

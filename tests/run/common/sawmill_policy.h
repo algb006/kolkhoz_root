@@ -167,6 +167,9 @@ class SawmillPolicy {
                             "d" + std::to_string(*firewood_built_day_ % core::kDaysPerYear)
                       : std::string("never"))
               << ", splitters appointed " << splitters_appointed_ << " (HEAT2261)\n";
+    std::cout << run << ": SAW2261 boards_wanted_days " << saw_wanted_days_ << " holder_days "
+              << saw_holder_days_ << " craftsman_days " << saw_craftsman_days_
+              << " empty_wanted_days " << saw_empty_wanted_days_ << "\n";
     suggested_.Report(run);
   }
 
@@ -455,6 +458,24 @@ class SawmillPolicy {
       sawmill_built_day_ = static_cast<std::uint32_t>(world.calendar.day);
     }
     days_sawing_ += world.units.rows[mill].paused == 0 ? 1U : 0U;
+    // econ after hx2261k: the saw's holders by day - residents whose work today is the mill,
+    // craftsmen of the yard among them, while boards are wanted.
+    if (WantsSawing(world)) {
+      const core::UnitId mill_id = world.units.row_ids[mill];
+      std::uint32_t on_saw = 0;
+      std::uint32_t craftsmen_on_saw = 0;
+      for (const core::ResidentRow& resident : world.residents.rows) {
+        if (resident.work.kind == core::WorkKind::kUnitWork &&
+            resident.work.unit.value == mill_id.value) {
+          ++on_saw;
+          craftsmen_on_saw += resident.post.profession.value == craftsman_post_.value ? 1U : 0U;
+        }
+      }
+      ++saw_wanted_days_;
+      saw_holder_days_ += on_saw;
+      saw_craftsman_days_ += craftsmen_on_saw;
+      saw_empty_wanted_days_ += on_saw == 0 ? 1U : 0U;
+    }
   }
 
   /// The village's middle (village_middle.h; the mean of every unit until
@@ -560,7 +581,7 @@ class SawmillPolicy {
       // firewood is under the coming two months' burn. Which module they work is labor's default
       // fill, which now puts the need module (the yard) ahead of the saw (PutOnModuleWork, boss
       // 28 Nov) - the bot's own «two beyond the saw's places» (0bb1c684) is taken out.
-      // DIAGNOSIS ARM A (econ, «Колка дров посильна пожилым»): any adults by standing order,
+      // THE SPLITTERS (econ, «Колка дров посильна пожилым»; hx2261k): any adults by standing order,
       // the eldest free first, up to the yard's places while splitting is wanted; released when
       // not. No craftsman is appointed for the yard.
       constexpr std::uint32_t splitters_cap = 2;
@@ -767,6 +788,10 @@ class SawmillPolicy {
   std::uint32_t yard_attempts_ = 0;
   std::uint32_t candidate_ = 0;
   std::uint32_t pauses_ = 0;
+  std::uint32_t saw_wanted_days_ = 0;        // SAW2261
+  std::uint32_t saw_holder_days_ = 0;        // SAW2261
+  std::uint32_t saw_craftsman_days_ = 0;     // SAW2261
+  std::uint32_t saw_empty_wanted_days_ = 0;  // SAW2261
   std::uint32_t resumes_ = 0;
   std::uint32_t days_sawing_ = 0;
   std::uint32_t sawmill_built_day_ = kNever;
