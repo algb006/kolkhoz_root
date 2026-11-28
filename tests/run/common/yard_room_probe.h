@@ -9,6 +9,7 @@
 #define TESTS_RUN_COMMON_YARD_ROOM_PROBE_H_
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <map>
 #include <ostream>
@@ -33,6 +34,10 @@ class YardRoomProbe {
     if (const core::ITable* const resources = tables.FindTable("resources")) {
       for (std::uint32_t row = 0; row < resources->RowCount(); ++row) {
         names_.emplace_back(resources->CellText(row, 0));
+      }
+      // econ's lot check: three goods with no church_store home.
+      for (const char* const key : {"coal", "shoes_summer", "hide"}) {
+        watched_.push_back(Watched{.name = key, .row = resources->FindRowByKey(key)});
       }
     }
     if (const core::ITable* const levels = tables.FindTable("unit_levels")) {
@@ -93,6 +98,21 @@ class YardRoomProbe {
     if (goods_store && goods_store_day_ == kNever) {
       goods_store_day_ = day;
     }
+    // The delivery's lost path (ledger lost_no_room, this year's book) for the watched goods:
+    // days it grew, tonnes at the year's end, the first day of any loss.
+    for (std::size_t i = 0; i < watched_.size() && i < kWatched; ++i) {
+      Watched& good = watched_[i];
+      const core::ResourceAmounts& lost = world.ledger.current.lost_no_room;
+      const core::Grams now = good.row < lost.size() ? lost[good.row] : 0;
+      if (now > good.last) {
+        ++line.lost_days[i];
+        if (good.first_day == kNever) {
+          good.first_day = day;
+        }
+      }
+      good.last = now;
+      line.lost_t[i] = static_cast<double>(now) / kGramsPerTonne;
+    }
     if (room <= 0.0) {
       return;
     }
@@ -109,7 +129,20 @@ class YardRoomProbe {
   /// @brief YARD2311 lines for this seed.
   void Print(std::ostream& out, std::uint64_t seed) const {
     out << "YARD2311 seed " << seed << " first_full_day " << DayText(first_full_day_)
-        << " goods_store_day " << DayText(goods_store_day_) << "\n";
+        << " goods_store_day " << DayText(goods_store_day_);
+    for (const Watched& good : watched_) {
+      out << " first_lost_" << good.name << " "
+          << (good.row == core::kNoTableRow ? std::string("no_resource") : DayText(good.first_day));
+    }
+    out << "\n";
+    for (std::size_t year = 0; year < years_.size(); ++year) {
+      out << "YARD2311 seed " << seed << " year " << (year + 1U) << " lost";
+      for (std::size_t i = 0; i < watched_.size() && i < kWatched; ++i) {
+        out << " " << watched_[i].name << " days " << years_[year].lost_days[i] << " t "
+            << years_[year].lost_t[i];
+      }
+      out << "\n";
+    }
     for (std::size_t year = 0; year < years_.size(); ++year) {
       const Year& line = years_[year];
       out << "YARD2311 seed " << seed << " year " << (year + 1U) << " yard_days " << line.yard_days
@@ -133,12 +166,25 @@ class YardRoomProbe {
   static constexpr double kGramsPerTonne = 1.0e6;
   static constexpr double kFullShare = 0.99;
 
+  static constexpr std::size_t kWatched = 3;
+
   struct Year {
     std::uint32_t yard_days = 0;
     std::uint32_t full_days = 0;
     double fill_sum = 0.0;
     std::map<std::size_t, double> by_resource;  // tonne-days held in the yard
+    std::array<std::uint32_t, kWatched> lost_days{};
+    std::array<double, kWatched> lost_t{};  // this year's book at its last counted day
   };
+
+  struct Watched {
+    std::string name;
+    std::uint32_t row = core::kNoTableRow;
+    std::uint32_t first_day = kNever;
+    core::Grams last = 0;
+  };
+
+  std::vector<Watched> watched_;
 
   static std::string DayText(std::uint32_t day) {
     return day == kNever ? std::string("never") : std::to_string(day);
