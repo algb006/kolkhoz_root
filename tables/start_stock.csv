@@ -22,7 +22,6 @@ clay_pile,clay,40,1000
 hay_stack,hay,186,1000
 hay_stack,straw,40,1000
 log_pile,log,690,200
-log_pile,firewood,40,500
 manure_pile,manure,250,1000
 stone_pile,stone,60,1000
 stone_pile,brick,6000,3.5
