@@ -56,8 +56,11 @@ class HeatingProbe {
       }
       std::sort(adults.begin(), adults.end());
       const float weak_cut =
-          adults.empty() ? -1.0F : adults[static_cast<std::size_t>(0.20 * adults.size())];
-      const auto hardy_index = static_cast<std::size_t>(std::ceil(0.85 * adults.size()));
+          adults.empty()
+              ? -1.0F
+              : adults[static_cast<std::size_t>(0.20 * static_cast<double>(adults.size()))];
+      const auto hardy_index =
+          static_cast<std::size_t>(std::ceil(0.85 * static_cast<double>(adults.size())));
       const float hardy_cut =
           hardy_index < adults.size() ? adults[hardy_index] : std::numeric_limits<float>::max();
       std::array<std::uint32_t, 3> bands{};  // hardy, ordinary, weak
