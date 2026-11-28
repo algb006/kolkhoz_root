@@ -11,8 +11,6 @@ baking_bread,bakery,1,2
 baking_pastry,bakery,2,1
 smoking_meat,smokehouse,1,1
 smoking_fish,smokehouse,1,1
-toolmaking,workshops,0.15,1
-carpentry,workshops,0.3,2
 tanning,tannery,0.15,2
 weaving_flax,weaving_shop,1.4,2
 weaving_wool,weaving_shop,1.4,2

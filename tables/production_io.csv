@@ -25,13 +25,6 @@ smoking_meat,smoked_meat,0.6,out
 smoking_fish,fish,1,in
 smoking_fish,firewood,0.3,in
 smoking_fish,smoked_fish,0.45,out
-toolmaking,board,0.003,in
-toolmaking,coal,0.003,in
-toolmaking,steel,0.002,in
-toolmaking,tool,1,out
-carpentry,board,0.06,in
-carpentry,pole_and_chip,0.4,out
-carpentry,woodwork,1,out
 tanning,hide,1,in
 tanning,leather,1,out
 weaving_flax,flax,0.025,in
