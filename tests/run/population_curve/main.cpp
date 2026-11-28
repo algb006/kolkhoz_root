@@ -67,6 +67,7 @@
 #include "../common/substitute_tally.h"
 #include "../common/timber_flow_tally.h"
 #include "../common/transition_tally.h"
+#include "../common/yard_room_probe.h"
 #include "core_common/calendar.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
@@ -1010,6 +1011,7 @@ bool Walk(std::uint64_t seed,
   // #1573's horse tail y1-y30 (econ, econ-boss-1573-horse-tail [1]): horse_tail_tally.h.
   run::HorseTailTally horse_tail(*world.tables);
   run::FloodTally flood_tally;                          // #1375
+  run::YardRoomProbe yard_room(*world.tables);          // #2311 YARD2311
   run::PlanThreatTally plan_threat(*world.tables);      // #2190 LAMP2190
   run::FirstPlanTally first_plan(*world.tables);        // #1750
   run::MilkCutTally milk_cut(*world.tables);            // #1737 option 1, every run's door
@@ -1172,6 +1174,7 @@ bool Walk(std::uint64_t seed,
       feed_rung.CountDayEnd(simulation->CompletedState());
       horse_tail.CountDayEnd(*simulation);
       flood_tally.CountDayEnd(*simulation);                     // #1375
+      yard_room.CountDayEnd(*simulation);                       // #2311
       plan_threat.CountDayEnd(*simulation);                     // #2190
       first_plan.CountDayEnd(simulation->CompletedState());     // #1750
       milk_cut.CountDayEnd(*simulation);                        // #1737
@@ -1696,6 +1699,7 @@ bool Walk(std::uint64_t seed,
                 << " teen_below40 " << rest_tally.TeenBelow40() << '\n';
       builder.beach.Report("population_curve", seed);
       fed_tally.Print(std::cout, seed);
+      yard_room.Print(std::cout, seed);  // #2311
       avatar_book.Print(std::cout, seed);
       builder.milkmaids.Report("population_curve", seed);
       substitutes.Print(std::cout, seed);
