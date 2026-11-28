@@ -2398,8 +2398,8 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // Save 233 (#2189): the still's raw (two u32) and the sack month (u32), 12 bytes a
     // resident, two - 577 -> 601, the only section that moved; the hash read off tu1.
     // Save 237 (#2261 stage 4): cold_stage, a byte a resident, two - 601 -> 603 measured on
-    // hh2261m; the hash re-read owed with the first's 2.
-    {"residents", 603, 0x59b26b571bda7af7ULL},
+    // hh2261m; the hash read off hh2261n with the first's 2.
+    {"residents", 603, 0xdb1c011556b98591ULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
