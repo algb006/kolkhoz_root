@@ -1963,6 +1963,11 @@ class LaborSystem final : public ILaborSystem {
                                               ProcessingPlaces(config_.processing, unit.type));
         const bool same_day = IsSameDayModule(unit.type);
         const bool need = !same_day && IsNeedModule(unit.type);
+        // DIAGNOSIS ARM A (econ, «Колка дров посильна пожилым»): the yard's craftsmen are never
+        // put on the firewood module by the default fill - the splitters come by standing order.
+        if (need) {
+          continue;
+        }
         const int unit_pass = same_day ? 0 : (need ? 1 : 2);
         if (unit.parent.value != resident.post.unit.value || places_taken[row] >= places ||
             unit_pass != pass) {

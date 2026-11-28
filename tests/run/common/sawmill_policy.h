@@ -560,17 +560,29 @@ class SawmillPolicy {
       // firewood is under the coming two months' burn. Which module they work is labor's default
       // fill, which now puts the need module (the yard) ahead of the saw (PutOnModuleWork, boss
       // 28 Nov) - the bot's own «two beyond the saw's places» (0bb1c684) is taken out.
+      // DIAGNOSIS ARM A (econ, «Колка дров посильна пожилым»): any adults by standing order,
+      // the eldest free first, up to the yard's places while splitting is wanted; released when
+      // not. No craftsman is appointed for the yard.
       constexpr std::uint32_t splitters_cap = 2;
-      if (world.units.rows[firewood].level > 0 &&
-          Craftsmen(world, world.units.row_ids[yard]) < splitters_cap && SplittingWanted(world)) {
-        const std::uint32_t candidate = NextCandidate(world);
-        if (candidate != core::kNoRow) {
-          order.kind = core::OrderKind::kAppoint;
-          order.resident = world.residents.row_ids[candidate];
-          order.unit = world.units.row_ids[yard];
-          order.profession = craftsman_post_;
-          ++splitters_appointed_;
-          return true;
+      if (world.units.rows[firewood].level > 0) {
+        const core::UnitId firewood_id = world.units.row_ids[firewood];
+        const std::vector<core::ResidentId> splitters = SawOrders(world, firewood_id);
+        if (!SplittingWanted(world)) {
+          if (!splitters.empty()) {
+            order.kind = core::OrderKind::kReleaseWork;
+            order.resident = splitters.front();
+            return true;
+          }
+        } else if (splitters.size() < splitters_cap) {
+          const std::uint32_t candidate = EldestFree(world);
+          if (candidate != core::kNoRow) {
+            order.kind = core::OrderKind::kAssignWork;
+            order.resident = world.residents.row_ids[candidate];
+            order.work = core::WorkKind::kUnitWork;
+            order.unit = firewood_id;
+            ++splitters_appointed_;
+            return true;
+          }
         }
       }
     }
@@ -668,6 +680,37 @@ class SawmillPolicy {
   void SawByAnyone(bool anyone) { saw_by_anyone_ = anyone; }
 
  private:
+  /// ARM A: the eldest adult with no post and no standing work order; kNoRow if none.
+  std::uint32_t EldestFree(const core::WorldState& world) const {
+    std::vector<std::uint32_t> ordered;
+    for (const core::OrderRow& standing : world.orders.rows) {
+      if (standing.kind == core::OrderKind::kAssignWork &&
+          standing.status == core::OrderStatus::kAccepted) {
+        ordered.push_back(standing.resident.value);
+      }
+    }
+    std::uint32_t best = core::kNoRow;
+    for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
+      const core::ResidentRow& resident = world.residents.rows[row];
+      if (resident.post.profession.value != core::kInvalidDefIdValue ||
+          std::find(ordered.begin(), ordered.end(), world.residents.row_ids[row].value) !=
+              ordered.end()) {
+        continue;
+      }
+      const auto lived = static_cast<std::int64_t>(world.calendar.day) -
+                         static_cast<std::int64_t>(resident.birth_day);
+      const float age =
+          static_cast<float>(lived) * life_speedup_ / static_cast<float>(core::kDaysPerYear);
+      if (age < adult_age_years_) {
+        continue;
+      }
+      if (best == core::kNoRow || resident.birth_day < world.residents.rows[best].birth_day) {
+        best = row;
+      }
+    }
+    return best;
+  }
+
   /// An adult with no post, a different one each time the last did not take.
   std::uint32_t NextCandidate(const core::WorldState& world) {
     const std::uint32_t skip = candidate_++;
