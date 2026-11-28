@@ -30,6 +30,15 @@ OrderRefusal OrderTradePlan(const ProductionConfig& config,
                             WorldState& current,
                             const OrderRow& order);
 
+/// @brief #1738: the plan bargain's gates TODAY, the away check aside - the ONE rule
+///        OrderTradePlan asks after it and the district sheet shows at home (PlanBook::
+///        trade_refusal). In order: kTradeClosed (no letter yet, past March, or bargained this
+///        year), kRuleForbids (the avatar has no bargain; with `swap` the worker's first
+///        bargains), kReputationTooLow (raikom_reputation <= plan_trade_min_reputation, «на
+///        карандаше»), kRuleForbids (the campaign's first year: «Первый план не торгуется»);
+///        kNone otherwise. A position's own refusals (no such position) stay the order's.
+OrderRefusal TradePlanGateToday(const ProductionConfig& config, const WorldState& world, bool swap);
+
 /// @brief The trip's hour: the summons' letter at its day's first tick, the
 /// summons' own departure booked on its day, the departure at
 /// `depart_hour` (a blizzard cancels his own trip and moves a summons a day),

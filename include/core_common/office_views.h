@@ -130,6 +130,14 @@ struct PlanBook {
   /// (boss, core-boss-984 seq 2). 0 for a table-less world.
   std::uint8_t failed_years_to_trial = 0;
 
+  /// THE BARGAIN'S ANSWER TODAY, the away check aside (#1738; district.md §5: the district
+  /// sheet opens at home and greys the bargain with its reason before the day is spent):
+  /// the same rule the kTradePlan order asks once he is in the district (district_trip.h,
+  /// TradePlanGateToday, no crop swap) - kNone, kTradeClosed (no letter, past March, or
+  /// bargained this year), kRuleForbids (no bargain for his avatar, or the first year's
+  /// plan), kReputationTooLow («на карандаше», <= 20).
+  OrderRefusal trade_refusal = OrderRefusal::kTradeClosed;
+
   /// Every resource owed back or borrowed this year, by resource row; empty
   /// with no loan. Listed with announced false too: a debt outlives the
   /// spring.

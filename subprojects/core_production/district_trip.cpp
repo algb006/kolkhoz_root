@@ -160,29 +160,24 @@ OrderRefusal OrderTripToDistrict(const ProductionConfig& config, WorldState& cur
   return OrderRefusal::kNone;
 }
 
-OrderRefusal OrderTradePlan(const ProductionConfig& config,
-                            WorldState& current,
-                            const OrderRow& order) {
-  if (!ChairmanAway(current)) {
-    return OrderRefusal::kNotEligible;  // the bargain is made in the district
-  }
+OrderRefusal TradePlanGateToday(const ProductionConfig& config,
+                                const WorldState& world,
+                                bool swap) {
   // The year counts from 1 (calendar.h, Date), so 0 stays «never».
-  const Date date = current.calendar.date;
+  const Date date = world.calendar.date;
   const std::uint16_t year_mark = date.year;
   // From the letter (January; the first morning in the first year) to the
   // end of March — boss seq 210, 213.
-  if (current.plan.announced == 0 || date.month > Month::kMarch ||
-      current.chairman.plan_traded_year == year_mark) {
+  if (world.plan.announced == 0 || date.month > Month::kMarch ||
+      world.chairman.plan_traded_year == year_mark) {
     return OrderRefusal::kTradeClosed;
   }
-  ChairmanState& chairman = current.chairman;
-  const DistrictTripCatalog& trip = config.district_trip;
+  const ChairmanState& chairman = world.chairman;
   // THE AVATAR'S BARGAIN (#635; avatars.md «Пути»): the old fighter has none
   // («Торга о плане у него нет»), and the worker may not swap a crop in his
   // first bargains («не понимает земли») - counted by the calendar's year,
   // the year-1 window a run has before the player's April included.
   const AvatarDef& avatar = AvatarOf(config.avatars, chairman.avatar);
-  const bool swap = order.rotation_year0.value != kInvalidDefIdValue;
   // (A path a key does not have is 0 and closes nothing: «year <= 1 + 0»
   // shut every chairman's swap of year 1 on the first unit run.)
   if (avatar.plan_trade_closed || (swap && avatar.crop_swap_closed_bargains > 0 &&
@@ -191,8 +186,8 @@ OrderRefusal OrderTradePlan(const ProductionConfig& config,
   }
   // «НА КАРАНДАШЕ» 0-20 INCLUSIVE: «план не торгуется» (district.md, the reputation table; boss
   // after rpg's #1739 reconciliation) - at exactly the line bargaining is closed, as the pencil's
-  // own summons reads it (<= above). Until 0.37.433 this was «<» and a chairman at 20 bargained.
-  if (chairman.raikom_reputation <= trip.plan_trade_min_reputation) {
+  // own summons reads it (<=). Until 0.37.433 this was «<» and a chairman at 20 bargained.
+  if (chairman.raikom_reputation <= config.district_trip.plan_trade_min_reputation) {
     return OrderRefusal::kReputationTooLow;
   }
   // «ПЕРВЫЙ ПЛАН НЕ ТОРГУЕТСЯ НИ У КОГО»: it is counted off the start stock (district.md §9,
@@ -200,6 +195,26 @@ OrderRefusal OrderTradePlan(const ProductionConfig& config,
   if (date.year <= 1U) {
     return OrderRefusal::kRuleForbids;
   }
+  return OrderRefusal::kNone;
+}
+
+OrderRefusal OrderTradePlan(const ProductionConfig& config,
+                            WorldState& current,
+                            const OrderRow& order) {
+  if (!ChairmanAway(current)) {
+    return OrderRefusal::kNotEligible;  // the bargain is made in the district
+  }
+  // ONE RULE FOR THE ORDER AND FOR THE SHEET AT HOME (#1738): TradePlanGateToday.
+  const bool swap = order.rotation_year0.value != kInvalidDefIdValue;
+  const OrderRefusal gate = TradePlanGateToday(config, current, swap);
+  if (gate != OrderRefusal::kNone) {
+    return gate;
+  }
+  const Date date = current.calendar.date;
+  const std::uint16_t year_mark = date.year;
+  ChairmanState& chairman = current.chairman;
+  const DistrictTripCatalog& trip = config.district_trip;
+  const AvatarDef& avatar = AvatarOf(config.avatars, chairman.avatar);
   const ResourceId position = order.resource;
   if (position.value >= current.plan.due.size() || current.plan.due[position.value] <= 0) {
     return OrderRefusal::kNoSuchSubject;

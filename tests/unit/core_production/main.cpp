@@ -15718,6 +15718,23 @@ int CheckDistrictTrip() {
   failures +=
       Expect(core::OrderTradePlan(config, pencil, down) == core::OrderRefusal::kReputationTooLow,
              "plan: «на карандаше» the district does not bargain");
+  // #1738: the sheet at home reads the same gate (TradePlanGateToday), away or not.
+  {
+    core::WorldState at_home = march();
+    at_home.chairman.away_from_tick = 0;
+    at_home.chairman.away_until_tick = 0;
+    core::WorldState home_pencil = pencil;
+    home_pencil.chairman.away_until_tick = 0;
+    core::WorldState home_first = march();
+    at(home_first, 2U * core::kDaysPerMonth, 9);  // March of year 1
+    failures += Expect(
+        core::TradePlanGateToday(config, at_home, false) == core::OrderRefusal::kNone &&
+            core::TradePlanGateToday(config, home_pencil, false) ==
+                core::OrderRefusal::kReputationTooLow &&
+            core::TradePlanGateToday(config, home_first, false) == core::OrderRefusal::kRuleForbids,
+        "plan (#1738): at home the gate answers as the order would - open in year 2, «на "
+        "карандаше» at 15, the first year's plan refused");
+  }
   core::WorldState april = march();
   at(april, core::kDaysPerYear + (3U * core::kDaysPerMonth), 9);
   april.chairman.away_from_tick = april.calendar.tick - 1;

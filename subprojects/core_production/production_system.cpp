@@ -557,6 +557,7 @@ class ProductionSystem final : public IProductionSystem {
     }
     book.failed_years_in_a_row = completed.plan.failed_years_in_a_row;
     book.failed_years_to_trial = config_.plan_failed_years_to_trial;
+    book.trade_refusal = TradePlanGateToday(config_, completed, false);  // #1738
     const std::size_t loan_rows =
         std::max(completed.plan.goods_loan_owed.size(), completed.plan.goods_loan_taken.size());
     for (std::size_t index = 0; index < loan_rows; ++index) {
