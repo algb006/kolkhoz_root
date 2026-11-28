@@ -29,6 +29,7 @@ body_height_school_senior_frac,0.93,both
 meadow_flower_density_m2,3,layer
 age_preschool_from_years,3,both
 build_max_slope,0.25,layer
+sunk_unit_max_slope,0.04,layer
 age_school_junior_from_years,7,both
 fence_poles_height_m,0.95,layer
 age_school_senior_from_years,11,both
