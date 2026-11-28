@@ -257,6 +257,18 @@ class FellingPolicy {
       std::cout << ' ' << foot.year << ':' << std::lround(foot.logs) << '@' << foot.daylight;
     }
     std::cout << '\n';
+    // FUEL2261 (econ after hx2261h): per calendar year, the fuel brigade's season days - mean
+    // target (m3: last winter's WANT x houses ratio), mean wood on hand, mean last want; days
+    // met by the wood on hand, short with no mannable stand, marks made.
+    for (std::size_t year = 0; year < fuel_years_.size(); ++year) {
+      const FuelYear& y = fuel_years_[year];
+      const double days = y.season_days == 0 ? 1.0 : static_cast<double>(y.season_days);
+      std::cout << "FUEL2261 world_seed " << world.world_seed << " year " << (year + 1U)
+                << " season_days " << y.season_days << " target_m3 " << y.target_sum / days
+                << " on_hand_m3 " << y.on_hand_sum / days << " last_want_m3 "
+                << y.last_want_sum / days << " met_days " << y.met_days << " no_stand_days "
+                << y.no_stand_days << " marked " << y.marked << '\n';
+    }
   }
 
  private:
@@ -412,14 +424,24 @@ class FellingPolicy {
     const double still =
         std::max(0.0, target - static_cast<double>(heating.season_want_m3)) + target;
     const double short_m3 = still - on_hand;
+    // econ after hx2261h (the fuel felling fades to ~0 by year 14): the target's parts per
+    // season day - met by the wood on hand, short with no mannable stand, marked.
+    FuelYear& fuel_year = FuelYearOf(world.calendar.day);
+    ++fuel_year.season_days;
+    fuel_year.target_sum += target;
+    fuel_year.on_hand_sum += on_hand;
+    fuel_year.last_want_sum += static_cast<double>(heating.last_season_want_m3);
     if (!(short_m3 > 0.0)) {
+      ++fuel_year.met_days;
       return false;
     }
     const auto logs = static_cast<std::uint32_t>(std::ceil(short_m3 / m3_per_log_));
     core::OrderRow order;
     if (!NearestMark(simulation, logs, order)) {
+      ++fuel_year.no_stand_days;
       return false;
     }
+    ++fuel_year.marked;
     order.kind = core::OrderKind::kMarkFuelFelling;
     simulation.StageOrders(std::span<const core::OrderRow>(&order, 1), {});
     ++fuel_marked_;
@@ -505,6 +527,27 @@ class FellingPolicy {
   double firewood_grams_per_m3_ = 0.0;
   double m3_per_log_ = 0.0;
   std::uint32_t fuel_marked_ = 0;
+
+  /// FUEL2261: the fuel target's season days by calendar year (econ after hx2261h).
+  struct FuelYear {
+    std::uint32_t season_days = 0;
+    std::uint32_t met_days = 0;
+    std::uint32_t no_stand_days = 0;
+    std::uint32_t marked = 0;
+    double target_sum = 0.0;
+    double on_hand_sum = 0.0;
+    double last_want_sum = 0.0;
+  };
+
+  std::vector<FuelYear> fuel_years_;
+
+  FuelYear& FuelYearOf(std::uint32_t day) {
+    const std::uint32_t year = day / core::kDaysPerYear;
+    if (fuel_years_.size() <= year) {
+      fuel_years_.resize(year + 1U);
+    }
+    return fuel_years_[year];
+  }
 
   std::uint32_t granary_logs_ = 60;
 

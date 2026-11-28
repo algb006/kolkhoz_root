@@ -40,6 +40,7 @@ void DeliverFellingFirewood(const ProductionConfig& config,
     return;
   }
   const auto grams = static_cast<Grams>(std::llround(firewood_m3 * config.firewood_grams_per_m3));
+  current.heating.probe_felled_firewood_m3 += firewood_m3;  // the lost gate's base (probe)
   // The firewood yard only (stock_ops.h DeliverFirewood, hb2261b): never the boards' room;
   // what it cannot take goes into the houses' woodpiles nearest the stand (econ after hx2261f).
   Grams placed = DeliverFirewood(current, config, grams);

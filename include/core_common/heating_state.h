@@ -76,6 +76,9 @@ struct HeatingState {
   double probe_deadwood_m3 = 0.0;
   /// Fuel felling: m³ felled under fuel marks.
   double probe_fuel_felled_m3 = 0.0;
+  /// #2261: m³ of firewood the felling gave (all marks), before any store or pile took it -
+  /// the base of econ's «lost ≤ 10 % of felled firewood».
+  double probe_felled_firewood_m3 = 0.0;
   /// Stage 4 (econ's C1/C2): resident-days on a cold day (outdoor under the threshold), of
   /// them days in «Холодно» and in «Замёрз», and the cold's health hits.
   std::uint64_t probe_cold_season_days = 0;

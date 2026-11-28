@@ -51,6 +51,8 @@ class HeatingProbe {
       const core::ResourceAmounts& lost = world.ledger.closed.lost_no_room;
       lost_firewood_t_.push_back(
           firewood_ < lost.size() ? static_cast<double>(lost[firewood_]) / 1.0e6 : 0.0);
+      felled_firewood_m3_.push_back(world.heating.probe_felled_firewood_m3 - felled_seen_m3_);
+      felled_seen_m3_ = world.heating.probe_felled_firewood_m3;
     }
     // econ's base rate for the STUB endurance bands (heating.cpp's: hardy ≥ 120 of 200; weak
     // under 60, health < 40 or ≥ 55 biological years), each year's last day.
@@ -342,7 +344,8 @@ class HeatingProbe {
     // lost_no_room, tonnes; the felling's firewood with no firewood-yard room, mostly).
     for (std::size_t year = 0; year < lost_firewood_t_.size(); ++year) {
       out << "HEAT2261 seed " << seed << " year " << year + 1 << " lost_firewood_t "
-          << lost_firewood_t_[year] << '\n';
+          << lost_firewood_t_[year] << " felled_firewood_m3 "
+          << (year < felled_firewood_m3_.size() ? felled_firewood_m3_[year] : 0.0) << '\n';
     }
     for (std::size_t year = 0; year < band_lines_.size(); ++year) {
       const std::array<std::uint32_t, 3>& b = band_lines_[year];
@@ -502,7 +505,9 @@ class HeatingProbe {
   std::uint32_t craftsman_ = core::kNoTableRow;
   std::vector<std::string> yard_lines_;
   std::vector<std::array<std::uint32_t, 3>> band_lines_;
-  std::vector<double> lost_firewood_t_;  // per closed year, tonnes
+  std::vector<double> lost_firewood_t_;     // per closed year, tonnes
+  std::vector<double> felled_firewood_m3_;  // per closed year, m3 the felling gave
+  double felled_seen_m3_ = 0.0;
 };
 
 }  // namespace run
