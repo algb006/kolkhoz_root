@@ -612,7 +612,11 @@ class ResidentsSystem final : public IResidentsSystem {
     // the day's weather is this step's, written by phase 1).
     RunHeatingBurn(config_.heating, config_.life_speedup, config_.adult_age_years, current);
     // #2261 stage 4: the night's cold for everyone at home, after the day's burn.
-    RunResidentsCold(config_.heating, config_.life_speedup, current.epoch == Epoch::kOne, current);
+    RunResidentsCold(config_.heating,
+                     config_.life_speedup,
+                     config_.adult_age_years,
+                     current.epoch == Epoch::kOne,
+                     current);
     // THE MONTH'S ISSUE JUDGED (#2164): families at the line while the store holds free food
     // over its funds, and the chairman changed nothing - «месяц под чертой при полном складе».
     // The free stock is read on the month's last day only (econ [6]: once a month, CPU).

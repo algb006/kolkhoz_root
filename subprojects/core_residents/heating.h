@@ -119,6 +119,7 @@ float HeatingBurnToday(const HeatingConfig& config, const UnitRow& unit, float o
 ///       yet); cold → mood waits for mood's first writer (boss); a cold WORK unit's workers.
 void RunResidentsCold(const HeatingConfig& config,
                       float life_speedup,
+                      float adult_age_years,
                       bool epoch_one,
                       WorldState& world);
 

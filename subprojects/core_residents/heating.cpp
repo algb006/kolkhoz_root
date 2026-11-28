@@ -7,7 +7,9 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
+#include <vector>
 
 #include "core_catalog/table_value.h"
 #include "core_common/away_in_district.h"
@@ -455,25 +457,63 @@ void RunHeatingBurn(const HeatingConfig& config,
 
 namespace {
 
-/// STUB bands for the endurance offsets (econ named hardy / ordinary / weak-sick-old and their
-/// offsets, not the bands): hardy at stamina+sportiness ≥ 120 of 200; weak under 60, or health
-/// under 40, or 55 biological years and over.
-constexpr float kHardyToughness = 120.0F;
-constexpr float kWeakToughness = 60.0F;
+/// The endurance bands BY QUANTILE of what the village's adults hold (econ after hp2261b: the
+/// fixed 60 / 120 cuts made 69 % weak and nobody hardy - stamina + sportiness sits 50-80 for
+/// nearly all). STUB: weak = the bottom 20 % of adults by stamina + sportiness, or health under
+/// 40, or 60 biological years and over; hardy = the top 15 %. Read each night off today's
+/// adults, so the cut follows the village.
+constexpr double kWeakQuantile = 0.20;
+constexpr double kHardyQuantile = 0.85;
 constexpr float kWeakHealth = 40.0F;
-constexpr float kOldYears = 55.0F;
+constexpr float kOldYears = 60.0F;
 constexpr std::uint64_t kColdHitSalt = 0x2261C01DULL;
+
+/// econ's frost scaling of a cold night's gain: (10 − T) / 20 clamped to 0.25..1.5, T the
+/// night's mean (the day's mean less its swing).
+constexpr float kFrostSpanC = 20.0F;
+constexpr float kFrostScaleMin = 0.25F;
+constexpr float kFrostScaleMax = 1.5F;
+
+/// The weak cut: below sorted[floor(q·n)] is the bottom q (nobody with none).
+float WeakCut(const std::vector<float>& sorted, double q) {
+  if (sorted.empty()) {
+    return -1.0F;
+  }
+  return sorted[static_cast<std::size_t>(std::floor(q * static_cast<double>(sorted.size())))];
+}
+
+/// The hardy cut: from sorted[ceil(q·n)] up is the top 1 − q (nobody when that is past the end).
+float HardyCut(const std::vector<float>& sorted, double q) {
+  const auto index = static_cast<std::size_t>(std::ceil(q * static_cast<double>(sorted.size())));
+  return index < sorted.size() ? sorted[index] : std::numeric_limits<float>::infinity();
+}
 
 }  // namespace
 
 void RunResidentsCold(const HeatingConfig& config,
                       float life_speedup,
+                      float adult_age_years,
                       bool epoch_one,
                       WorldState& world) {
   HeatingState& heating = world.heating;
   const float outdoor = world.weather.air_temperature_celsius;
   const bool cold_day = outdoor < config.heat_threshold_c;
   const SimDay day = world.calendar.day;
+  // The night's gain, scaled by its frost (econ).
+  const float night = outdoor - world.weather.temperature_swing_celsius;
+  const float frost_scale =
+      std::clamp((config.heat_threshold_c - night) / kFrostSpanC, kFrostScaleMin, kFrostScaleMax);
+  // Today's band cuts, by quantile of the adults' stamina + sportiness.
+  std::vector<float> adults;
+  adults.reserve(world.residents.rows.size());
+  for (const ResidentRow& resident : world.residents.rows) {
+    if (BiologicalAgeYears(life_speedup, resident.birth_day, day) >= adult_age_years) {
+      adults.push_back(resident.stamina + resident.sportiness);
+    }
+  }
+  std::sort(adults.begin(), adults.end());
+  const float weak_cut = WeakCut(adults, kWeakQuantile);
+  const float hardy_cut = HardyCut(adults, kHardyQuantile);
   for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
     ResidentRow& resident = world.residents.rows[row];
     if (AwayInDistrict(resident, world.calendar.tick)) {
@@ -488,16 +528,16 @@ void RunResidentsCold(const HeatingConfig& config,
           family == kNoRow ? kNoRow : FindRow(world.units, world.families.rows[family].house);
       warm = house != kNoRow && world.units.rows[house].heat_buffer_m3 > 0.0F;
     }
-    resident.cold =
-        warm ? std::max(0.0F, resident.cold - config.cold_loss_night_warm)
-             : std::min(config.cold_scale_max, resident.cold + config.cold_gain_night_home);
+    resident.cold = warm ? std::max(0.0F, resident.cold - config.cold_loss_night_warm)
+                         : std::min(config.cold_scale_max,
+                                    resident.cold + (config.cold_gain_night_home * frost_scale));
     // His thresholds, moved by his offsets.
     const float toughness = resident.stamina + resident.sportiness;
     const float age = BiologicalAgeYears(life_speedup, resident.birth_day, day);
     float offset = epoch_one ? config.cold_era1_offset : 0.0F;
-    if (toughness < kWeakToughness || resident.health < kWeakHealth || age >= kOldYears) {
+    if (toughness < weak_cut || resident.health < kWeakHealth || age >= kOldYears) {
       offset += config.cold_weak_offset;
-    } else if (toughness >= kHardyToughness) {
+    } else if (toughness >= hardy_cut) {
       offset += config.cold_hardy_offset;
     }
     const std::uint8_t was = resident.cold_stage;

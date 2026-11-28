@@ -210,22 +210,31 @@ int CheckTheCold() {
   hardy.stamina = 80.0F;
   hardy.sportiness = 50.0F;
   core::AppendRow(world.residents, hardy);
+  // Eight more adults of 60..67 (no house): the bands are quantiles - the bottom 20 % cut is
+  // 62, the top 15 % starts at the hardy's 130; the ordinary's 80 is neither.
+  for (int other = 0; other < 8; ++other) {
+    core::ResidentRow filler;
+    filler.birth_day = 0;
+    filler.stamina = 60.0F + static_cast<float>(other);
+    filler.health = 70.0F;
+    core::AppendRow(world.residents, filler);
+  }
 
   for (int night = 0; night < 5; ++night) {
-    core::RunResidentsCold(config, 4.0F, true, world);
+    core::RunResidentsCold(config, 4.0F, 16.0F, true, world);
   }
   failures += Expect(Near(world.residents.rows[0].cold, 40.0F), "five cold nights: 40");
   failures += Expect(world.residents.rows[0].cold_stage == 1, "ordinary: «Холодно» at 40");
   failures += Expect(world.residents.rows[1].cold_stage == 0, "hardy: not yet at 40");
   for (int night = 0; night < 5; ++night) {
-    core::RunResidentsCold(config, 4.0F, true, world);
+    core::RunResidentsCold(config, 4.0F, 16.0F, true, world);
   }
   failures += Expect(world.residents.rows[0].cold_stage == 2, "ordinary: «Замёрз» at 80");
   failures += Expect(Near(world.residents.rows[0].health, 62.0F), "one hit of 8, once");
   failures += Expect(world.heating.probe_health_hits == 1, "one hit counted");
   // A warm night (fuel in the stove): 80 − 20 = 60, back to «Холодно».
   world.units.rows[0].heat_buffer_m3 = 5.0F;
-  core::RunResidentsCold(config, 4.0F, true, world);
+  core::RunResidentsCold(config, 4.0F, 16.0F, true, world);
   failures += Expect(Near(world.residents.rows[0].cold, 60.0F), "a warm night: −20");
   failures += Expect(world.residents.rows[0].cold_stage == 1, "back to «Холодно»");
   return failures;

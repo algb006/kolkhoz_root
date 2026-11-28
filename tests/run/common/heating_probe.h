@@ -8,9 +8,12 @@
 #ifndef TESTS_RUN_COMMON_HEATING_PROBE_H_
 #define TESTS_RUN_COMMON_HEATING_PROBE_H_
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <iomanip>
+#include <limits>
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -43,13 +46,27 @@ class HeatingProbe {
     // econ's base rate for the STUB endurance bands (heating.cpp's: hardy ≥ 120 of 200; weak
     // under 60, health < 40 or ≥ 55 biological years), each year's last day.
     if ((day + 1U) % core::kDaysPerYear == 0) {
+      // heating.cpp's bands mirrored: by quantile of the adults (16+), weak = bottom 20 % or
+      // health < 40 or 60+, hardy = top 15 %.
+      std::vector<float> adults;
+      for (const core::ResidentRow& resident : world.residents.rows) {
+        if (core::BiologicalAgeYears(life_speedup_, resident.birth_day, day) >= 16.0F) {
+          adults.push_back(resident.stamina + resident.sportiness);
+        }
+      }
+      std::sort(adults.begin(), adults.end());
+      const float weak_cut =
+          adults.empty() ? -1.0F : adults[static_cast<std::size_t>(0.20 * adults.size())];
+      const auto hardy_index = static_cast<std::size_t>(std::ceil(0.85 * adults.size()));
+      const float hardy_cut =
+          hardy_index < adults.size() ? adults[hardy_index] : std::numeric_limits<float>::max();
       std::array<std::uint32_t, 3> bands{};  // hardy, ordinary, weak
       for (const core::ResidentRow& resident : world.residents.rows) {
         const float toughness = resident.stamina + resident.sportiness;
         const float age = core::BiologicalAgeYears(life_speedup_, resident.birth_day, day);
-        const std::size_t band = (toughness < 60.0F || resident.health < 40.0F || age >= 55.0F)
+        const std::size_t band = (toughness < weak_cut || resident.health < 40.0F || age >= 60.0F)
                                      ? 2U
-                                     : (toughness >= 120.0F ? 0U : 1U);
+                                     : (toughness >= hardy_cut ? 0U : 1U);
         ++bands[band];
       }
       band_lines_.push_back(bands);
