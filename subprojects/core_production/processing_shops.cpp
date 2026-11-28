@@ -338,8 +338,10 @@ void LimitByInputs(const ProductionConfig& config,
     if (recipe.rule == ProcessingRule::kPickling && line == 0) {
       available -= PicklingReserve(config, world, input.resource);
     }
+    // DIAGNOSIS (econ, after hx2261g): the floor's claim on the sites' logs OFF - the splitting
+    // takes only fuel logs and logs above OwedToSites.
     if (recipe.rule == ProcessingRule::kCooperage ||
-        (recipe.rule == ProcessingRule::kFirewoodSplitting && !SplittingFloor(config, world))) {
+        recipe.rule == ProcessingRule::kFirewoodSplitting) {
       const Grams all = available;
       available -= OwedToSites(config, world, input.resource);
       // #2261: the FUEL LOGS (a fuel felling's) are the yard's whatever the sites owe - up to
