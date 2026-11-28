@@ -253,12 +253,77 @@ inline bool ChurchTakesFeedForNow(const WorldState& world,
          !HomeStoreStands(world, config, resource);
 }
 
+/// @brief #2311: whether a built, standing unit of `type` exists.
+inline bool StoreOfTypeStands(const WorldState& world, UnitTypeId type) {
+  for (const UnitRow& unit : world.units.rows) {
+    if (unit.type.value == type.value && unit.dead == 0 && unit.level > 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// @brief #2311 (production.md §1, boss 28 Nov): whether a PARENT keeps a module's good. Its
+///        own-ground goods and anything not routed through a module: yes. Firewood (firewood
+///        yard) and fuel (fuel point): never - they go only to their module. Closed goods
+///        (goods_store): only while no goods store stands, and then above the wood's held room
+///        (WoodHeldBackGrams).
+inline bool ParentKeepsModuleGood(const WorldState& world,
+                                  const UnitRow& unit,
+                                  const ProductionConfig& config,
+                                  ResourceId resource) {
+  if (config.resource_stores_read == 0 || unit.type.value >= config.unit_types.size()) {
+    return true;
+  }
+  const UnitTypeDef& type = config.unit_types[unit.type.value];
+  for (const ResourceId own : type.own_ground) {
+    if (own.value == resource.value) {
+      return true;
+    }
+  }
+  for (const UnitTypeDef::ModuleGood& good : type.module_goods) {
+    if (good.resource.value == resource.value) {
+      return good.module_type.value == config.goods_store_type.value &&
+             config.goods_store_type.value != kInvalidDefIdValue &&
+             !StoreOfTypeStands(world, good.module_type);
+    }
+  }
+  return true;
+}
+
+/// @brief #2311: grams of this unit's free room `resource` may NOT use - what the unit's
+///        own-ground wood still lacks of utility_yard_wood_held_t, asked only of a parent that
+///        has both own ground and modules (the utility yard) and of a resource not its own
+///        ground. 0 otherwise. STUB: goods already lying are never evicted for the wood.
+inline Grams WoodHeldBackGrams(const UnitRow& unit,
+                               const ProductionConfig& config,
+                               ResourceId resource) {
+  if (config.resource_stores_read == 0 || unit.type.value >= config.unit_types.size()) {
+    return 0;
+  }
+  const UnitTypeDef& type = config.unit_types[unit.type.value];
+  if (type.own_ground.empty() || type.module_goods.empty()) {
+    return 0;
+  }
+  Grams wood = 0;
+  for (const ResourceId own : type.own_ground) {
+    if (own.value == resource.value) {
+      return 0;
+    }
+    wood += StockOf(unit.stock, own);
+  }
+  const Grams held = GramsFromKilograms(config.farming.utility_yard_wood_held_t * 1000.0F);
+  return held > wood ? held - wood : 0;
+}
+
 inline bool NumberedStoreTakes(const WorldState& world,
                                const UnitRow& unit,
                                const ProductionConfig& config,
                                ResourceId resource) {
   return !EmptyingShutsOut(world, unit, config, resource) &&
-         (config.resource_stores_read == 0 || TypeIsHomeOf(unit, config, resource) ||
+         (config.resource_stores_read == 0 ||
+          (TypeIsHomeOf(unit, config, resource) &&
+           ParentKeepsModuleGood(world, unit, config, resource)) ||
           ChurchTakesFeedForNow(world, unit, config, resource));
 }
 
@@ -399,6 +464,16 @@ inline Grams FreeRoomGrams(const UnitRow& unit, const ProductionConfig& config) 
   return held >= capacity ? 0 : capacity - held;
 }
 
+/// @brief #2311: FreeRoomGrams less the wood's held room for `resource` (WoodHeldBackGrams).
+inline Grams FreeRoomFor(const UnitRow& unit, const ProductionConfig& config, ResourceId resource) {
+  const Grams free = FreeRoomGrams(unit, config);
+  if (free == std::numeric_limits<Grams>::max()) {
+    return free;
+  }
+  const Grams held = WoodHeldBackGrams(unit, config, resource);
+  return free > held ? free - held : 0;
+}
+
 /// @brief Whether THE DOOR below may put `resource` into this unit at all,
 /// room aside: a built numbered store that takes it. One home for the door
 /// and for the limit lot's question «is there anywhere at all» (boss seq
@@ -489,7 +564,9 @@ inline Grams DeliverToStores(WorldState& world,
       continue;
     }
     // In grams of THIS resource: half-room sauerkraut fits twice its room.
-    const Grams room = GramsFitting(config.processing, resource, FreeRoomGrams(unit, config));
+    // Less the wood's held room in the utility yard (#2311, FreeRoomFor).
+    const Grams room =
+        GramsFitting(config.processing, resource, FreeRoomFor(unit, config, resource));
     if (room <= 0) {
       continue;
     }

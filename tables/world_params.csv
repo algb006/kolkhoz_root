@@ -423,3 +423,4 @@ winter_horse_reserve,1,core
 road_following,1,core
 road_overtake_after_min,3,core
 authority_live,1,core
+utility_yard_wood_held_t,20,core

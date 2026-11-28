@@ -12,7 +12,7 @@ bicycle,selpo,selpo
 bicycle,utility_yard,goods_store
 board,build_yard,build_yard
 board,church_store,church_store
-board,utility_yard,goods_store
+board,utility_yard,shed
 bottled_gas,utility_yard,goods_store
 brick,build_yard,build_yard
 buckwheat,elevator,elevator
@@ -88,6 +88,7 @@ leather,crafts_yard,crafts_store
 light_bulb,utility_yard,goods_store
 lime,build_yard,build_yard
 log,log_pile,log_pile
+log,utility_yard,shed
 manure,manure_pile,manure_pile
 meat,church_store,church_store
 meat,food_yard,food_store
@@ -106,6 +107,7 @@ paint,crafts_yard,crafts_store
 pea,church_store,church_store
 pea,elevator,elevator
 pea,food_yard,granary
+pole_and_chip,utility_yard,shed
 potato,church_store,church_store
 potato,clamp,clamp
 potato,vegetable_store,vegetable_store
@@ -163,5 +165,5 @@ wheat,church_store,church_store
 wheat,elevator,elevator
 wheat,food_yard,granary
 wire,utility_yard,goods_store
-woodwork,utility_yard,goods_store
+woodwork,utility_yard,shed
 wool,utility_yard,goods_store

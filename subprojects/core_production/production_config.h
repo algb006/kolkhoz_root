@@ -415,6 +415,21 @@ struct UnitTypeDef {
   /// says it keeps, empty or not (IsHomeOf, stock_ops.h).
   std::vector<ResourceId> home_of;
 
+  /// #2311 (production.md §1): the resources this type keeps ON ITS OWN GROUND - the
+  /// resource_stores rows that name it as `unit` with a `storage` that is no unit type of its
+  /// own (the utility yard's `shed`: board, log, woodwork, pole_and_chip) or the type itself.
+  std::vector<ResourceId> own_ground;
+
+  /// #2311: a module's goods this PARENT is a home of only through the module - the rows whose
+  /// `storage` is a unit type of its own (utility_yard -> goods_store, fuel_point,
+  /// firewood_yard). ParentKeepsModuleGood (stock_ops.h) decides when the parent takes them.
+  struct ModuleGood {
+    ResourceId resource;
+    UnitTypeId module_type;
+  };
+
+  std::vector<ModuleGood> module_goods;
+
   /// @brief Kilograms this type stores at the level a unit STANDS at.
   /// @param level The unit's own level; 0 is a construction site, which
   ///        stores nothing for anybody (unit_state.h, task A2).
@@ -888,6 +903,13 @@ struct FarmingConfig {
   /// `hand_over_by_hay` (optional), on by default; 0 is the arm of 0.37.380's count alone.
   bool hand_over_by_hay = true;
 
+  /// #2311 (production.md §1, boss 28 Nov): tonnes of a parent's own room (the utility yard's
+  /// 30 t) held for its own-ground goods (board, log, woodwork, pole_and_chip): a module's goods
+  /// lying there while their module is not built may use only the room above what the wood
+  /// still lacks of this share. world_params `utility_yard_wood_held_t`; STUB until econ's
+  /// measure.
+  float utility_yard_wood_held_t = 20.0F;
+
   /// THE SECOND LEVER OF THE CATTLE YARD (livestock design §5; econ-boss-
   /// complexity-yards-groom [3]-[4]; world_params `herd_without_yard_yield_
   /// factor`, 0): from the day the player enters, a kolkhoz herd with no
@@ -1189,6 +1211,11 @@ struct DistrictCarConfig {
 struct ProductionConfig {
   /// The district's ambulance (district_car.h).
   DistrictCarConfig district_car;
+
+  /// #2311: the unit_types row of "goods_store" - the one module whose goods its parent (the
+  /// utility yard) may keep while no goods store stands (ParentKeepsModuleGood). Invalid
+  /// without the type.
+  UnitTypeId goods_store_type;
 
   /// The roads' numbers (world_params.csv `road_`; road_rules.h): the haul's
   /// speed by the bed's condition.

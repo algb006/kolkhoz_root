@@ -359,7 +359,9 @@ Grams RoomAfterTaking(const ProductionConfig& config,
     if (!NumberedStoreTakes(world, unit, config, output)) {
       continue;
     }
-    const Grams used = RoomUsed(unit.stock, config) - freed;
+    // Less the wood's held room in the utility yard (#2311, WoodHeldBackGrams).
+    const Grams used =
+        RoomUsed(unit.stock, config) - freed + WoodHeldBackGrams(unit, config, output);
     room += used < capacity ? GramsFitting(config.processing, output, capacity - used) : 0;
   }
   return room;
