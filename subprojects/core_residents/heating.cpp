@@ -402,6 +402,25 @@ void RunHeatingBurn(const HeatingConfig& config,
     // One degree below the threshold: the unit's m³ a degree-day.
     unit_per_degree[row] = HeatingBurnToday(config, unit, config.heat_threshold_c - 1.0F);
     per_degree_day += static_cast<double>(unit_per_degree[row]);
+    // STAGE 3d, THE WOODPILES LAID AHEAD (econ after hx2261c: the firewood yard's 60 m³ cannot
+    // stock a 430 m³ winter; «each yard's поленница laid by autumn»): July to November an
+    // inhabited dwelling's woodpile is refilled up to heat_start_buffer_m3 (one winter's pile,
+    // the start's number) whenever below it, burning or not - the firewood yard becomes a
+    // pass-through. December to June the refill below stays heat_refill_below_m3 ->
+    // heat_buffer_m3. STUB: the number is econ's, the carrying uncarted like the refill.
+    const auto month_of_year = static_cast<std::uint32_t>(world.calendar.date.month);
+    const bool lay_ahead = month_of_year >= static_cast<std::uint32_t>(Month::kJuly) &&
+                           month_of_year <= static_cast<std::uint32_t>(Month::kNovember);
+    if (dwelling && lay_ahead && unit.heat_buffer_m3 < config.heat_start_buffer_m3) {
+      const float wanted_m3 = config.heat_start_buffer_m3 - unit.heat_buffer_m3;
+      const Grams got = TakeFirewood(config, world, row, GramsOfM3(config, wanted_m3));
+      const float got_m3 = M3OfGrams(config, got);
+      unit.heat_buffer_m3 += got_m3;
+      heating.probe_refill_m3 += static_cast<double>(got_m3);
+      if (got > 0) {
+        ++heating.probe_refills;
+      }
+    }
     const float want = HeatingBurnToday(config, unit, outdoor);
     if (!(want > 0.0F)) {
       continue;

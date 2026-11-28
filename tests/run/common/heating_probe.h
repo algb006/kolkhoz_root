@@ -46,6 +46,12 @@ class HeatingProbe {
   void CountDayEnd(const core::ISimulation& simulation) {
     const core::WorldState& world = simulation.CompletedState();
     const std::uint32_t day = world.calendar.day;
+    // The year's first day: the book just closed holds the last year's losses.
+    if (day > 0U && day % core::kDaysPerYear == 0U && firewood_ != core::kNoTableRow) {
+      const core::ResourceAmounts& lost = world.ledger.closed.lost_no_room;
+      lost_firewood_t_.push_back(
+          firewood_ < lost.size() ? static_cast<double>(lost[firewood_]) / 1.0e6 : 0.0);
+    }
     // econ's base rate for the STUB endurance bands (heating.cpp's: hardy ≥ 120 of 200; weak
     // under 60, health < 40 or ≥ 55 biological years), each year's last day.
     if ((day + 1U) % core::kDaysPerYear == 0) {
@@ -332,6 +338,12 @@ class HeatingProbe {
     for (const std::string& line : yard_day_lines_) {
       out << "HEAT2261 seed " << seed << " yardday " << line << '\n';
     }
+    // econ after hx2261c: the firewood booked lost for want of room (the closed books'
+    // lost_no_room, tonnes; the felling's firewood with no firewood-yard room, mostly).
+    for (std::size_t year = 0; year < lost_firewood_t_.size(); ++year) {
+      out << "HEAT2261 seed " << seed << " year " << year + 1 << " lost_firewood_t "
+          << lost_firewood_t_[year] << '\n';
+    }
     for (std::size_t year = 0; year < band_lines_.size(); ++year) {
       const std::array<std::uint32_t, 3>& b = band_lines_[year];
       const std::uint32_t all = b[0] + b[1] + b[2];
@@ -490,6 +502,7 @@ class HeatingProbe {
   std::uint32_t craftsman_ = core::kNoTableRow;
   std::vector<std::string> yard_lines_;
   std::vector<std::array<std::uint32_t, 3>> band_lines_;
+  std::vector<double> lost_firewood_t_;  // per closed year, tonnes
 };
 
 }  // namespace run
