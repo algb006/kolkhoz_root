@@ -88,6 +88,12 @@ class YardRoomProbe {
           line.lot_door_refused_days[i] +=
               lot_line.orderable == core::OrderRefusal::kNowhereToStore ? 1U : 0U;
           line.lot_door_open_days[i] += lot_line.orderable == core::OrderRefusal::kNone ? 1U : 0U;
+          // Any third answer (no price, gate, balance) is its own class, never silence.
+          line.lot_door_other_days[i] +=
+              lot_line.orderable != core::OrderRefusal::kNone &&
+                      lot_line.orderable != core::OrderRefusal::kNowhereToStore
+                  ? 1U
+                  : 0U;
         }
       }
     }
@@ -169,7 +175,8 @@ class YardRoomProbe {
         out << " " << kLotKeys[i]
             << (lot_rows_[i] == core::kNoTableRow ? std::string(" no_lot") : std::string())
             << " door_refused_days " << years_[year].lot_door_refused_days[i] << " door_open_days "
-            << years_[year].lot_door_open_days[i] << " bought " << years_[year].lots_bought[i];
+            << years_[year].lot_door_open_days[i] << " door_other_refusal_days "
+            << years_[year].lot_door_other_days[i] << " bought " << years_[year].lots_bought[i];
       }
       out << "\n";
       out << "YARD2311 seed " << seed << " year " << (year + 1U) << " lost";
@@ -212,6 +219,7 @@ class YardRoomProbe {
   struct Year {
     std::array<std::uint32_t, kLots> lot_door_refused_days{};
     std::array<std::uint32_t, kLots> lot_door_open_days{};
+    std::array<std::uint32_t, kLots> lot_door_other_days{};
     std::array<std::uint32_t, kLots> lots_bought{};
     std::uint32_t yard_days = 0;
     std::uint32_t full_days = 0;
