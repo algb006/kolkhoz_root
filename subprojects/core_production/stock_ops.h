@@ -277,9 +277,23 @@ inline bool ParentKeepsModuleGood(const WorldState& world,
   }
   const UnitTypeDef& type = config.unit_types[unit.type.value];
   for (const ResourceId own : type.own_ground) {
-    if (own.value == resource.value) {
+    if (own.value != resource.value) {
+      continue;
+    }
+    // «Брёвна — в ближайшую кучу брёвен, если она есть, иначе на хозяйственный двор»
+    // (terrain.md): an own-ground good with an OUTLINE home of its own standing (the log pile)
+    // goes there, not into the yard's room - else the logs filled the 30 t and the boards
+    // found none (hy2311e: log 27 t a day in year 4, houses y3 6.1 vs 11.9).
+    if (type.module_goods.empty()) {
       return true;
     }
+    for (const UnitRow& other : world.units.rows) {
+      if (&other != &unit && other.dead == 0 && other.level > 0 &&
+          StorageCapacityGrams(other, config) < 0 && IsHomeOf(world, other, config, resource)) {
+        return false;
+      }
+    }
+    return true;
   }
   for (const UnitTypeDef::ModuleGood& good : type.module_goods) {
     if (good.resource.value == resource.value) {

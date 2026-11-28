@@ -1539,6 +1539,19 @@ int CheckTheUtilityYardRoom() {
                          core::NumberedStoreAccepts(world, world.units.rows[0], config, wood),
                      "utility yard (#2311): the goods store stands - closed goods refused, wood "
                      "still taken");
+  // «Брёвна — в ближайшую кучу брёвен, если она есть»: a standing log pile (an outline home of
+  // the yard's own-ground good) takes the logs; the yard does not.
+  config.unit_types.resize(4);
+  config.unit_types[3].capacity_by_plot = 1;
+  config.unit_types[3].home_of = {wood};
+  failures += Expect(core::NumberedStoreAccepts(world, world.units.rows[0], config, wood),
+                     "utility yard (#2311): no log pile - the yard takes the logs");
+  core::UnitRow pile;
+  pile.type = core::UnitTypeId{3};
+  pile.level = 1;
+  core::AppendRow(world.units, pile);
+  failures += Expect(!core::NumberedStoreAccepts(world, world.units.rows[0], config, wood),
+                     "utility yard (#2311): a log pile stands - the logs go there, not the yard");
   return failures;
 }
 
