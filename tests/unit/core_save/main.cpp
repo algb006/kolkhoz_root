@@ -2639,7 +2639,9 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // kSetDistrictTable; the hash read off utbl.
     // Save 234 (#2191): same length, new hash - the «last order kind» is now kJudgeThief.
     // Save 236: same length, the top kind is kSetHelpFundShare.
-    {"orders", 842, 0x947d3fa33a10ff10ULL},
+    // 0.37.435 (#1738): same length, the top REFUSAL is kFirstPlan (39) - the fixture's value,
+    // not the format; the hash read off hu435b.
+    {"orders", 842, 0x94ef1e5fa3aaa75bULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
