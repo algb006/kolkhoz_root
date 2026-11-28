@@ -910,6 +910,12 @@ struct FarmingConfig {
   /// measure.
   float utility_yard_wood_held_t = 20.0F;
 
+  /// #2261 (econ after hx2261f): an inhabited house's woodpile, m³ - firewood the firewood yard
+  /// cannot take goes into the houses' piles up to it (DeliverFirewoodToPiles). world_params
+  /// `heat_start_buffer_m3`, the same row residents' heating reads as the laid-ahead pile (a
+  /// second reader of one number, not a second number).
+  float house_woodpile_m3 = 14.0F;
+
   /// THE SECOND LEVER OF THE CATTLE YARD (livestock design §5; econ-boss-
   /// complexity-yards-groom [3]-[4]; world_params `herd_without_yard_yield_
   /// factor`, 0): from the day the player enters, a kolkhoz herd with no

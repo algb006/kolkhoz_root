@@ -1219,7 +1219,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 42> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 43> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -1279,7 +1279,9 @@ constexpr std::array<std::string_view, 42> kProductionWorldParamKeys = {
     // #1737: the hand-over sized to the hay as well as to the plan (1 on, 0 the 380 count).
     "hand_over_by_hay",
     // #2311: the utility yard's room held for its own-ground wood (STUB 20 t).
-    "utility_yard_wood_held_t"};
+    "utility_yard_wood_held_t",
+    // #2261: the house woodpile the felling's surplus firewood fills (residents read it too).
+    "heat_start_buffer_m3"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1464,6 +1466,9 @@ bool ParseProductionWorldParams(const ITable& world,
                  .range = Range{.low = 0.0F, .high = 1.0F}},
       ScalarKnob{.key = kProductionWorldParamKeys[41],
                  .value = &farming.utility_yard_wood_held_t,
+                 .range = Range{.low = 0.0F, .high = 1000.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[42],
+                 .value = &farming.house_woodpile_m3,
                  .range = Range{.low = 0.0F, .high = 1000.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;

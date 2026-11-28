@@ -1490,6 +1490,43 @@ int CheckTheChurchTakesFeedUntilTheGranary() {
   return failures;
 }
 
+/// #2261 (econ after hx2261f): firewood the yard cannot take fills the inhabited houses'
+/// woodpiles, nearest first, each to house_woodpile_m3; the rest is returned unplaced.
+int CheckTheFirewoodIntoPiles() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.firewood_grams_per_m3 = 500000.0;
+  config.farming.house_woodpile_m3 = 14.0F;
+  core::WorldState world;
+  core::UnitRow near;
+  near.level = 1;
+  near.position = core::Vec2{.x = 10.0F, .y = 0.0F};
+  near.heat_buffer_m3 = 4.0F;
+  core::UnitRow far = near;
+  far.position = core::Vec2{.x = 900.0F, .y = 0.0F};
+  far.heat_buffer_m3 = 0.0F;
+  core::UnitRow empty_house = near;  // nobody lives there
+  empty_house.position = core::Vec2{.x = 1.0F, .y = 0.0F};
+  const core::UnitId near_id = core::AppendRow(world.units, near);
+  const core::UnitId far_id = core::AppendRow(world.units, far);
+  core::AppendRow(world.units, empty_house);
+  core::FamilyRow family;
+  family.house = far_id;
+  core::AppendRow(world.families, family);
+  family.house = near_id;
+  core::AppendRow(world.families, family);
+  const core::Grams m3 = 500000;
+  // 30 m³: 10 into the near pile (4 -> 14), 14 into the far one (0 -> 14), 6 left over.
+  const core::Grams placed =
+      core::DeliverFirewoodToPiles(world, config, 30 * m3, core::Vec2{.x = 0.0F, .y = 0.0F});
+  failures += Expect(placed == 24 * m3 && world.units.rows[0].heat_buffer_m3 == 14.0F &&
+                         world.units.rows[1].heat_buffer_m3 == 14.0F &&
+                         world.units.rows[2].heat_buffer_m3 == 4.0F,
+                     "firewood into piles (#2261): 30 m3 - near pile to 14, far pile to 14, the "
+                     "empty house untouched, 6 m3 returned");
+  return failures;
+}
+
 /// #2311 (production.md §1): the utility yard keeps its own-ground wood; a closed good lies
 /// there only while no goods store stands and only above the wood's held 20 t; firewood never.
 int CheckTheUtilityYardRoom() {
@@ -18991,6 +19028,7 @@ int main() {
   failures += CheckTheForecastAdvice();
   failures += CheckTheChurchTakesFeedUntilTheGranary();  // #1636
   failures += CheckTheUtilityYardRoom();                 // #2311
+  failures += CheckTheFirewoodIntoPiles();               // #2261
   failures += CheckTheHayLampByTheCutsPace();
   failures += CheckTheHarvestFeedStillToCome();
   failures += CheckTheForecastHorseEatsItsWorkGrain();

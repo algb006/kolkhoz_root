@@ -26,7 +26,8 @@ namespace {
 void DeliverFellingFirewood(const ProductionConfig& config,
                             WorldState& current,
                             float felled_m3,
-                            Grams log_grams) {
+                            Grams log_grams,
+                            Vec2 origin) {
   if (config.firewood_resource.value == kInvalidDefIdValue ||
       !(config.firewood_grams_per_m3 > 0.0) || config.timber.log_grams <= 0) {
     return;
@@ -39,8 +40,12 @@ void DeliverFellingFirewood(const ProductionConfig& config,
     return;
   }
   const auto grams = static_cast<Grams>(std::llround(firewood_m3 * config.firewood_grams_per_m3));
-  // The firewood yard only (stock_ops.h DeliverFirewood, hb2261b): never the boards' room.
-  const Grams placed = DeliverFirewood(current, config, grams);
+  // The firewood yard only (stock_ops.h DeliverFirewood, hb2261b): never the boards' room;
+  // what it cannot take goes into the houses' woodpiles nearest the stand (econ after hx2261f).
+  Grams placed = DeliverFirewood(current, config, grams);
+  if (grams > placed) {
+    placed += DeliverFirewoodToPiles(current, config, grams - placed, origin);
+  }
   if (grams > placed) {
     AddLedgerAmount(current.ledger.current.lost_no_room, config.firewood_resource, grams - placed);
   }
@@ -116,7 +121,7 @@ void FellFinishedStands(const ProductionConfig& config, WorldState& current) {
       // firewood yard, else the nearest store that takes firewood, else lost): the felled
       // volume less the logs' volume. STUB: it reaches its store the day it is felled, with no
       // cart - the logs' own carting is not shared with it; what no store takes is booked lost.
-      DeliverFellingFirewood(config, current, felled, logs);
+      DeliverFellingFirewood(config, current, felled, logs, stand.position);
       if (stand.fuel_mark != 0) {
         current.heating.fuel_log_grams += logs;  // #2261: the yard may split these whatever
         current.heating.probe_fuel_felled_m3 += static_cast<double>(felled);
@@ -165,7 +170,7 @@ void ReleaseUnreachableMarks(const ProductionConfig& config, WorldState& current
     if (def != nullptr && felled > 0.0F) {
       const Grams logs = LogGramsFromVolume(config.timber, *def, felled);
       stand.load_grams += logs;
-      DeliverFellingFirewood(config, current, felled, logs);  // #2261, as a finished felling
+      DeliverFellingFirewood(config, current, felled, logs, stand.position);  // #2261
       if (stand.fuel_mark != 0) {
         current.heating.fuel_log_grams += logs;
         current.heating.probe_fuel_felled_m3 += static_cast<double>(felled);

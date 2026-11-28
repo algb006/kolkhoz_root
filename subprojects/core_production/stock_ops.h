@@ -26,6 +26,7 @@
 #define CORE_PRODUCTION_STOCK_OPS_H_
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <vector>
@@ -649,6 +650,63 @@ inline Grams DeliverFirewood(WorldState& world, const ProductionConfig& config, 
     }
   }
   return placed;
+}
+
+/// @brief #2261 (econ after hx2261f: ~250-335 t a village-year was thrown away for want of yard
+///        room, more than the village burns): firewood the firewood yard could not take goes
+///        into the inhabited houses' woodpiles (UnitRow::heat_buffer_m3), nearest to `origin`
+///        first (ties by id), each up to house_woodpile_m3, in any month. Returns the grams
+///        placed; the rest is the caller's lost line. STUB: carried with no cart, like the
+///        refill.
+inline Grams DeliverFirewoodToPiles(WorldState& world,
+                                    const ProductionConfig& config,
+                                    Grams amount,
+                                    Vec2 origin) {
+  const double grams_per_m3 = config.firewood_grams_per_m3;
+  const auto pile = static_cast<double>(config.farming.house_woodpile_m3);
+  if (amount <= 0 || !(grams_per_m3 > 0.0) || !(pile > 0.0)) {
+    return 0;
+  }
+  std::vector<std::uint32_t> houses;
+  for (const FamilyRow& family : world.families.rows) {
+    const std::uint32_t row = FindRow(world.units, family.house);
+    if (row != kNoRow && std::find(houses.begin(), houses.end(), row) == houses.end()) {
+      const UnitRow& unit = world.units.rows[row];
+      if (unit.dead == 0 && unit.level > 0) {
+        houses.push_back(row);
+      }
+    }
+  }
+  const auto distance_sq = [&](std::uint32_t row) {
+    const Vec2 at = world.units.rows[row].position;
+    const double dx = static_cast<double>(at.x) - static_cast<double>(origin.x);
+    const double dy = static_cast<double>(at.y) - static_cast<double>(origin.y);
+    return (dx * dx) + (dy * dy);
+  };
+  std::sort(houses.begin(), houses.end(), [&](std::uint32_t a, std::uint32_t b) {
+    const double da = distance_sq(a);
+    const double db = distance_sq(b);
+    if (da != db) {
+      return da < db;
+    }
+    return world.units.row_ids[a].value < world.units.row_ids[b].value;
+  });
+  double left_m3 = static_cast<double>(amount) / grams_per_m3;
+  for (const std::uint32_t row : houses) {
+    if (!(left_m3 > 0.0)) {
+      break;
+    }
+    UnitRow& unit = world.units.rows[row];
+    const double room = pile - static_cast<double>(unit.heat_buffer_m3);
+    if (room > 0.0) {
+      const double put = std::min(room, left_m3);
+      unit.heat_buffer_m3 += static_cast<float>(put);
+      left_m3 -= put;
+    }
+  }
+  const auto placed = static_cast<Grams>(
+      std::llround((static_cast<double>(amount) / grams_per_m3 - left_m3) * grams_per_m3));
+  return std::min(placed, amount);
 }
 
 /// @brief Whether TakeFromStorage takes from this unit: built, and a store
