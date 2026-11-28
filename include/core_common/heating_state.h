@@ -22,6 +22,8 @@ struct HeatingState {
   /// by the firewood yard's recipe the next day): the village's burn over the coming month and
   /// the coming two, m³, at the season means of weather.csv and the heated units standing and
   /// lived in today. SAVED (save 237): the yard's next day reads it.
+  /// need_2m_m3 is the HORIZON's burn: the coming two months March-May, and from June through
+  /// February the whole coming winter (to the end of the coming February; econ after hd2261c).
   float need_1m_m3 = 0.0F;
   float need_2m_m3 = 0.0F;
   /// Of need_2m_m3, what the stoves already hold: Σ min(a unit's buffer, its own coming two
@@ -64,6 +66,12 @@ struct HeatingState {
   std::uint64_t probe_split_days = 0;
   std::uint64_t probe_split_floor_days = 0;
   double probe_split_m3 = 0.0;
+  /// The yard's man-days written (yesterday's demand) and drained (worked today) on its work
+  /// days - econ's (B) after hd2261c.
+  double probe_split_written_days = 0.0;
+  double probe_split_drained_days = 0.0;
+  /// The holders' whole labour that day (what labor drained), before the batches' bound.
+  double probe_split_labor_days = 0.0;
   /// Stage 3c: m³ of deadwood brought into the houses.
   double probe_deadwood_m3 = 0.0;
   /// Fuel felling: m³ felled under fuel marks.

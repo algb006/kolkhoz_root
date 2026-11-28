@@ -103,10 +103,17 @@ class HeatingProbe {
         std::uint32_t post_frozen = 0;
         const core::UnitRow& yard_unit = world.units.rows[yard_row];
         for (const core::ResidentRow& resident : world.residents.rows) {
-          at_yard += resident.work.kind == core::WorkKind::kUnitWork &&
-                             resident.work.unit.value == yard_id.value
-                         ? 1U
-                         : 0U;
+          const bool here = resident.work.kind == core::WorkKind::kUnitWork &&
+                            resident.work.unit.value == yard_id.value;
+          at_yard += here ? 1U : 0U;
+          if (here) {
+            // The holder's own efficiency terms (labor_day.cpp ResidentEfficiency's inputs).
+            yard_month_.holder_days += 1.0;
+            yard_month_.holder_health += static_cast<double>(resident.health);
+            yard_month_.holder_rest += static_cast<double>(resident.rest);
+            yard_month_.holder_satiety += static_cast<double>(resident.satiety);
+            yard_month_.holder_travel_h += static_cast<double>(resident.work.travel_hours);
+          }
           // econ's (B): the yard's would-be splitters, the parent's craftsmen, by cold stage.
           if (resident.post.profession.value == craftsman_ &&
               resident.post.unit.value == yard_unit.parent.value) {
@@ -150,6 +157,12 @@ class HeatingProbe {
         }
         const double split_today = world.heating.probe_split_m3 - split_mark_;
         split_mark_ = world.heating.probe_split_m3;
+        yard_month_.written += world.heating.probe_split_written_days - written_mark_;
+        yard_month_.labor += world.heating.probe_split_labor_days - labor_mark_;
+        yard_month_.drained += world.heating.probe_split_drained_days - drained_mark_;
+        written_mark_ = world.heating.probe_split_written_days;
+        labor_mark_ = world.heating.probe_split_labor_days;
+        drained_mark_ = world.heating.probe_split_drained_days;
         YardDay& d = yard_month_;
         ++d.days;
         // The core's want (SplittingWant: stores + every buffer; fuel logs NOT counted) and
@@ -179,7 +192,14 @@ class HeatingProbe {
            << " split_m3 " << d.split_m3 << " mean need_2m " << d.need_2m / n << " stores_m3 "
            << d.stores / n << " buffers_m3 " << d.buffers / n << " fuel_logs_kg " << d.fuel_logs / n
            << " empty_houses " << d.empty_houses / n << " craftsmen_kholodno " << d.post_cold / n
-           << " craftsmen_zamerz " << d.post_frozen / n;
+           << " craftsmen_zamerz " << d.post_frozen / n << " written_md " << d.written
+           << " labor_md " << d.labor << " drained_md " << d.drained << " holder_days "
+           << d.holder_days;
+      if (d.holder_days > 0.0) {
+        line << " holder_health " << d.holder_health / d.holder_days << " rest "
+             << d.holder_rest / d.holder_days << " satiety " << d.holder_satiety / d.holder_days
+             << " travel_h " << d.holder_travel_h / d.holder_days;
+      }
       yard_day_lines_.push_back(line.str());
       yard_month_ = YardDay{};
     }
@@ -410,7 +430,19 @@ class HeatingProbe {
     double empty_houses = 0.0;
     double post_cold = 0.0;
     double post_frozen = 0.0;
+    double written = 0.0;
+    double labor = 0.0;
+    double drained = 0.0;
+    double holder_days = 0.0;
+    double holder_health = 0.0;
+    double holder_rest = 0.0;
+    double holder_satiety = 0.0;
+    double holder_travel_h = 0.0;
   };
+
+  double written_mark_ = 0.0;
+  double labor_mark_ = 0.0;
+  double drained_mark_ = 0.0;
 
   YardDay yard_month_;
   double split_mark_ = 0.0;

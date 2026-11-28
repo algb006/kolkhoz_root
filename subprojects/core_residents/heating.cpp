@@ -452,15 +452,32 @@ void RunHeatingBurn(const HeatingConfig& config,
       }
     }
   }
-  // The coming month and two (kDaysPerMonth days each), from tomorrow.
+  // THE HORIZON (econ after hd2261c: the two coming months saw only autumn's +6 °C, and the
+  // yard started in December): from June through February the want reads the WHOLE coming
+  // winter - every day from tomorrow to the end of the coming February - «wood is split and
+  // dried in summer for the winter»; March to May the coming two months, as before. The month
+  // ahead stays the floor's.
+  const auto month_now = static_cast<std::uint32_t>(world.calendar.date.month);
+  const auto june = static_cast<std::uint32_t>(Month::kJune);
+  const auto february = static_cast<std::uint32_t>(Month::kFebruary);
+  const bool summer_horizon = month_now >= june || month_now <= february;
+  std::uint32_t horizon_days = 2U * kDaysPerMonth;
+  if (summer_horizon) {
+    // Months left to the end of the coming February, this month's rest included.
+    const std::uint32_t months_to_feb = (february + kMonthsPerYear - month_now) % kMonthsPerYear;
+    const std::uint32_t into = world.calendar.day % kDaysPerMonth;
+    horizon_days = ((months_to_feb + 1U) * kDaysPerMonth) - into;
+  }
   double degrees_1m = 0.0;
   double degrees_2m = 0.0;
-  for (std::uint32_t ahead = 1; ahead <= 2U * kDaysPerMonth; ++ahead) {
+  for (std::uint32_t ahead = 1; ahead <= std::max(horizon_days, kDaysPerMonth); ++ahead) {
     const Season season = SeasonOfMonth(DateFromDay(world.calendar.day + ahead).month);
     const auto index = static_cast<std::size_t>(season);
     const double below =
         std::max(0.0, static_cast<double>(config.heat_threshold_c - config.season_mean_c[index]));
-    degrees_2m += below;
+    if (ahead <= horizon_days) {
+      degrees_2m += below;
+    }
     if (ahead <= kDaysPerMonth) {
       degrees_1m += below;
     }

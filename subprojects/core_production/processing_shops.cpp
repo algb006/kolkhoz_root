@@ -573,6 +573,13 @@ void SettleProcessing(const ProductionConfig& config, WorldState& current) {
         }
         const Availability can = Available(config, current, recipe);
         const double days = std::min(left, can.batches * static_cast<double>(recipe.labor_days));
+        if (recipe.rule == ProcessingRule::kFirewoodSplitting && written > 0.0F) {
+          // The drain (econ's (B), probe): yesterday's written man-days, the labour the holders
+          // gave today, and what of it today's batches could use - every day work was written.
+          current.heating.probe_split_written_days += static_cast<double>(written);
+          current.heating.probe_split_labor_days += left;
+          current.heating.probe_split_drained_days += std::max(days, 0.0);
+        }
         if (!(days > 0.0)) {
           continue;
         }
