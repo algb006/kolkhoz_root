@@ -1936,6 +1936,13 @@ class LaborSystem final : public ILaborSystem {
   /// input spoils very fast (WorksTheSameDay — the smokehouse's meat) is
   /// served before the rest; the sauerkraut keeps, the meat does not.
   /// `same_day_only` asks for those alone. Returns whether he was placed.
+  ///
+  /// AND THEN THE NEED (#2261; econ's default-fill rule, accepted by boss 28 Nov): after the
+  /// same-day shops, a module covering a resident need - the firewood yard, whose work exists
+  /// only while the village's firewood is under the coming two months' burn - before the rest in
+  /// row order. hd2261a: the 4-place sawmill stood first and took all 4 yard craftsmen, the yard's
+  /// work written and never drained. The player's own assignment always wins: a holder with work
+  /// never reaches here.
   bool PutOnModuleWork(WorldState& current,
                        ResidentRow& resident,
                        std::vector<std::uint32_t>& places_taken,
@@ -1943,8 +1950,9 @@ class LaborSystem final : public ILaborSystem {
     if (resident.post.unit.value == kInvalidEntityIdValue) {
       return false;
     }
-    for (const bool same_day_pass : {true, false}) {
-      if (!same_day_pass && same_day_only) {
+    // Pass 0 the same-day shops, 1 the need modules, 2 the rest.
+    for (const int pass : {0, 1, 2}) {
+      if (pass > 0 && same_day_only) {
         break;
       }
       for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
@@ -1953,8 +1961,11 @@ class LaborSystem final : public ILaborSystem {
         // one or the other, so the larger is the one it has.
         const std::uint32_t places = std::max(UnitWorkPlaces(config_.timber, unit.type),
                                               ProcessingPlaces(config_.processing, unit.type));
+        const bool same_day = IsSameDayModule(unit.type);
+        const bool need = !same_day && IsNeedModule(unit.type);
+        const int unit_pass = same_day ? 0 : (need ? 1 : 2);
         if (unit.parent.value != resident.post.unit.value || places_taken[row] >= places ||
-            IsSameDayModule(unit.type) != same_day_pass) {
+            unit_pass != pass) {
           continue;
         }
         WorkAssignment work;
@@ -2011,6 +2022,17 @@ class LaborSystem final : public ILaborSystem {
   bool IsSameDayModule(UnitTypeId type) const {
     return std::ranges::any_of(config_.processing.recipes, [&](const ProcessingRecipe& recipe) {
       return recipe.unit_type.value == type.value && WorksTheSameDay(config_.processing, recipe);
+    });
+  }
+
+  /// A module covering a RESIDENT NEED (#2261; econ's default-fill rule, boss 28 Nov): the
+  /// firewood yard's splitting. Its demand is written only while the village's firewood is under
+  /// the coming two months' burn (processing_shops.cpp SplittingWant), so «has work» already
+  /// means «below the need».
+  bool IsNeedModule(UnitTypeId type) const {
+    return std::ranges::any_of(config_.processing.recipes, [&](const ProcessingRecipe& recipe) {
+      return recipe.unit_type.value == type.value &&
+             recipe.rule == ProcessingRule::kFirewoodSplitting;
     });
   }
 
