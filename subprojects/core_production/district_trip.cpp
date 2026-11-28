@@ -193,7 +193,7 @@ OrderRefusal TradePlanGateToday(const ProductionConfig& config,
   // «ПЕРВЫЙ ПЛАН НЕ ТОРГУЕТСЯ НИ У КОГО»: it is counted off the start stock (district.md §9,
   // «Первый план считается от стартового запаса») - the campaign's first year's plan.
   if (date.year <= 1U) {
-    return OrderRefusal::kRuleForbids;
+    return OrderRefusal::kFirstPlan;
   }
   return OrderRefusal::kNone;
 }

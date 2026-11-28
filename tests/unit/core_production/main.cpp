@@ -15731,7 +15731,7 @@ int CheckDistrictTrip() {
         core::TradePlanGateToday(config, at_home, false) == core::OrderRefusal::kNone &&
             core::TradePlanGateToday(config, home_pencil, false) ==
                 core::OrderRefusal::kReputationTooLow &&
-            core::TradePlanGateToday(config, home_first, false) == core::OrderRefusal::kRuleForbids,
+            core::TradePlanGateToday(config, home_first, false) == core::OrderRefusal::kFirstPlan,
         "plan (#1738): at home the gate answers as the order would - open in year 2, «на "
         "карандаше» at 15, the first year's plan refused");
   }

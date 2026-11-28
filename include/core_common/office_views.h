@@ -134,8 +134,9 @@ struct PlanBook {
   /// sheet opens at home and greys the bargain with its reason before the day is spent):
   /// the same rule the kTradePlan order asks once he is in the district (district_trip.h,
   /// TradePlanGateToday, no crop swap) - kNone, kTradeClosed (no letter, past March, or
-  /// bargained this year), kRuleForbids (no bargain for his avatar, or the first year's
-  /// plan), kReputationTooLow («на карандаше», <= 20).
+  /// bargained this year), kRuleForbids (no bargain for his avatar - the door that lasts, so
+  /// it wins in year 1 too), kReputationTooLow («на карандаше», <= 20), kFirstPlan (the
+  /// campaign's first year's plan).
   OrderRefusal trade_refusal = OrderRefusal::kTradeClosed;
 
   /// Every resource owed back or borrowed this year, by resource row; empty

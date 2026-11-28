@@ -1452,6 +1452,12 @@ enum class OrderRefusal : std::uint8_t {
   /// rye then barley). Nothing is taken. Seam key `grain_short`.
   kGrainShort,
 
+  /// kTradePlan (and PlanBook::trade_refusal) in the campaign's first year: «Первый план не
+  /// торгуется ни у кого» (district.md §9; #1738, boss: its own grey line on the district
+  /// sheet). An avatar with no bargain at all still answers kRuleForbids, the door that lasts.
+  /// Seam key `first_plan`.
+  kFirstPlan,
+
   /// NOT A VALUE, and never written to a save or read from one: the
   /// codecs range-check 0..kOrderRefusalCount-1 and this is what they check against.
   /// Values are appended BEFORE it — that is the whole rule, and it is a
