@@ -31,6 +31,15 @@ struct HeatingState {
   /// finds fewer than this, and reads the smaller). SAVED (save 237).
   Grams fuel_log_grams = 0;
 
+  /// THE HEATING YEAR'S BURN (#2261; the fuel felling's measure - a chairman's «last winter»):
+  /// m³ the heated units wanted (burnt + short) since the heating year turned on September's
+  /// first day, and at the turn the closed year's total and the dwellings lived in then.
+  /// Written by the residents' heating. SAVED (save 237) - save_continue caught the bot
+  /// reading the unsaved probe tallies instead.
+  float season_want_m3 = 0.0F;
+  float last_season_want_m3 = 0.0F;
+  std::uint16_t last_season_houses = 0;
+
   // -- THE PROBE'S TALLIES (HEAT2261; cumulative from the game's start, NOT SAVED - a run
   // reads them, a game never does) --
   /// Heated unit-days below the threshold (a day a heated unit wanted fuel).

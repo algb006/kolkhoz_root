@@ -371,6 +371,18 @@ void RunHeatingBurn(const HeatingConfig& config,
     heating.seeded = 1;
   }
   const float outdoor = world.weather.air_temperature_celsius;
+  // THE HEATING YEAR TURNS on September's first day: the closed year's burn and the dwellings
+  // lived in are kept (the fuel felling reads them).
+  if (world.calendar.date.month == Month::kSeptember && world.calendar.day % kDaysPerMonth == 0) {
+    std::uint32_t houses = 0;
+    for (const std::uint8_t lived : inhabited) {
+      houses += lived;
+    }
+    heating.last_season_want_m3 = heating.season_want_m3;
+    heating.last_season_houses =
+        static_cast<std::uint16_t>(std::min<std::uint32_t>(houses, 0xFFFFU));
+    heating.season_want_m3 = 0.0F;
+  }
   // THE SPLITTING'S DEMAND (stage 3b): Σ of each burning unit's m³ a degree-day, times the
   // coming days' degrees below the threshold at their season's mean.
   double per_degree_day = 0.0;
@@ -393,6 +405,7 @@ void RunHeatingBurn(const HeatingConfig& config,
     if (!(want > 0.0F)) {
       continue;
     }
+    heating.season_want_m3 += want;  // the heating year's burn (saved; the fuel felling's)
     // STAGE 3c, THE DEADWOOD (heating §2; econ: the poor family's own fuel, straight into its
     // own house, free time only): a dwelling whose family has an adult at home brings one trip
     // a day while its buffer is under the full one - deadwood_m3_per_trip, whole within

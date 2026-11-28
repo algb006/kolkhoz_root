@@ -775,7 +775,10 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU8(world.heating.seeded);         // save 237 (#2261)
   out.WriteFloat(world.heating.need_1m_m3);  // save 237, the splitting's demand (stage 3b)
   out.WriteFloat(world.heating.need_2m_m3);
-  out.WriteI64(world.heating.fuel_log_grams);  // save 237, the fuel logs
+  out.WriteI64(world.heating.fuel_log_grams);    // save 237, the fuel logs
+  out.WriteFloat(world.heating.season_want_m3);  // save 237, the heating year's burn
+  out.WriteFloat(world.heating.last_season_want_m3);
+  out.WriteU16(world.heating.last_season_houses);
   // The tally clerk's post record (#589, save 219).
   out.WriteU32(world.clerk.since_day);
   out.WriteU8(static_cast<std::uint8_t>(world.clerk.vacancy));
@@ -1217,6 +1220,12 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->heating.fuel_log_grams = in.ReadI64();  // save 237, the fuel logs
   if (world->heating.fuel_log_grams < 0) {
     source.Fail("the fuel logs are negative");
+  }
+  world->heating.season_want_m3 = in.ReadFloat();  // save 237
+  world->heating.last_season_want_m3 = in.ReadFloat();
+  world->heating.last_season_houses = in.ReadU16();
+  if (!(world->heating.season_want_m3 >= 0.0F) || !(world->heating.last_season_want_m3 >= 0.0F)) {
+    source.Fail("the heating year's burn is negative or not a number");
   }
   if (!(world->heating.need_1m_m3 >= 0.0F) || !(world->heating.need_2m_m3 >= 0.0F)) {
     source.Fail("the splitting's demand is negative or not a number");

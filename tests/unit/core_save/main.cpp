@@ -212,6 +212,10 @@ core::WorldState MakeWorld() {
   world.heating.seeded = 1;          // save 237 (#2261)
   world.heating.need_1m_m3 = 12.5F;  // and the splitting's demand (stage 3b)
   world.heating.need_2m_m3 = 30.25F;
+  world.heating.fuel_log_grams = 7'000;  // and the fuel logs, the heating year's burn
+  world.heating.season_want_m3 = 41.5F;
+  world.heating.last_season_want_m3 = 300.75F;
+  world.heating.last_season_houses = 21;
   world.chairman.issue_raised_month = 8;
   world.chairman.understood_day = 9;
   world.chairman.unfair_season = 10;  // econ [6]'s season marks
@@ -1037,6 +1041,7 @@ core::WorldState MakeWorld() {
   planting.planted_day = 97;
   planting.matures_day = 337;
   planting.unreached_days = 5;  // save 144: the days a felling mark stood out of reach
+  planting.fuel_mark = 1;       // save 237 (#2261): a fuel felling's mark
   core::AppendRow(world.stands, planting);
 
   // An appointment still waiting (task A7): kAccepted is exactly the status
@@ -1883,6 +1888,11 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"heating.seeded", U8(world.heating.seeded)});           // save 237 (#2261)
   chunks.push_back({"heating.need_1m_m3", F32(world.heating.need_1m_m3)});  // 237, stage 3b
   chunks.push_back({"heating.need_2m_m3", F32(world.heating.need_2m_m3)});
+  chunks.push_back({"heating.fuel_log_grams",
+                    U64(static_cast<std::uint64_t>(world.heating.fuel_log_grams))});  // 237
+  chunks.push_back({"heating.season_want_m3", F32(world.heating.season_want_m3)});
+  chunks.push_back({"heating.last_season_want_m3", F32(world.heating.last_season_want_m3)});
+  chunks.push_back({"heating.last_season_houses", U16(world.heating.last_season_houses)});
   // The tally clerk's record (#589, save 219).
   chunks.push_back({"clerk.since_day", U32(world.clerk.since_day)});
   chunks.push_back({"clerk.vacancy", U8(static_cast<std::uint8_t>(world.clerk.vacancy))});
@@ -2340,7 +2350,9 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // hh2261b with it 0; the hash read off hh2261c with the fixture's 1.
     // And the splitting's demand, two floats (stage 3b, the same unshipped 237): 1692 -> 1700
     // measured on hh2261k; the hash read off hh2261l with the fixture's 12.5 / 30.25.
-    {"world", 1700, 0x6aad940cf1c785bdULL},
+    // And (the same unshipped 237, #2261's fuel felling) fuel_log_grams (8) and the heating
+    // year's burn (two floats + a u16 = 10): 1700 -> 1718 predicted; the hash re-read owed.
+    {"world", 1718, 0x79e2552bd77ab9dULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2655,7 +2667,8 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // kSetDistrictTable; the hash read off utbl.
     // Save 234 (#2191): same length, new hash - the «last order kind» is now kJudgeThief.
     // Save 236: same length, the top kind is kSetHelpFundShare.
-    {"orders", 842, 0x947d3fa33a10ff10ULL},
+    // Save 237: same length, the top kind is kMarkFuelFelling (#2261); hash off hh2261p.
+    {"orders", 842, 0x53b3609260898a57ULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
@@ -2663,7 +2676,9 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // u32 at the row's end; predicted 67 -> 71 with every other section
     // unmoved before the build; held, and the hash recorded from that run.
     // Save 153: +8 a stand — haul_to; 71 -> 79, held.
-    {"stands", 79, 0xfb61a01e824e149dULL},
+    // Save 237 (#2261): fuel_mark, a byte a stand, one - 79 -> 80 measured on hh2261p; the hash
+    // re-read owed with the fixture's 1.
+    {"stands", 80, 0xd32d4d08fe250689ULL},
     // Save 98: +9 — own_carts and the carting seam's two floats on the one
     // cart of the fixture; predicted 44 -> 53 before the build, held.
     // Save 153: +8 a lot — haul_to; 53 -> 61, held.
@@ -3442,7 +3457,9 @@ int main() {
           loaded.help_fund.share_permille == 25 && loaded.help_fund.held.size() == 1 &&
           loaded.help_fund.held[0] == 40'000 && loaded.help_fund.empty_said == 1 &&
           loaded.heating.seeded == 1 && loaded.heating.need_1m_m3 == 12.5F &&
-          loaded.heating.need_2m_m3 == 30.25F && loaded.chairman.year_under_pressure == 1 &&
+          loaded.heating.need_2m_m3 == 30.25F && loaded.heating.fuel_log_grams == 7'000 &&
+          loaded.heating.season_want_m3 == 41.5F && loaded.heating.last_season_want_m3 == 300.75F &&
+          loaded.heating.last_season_houses == 21 && loaded.chairman.year_under_pressure == 1 &&
           loaded.chairman.issue_raised_month == 8 && loaded.chairman.understood_day == 9 &&
           loaded.chairman.unfair_season == 10 && loaded.chairman.raise_season == 11 &&
           loaded.chairman.authority_live == 0 && loaded.families.rows[1].advance_turns == 0 &&
@@ -3473,14 +3490,14 @@ int main() {
                          loaded.extraction_sites.rows[0].haul_days_written == 2.25F &&
                          loaded.extraction_sites.rows[0].exhausted == 1,
                      "a clay pit comes back half dug, its load waiting and its mark standing");
-  failures += Expect(loaded.stands.rows.size() == 1 &&
-                         loaded.stands.rows[0].kind == core::TimberStandKind::kPlanted &&
-                         loaded.stands.rows[0].species.value == 1 &&
-                         loaded.stands.rows[0].planted_area_ha == 2.5F &&
-                         loaded.stands.rows[0].planted_day == 97 &&
-                         loaded.stands.rows[0].matures_day == 337 &&
-                         loaded.stands.rows[0].unreached_days == 5,
-                     "a birch planting comes back birch, its hectares and both its days");
+  failures += Expect(
+      loaded.stands.rows.size() == 1 &&
+          loaded.stands.rows[0].kind == core::TimberStandKind::kPlanted &&
+          loaded.stands.rows[0].fuel_mark == 1 && loaded.stands.rows[0].species.value == 1 &&
+          loaded.stands.rows[0].planted_area_ha == 2.5F &&
+          loaded.stands.rows[0].planted_day == 97 && loaded.stands.rows[0].matures_day == 337 &&
+          loaded.stands.rows[0].unreached_days == 5,
+      "a birch planting comes back birch, its hectares and both its days");
   failures += Expect(loaded.residents.rows[1].work.kind == core::WorkKind::kExtraction &&
                          loaded.residents.rows[1].work.extraction_site.value == 4 &&
                          loaded.residents.rows[1].work.rides_horse == 1,

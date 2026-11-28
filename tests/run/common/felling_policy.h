@@ -367,33 +367,28 @@ class FellingPolicy {
   }
 
   /// The fuel mark of the day, if one is due: tracks the heating year's burn (want = burnt +
-  /// short off HeatingState's cumulative tallies, the year turning in September), and from
+  /// short, HeatingState's saved heating-year record, the year turning in September), and from
   /// September to February marks the nearest stand for the logs the shortfall asks.
   bool FuelMark(core::ISimulation& simulation, const core::WorldState& world) {
     if (!(firewood_grams_per_m3_ > 0.0) || !(m3_per_log_ > 0.0)) {
       return false;
     }
-    const double want_total = world.heating.probe_burnt_m3 + world.heating.probe_short_m3;
+    // The core's own heating-year record (HeatingState, saved - save_continue caught this bot
+    // reading the unsaved probe tallies): last year's burn and dwellings, this year's so far.
+    const core::HeatingState& heating = world.heating;
     const auto month = static_cast<std::uint32_t>(world.calendar.date.month);
     std::uint32_t houses = 0;
     for (const core::FamilyRow& family : world.families.rows) {
       houses += family.house.value != core::kInvalidEntityIdValue ? 1U : 0U;
     }
-    // The heating year turns on September's first day: last year's burn and house count kept.
-    if (month == static_cast<std::uint32_t>(core::Month::kSeptember) &&
-        world.calendar.day % core::kDaysPerMonth == 0 && world.calendar.day != fuel_turn_day_) {
-      fuel_turn_day_ = world.calendar.day;
-      last_winter_m3_ = want_total - fuel_year_start_m3_;
-      last_winter_houses_ = houses;
-      fuel_year_start_m3_ = want_total;
-    }
     const bool season = month >= static_cast<std::uint32_t>(core::Month::kSeptember) ||
                         month <= static_cast<std::uint32_t>(core::Month::kFebruary);
-    if (!season || last_winter_houses_ == 0 || !(last_winter_m3_ > 0.0)) {
-      return false;  // out of season, or no winter seen yet (the start's wood covers year 1)
+    if (!season || heating.last_season_houses == 0 || !(heating.last_season_want_m3 > 0.0F)) {
+      return false;  // out of season, or no heating year closed yet (the start's wood: year 1)
     }
-    const double target =
-        last_winter_m3_ * static_cast<double>(houses) / static_cast<double>(last_winter_houses_);
+    const double target = static_cast<double>(heating.last_season_want_m3) *
+                          static_cast<double>(houses) /
+                          static_cast<double>(heating.last_season_houses);
     double on_hand = 0.0;
     for (const core::UnitRow& unit : world.units.rows) {
       if (unit.dead != 0) {
@@ -407,7 +402,7 @@ class FellingPolicy {
     on_hand += static_cast<double>(world.heating.fuel_log_grams) /
                static_cast<double>(catalog_.log_grams) * m3_per_log_;
     // What the season still burns: the target less what this heating year burnt already.
-    const double still = target - (want_total - fuel_year_start_m3_);
+    const double still = target - static_cast<double>(heating.season_want_m3);
     const double short_m3 = still - on_hand;
     if (!(short_m3 > 0.0)) {
       return false;
@@ -501,10 +496,6 @@ class FellingPolicy {
   core::ResourceId firewood_;
   double firewood_grams_per_m3_ = 0.0;
   double m3_per_log_ = 0.0;
-  double last_winter_m3_ = 0.0;
-  std::uint32_t last_winter_houses_ = 0;
-  double fuel_year_start_m3_ = 0.0;
-  std::uint32_t fuel_turn_day_ = 0xFFFFFFFFU;
   std::uint32_t fuel_marked_ = 0;
 
   std::uint32_t granary_logs_ = 60;
