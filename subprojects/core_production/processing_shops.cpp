@@ -251,20 +251,18 @@ double CooperageWant(const ProductionConfig& config,
   return (needed - free) / barrels_per_batch;
 }
 
-/// #2261 stage 3b: the village's firewood, m³ - what the stores hold and every buffer.
+/// #2261 stage 3b: the village's firewood against the coming burn, m³ - what the stores hold
+/// and what the stoves cover of their own two months.
 double VillageFirewoodM3(const ProductionConfig& config, const WorldState& world) {
   if (config.firewood_resource.value == kInvalidDefIdValue ||
       !(config.firewood_grams_per_m3 > 0.0)) {
     return 0.0;
   }
-  double m3 = static_cast<double>(TakeableGrams(world, config, config.firewood_resource)) /
-              config.firewood_grams_per_m3;
-  for (const UnitRow& unit : world.units.rows) {
-    if (unit.dead == 0) {
-      m3 += static_cast<double>(unit.heat_buffer_m3);
-    }
-  }
-  return m3;
+  // The stores' firewood and what the stoves COVER (econ's (A), hd2261b): each buffer only up to
+  // its own unit's coming two months' burn - the residents' heating writes the sum.
+  return (static_cast<double>(TakeableGrams(world, config, config.firewood_resource)) /
+          config.firewood_grams_per_m3) +
+         static_cast<double>(world.heating.covered_2m_m3);
 }
 
 /// The splitting's floor (econ): the village holds less than a month's burn - the cold goes

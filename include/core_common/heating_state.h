@@ -24,6 +24,9 @@ struct HeatingState {
   /// lived in today. SAVED (save 237): the yard's next day reads it.
   float need_1m_m3 = 0.0F;
   float need_2m_m3 = 0.0F;
+  /// Of need_2m_m3, what the stoves already hold: Σ min(a unit's buffer, its own coming two
+  /// months' burn) - a full stove does not warm a cold one (econ's (A), hd2261b). SAVED (237).
+  float covered_2m_m3 = 0.0F;
 
   /// #2261: FUEL LOGS, grams - logs a fuel felling (kMarkFuelFelling) laid down and the firewood
   /// yard has not split yet. The yard splits up to these whatever the building sites owe; the

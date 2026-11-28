@@ -386,6 +386,7 @@ void RunHeatingBurn(const HeatingConfig& config,
   // THE SPLITTING'S DEMAND (stage 3b): Σ of each burning unit's m³ a degree-day, times the
   // coming days' degrees below the threshold at their season's mean.
   double per_degree_day = 0.0;
+  std::vector<float> unit_per_degree(world.units.rows.size(), 0.0F);
   for (std::size_t row = 0; row < world.units.rows.size(); ++row) {
     UnitRow& unit = world.units.rows[row];
     if (!heated(unit)) {
@@ -399,8 +400,8 @@ void RunHeatingBurn(const HeatingConfig& config,
     }
     const bool house = dwelling;
     // One degree below the threshold: the unit's m³ a degree-day.
-    per_degree_day +=
-        static_cast<double>(HeatingBurnToday(config, unit, config.heat_threshold_c - 1.0F));
+    unit_per_degree[row] = HeatingBurnToday(config, unit, config.heat_threshold_c - 1.0F);
+    per_degree_day += static_cast<double>(unit_per_degree[row]);
     const float want = HeatingBurnToday(config, unit, outdoor);
     if (!(want > 0.0F)) {
       continue;
@@ -466,6 +467,17 @@ void RunHeatingBurn(const HeatingConfig& config,
   }
   heating.need_1m_m3 = static_cast<float>(per_degree_day * degrees_1m);
   heating.need_2m_m3 = static_cast<float>(per_degree_day * degrees_2m);
+  // WHAT THE STOVES COVER of it (econ's (A) after hd2261b: the core's want summed every buffer,
+  // and the full stoves of some houses hid the empty ones - the yard started only in December):
+  // each burning unit's buffer counted only up to its OWN coming two months' burn.
+  double covered = 0.0;
+  for (std::size_t row = 0; row < world.units.rows.size(); ++row) {
+    if (unit_per_degree[row] > 0.0F) {
+      covered += std::min(static_cast<double>(world.units.rows[row].heat_buffer_m3),
+                          static_cast<double>(unit_per_degree[row]) * degrees_2m);
+    }
+  }
+  heating.covered_2m_m3 = static_cast<float>(covered);
 }
 
 namespace {

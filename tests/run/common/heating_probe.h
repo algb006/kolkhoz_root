@@ -99,12 +99,23 @@ class HeatingProbe {
       if (yard_row != core::kNoRow) {
         const core::UnitId yard_id = world.units.row_ids[yard_row];
         std::uint32_t at_yard = 0;
+        std::uint32_t post_cold = 0;
+        std::uint32_t post_frozen = 0;
+        const core::UnitRow& yard_unit = world.units.rows[yard_row];
         for (const core::ResidentRow& resident : world.residents.rows) {
           at_yard += resident.work.kind == core::WorkKind::kUnitWork &&
                              resident.work.unit.value == yard_id.value
                          ? 1U
                          : 0U;
+          // econ's (B): the yard's would-be splitters, the parent's craftsmen, by cold stage.
+          if (resident.post.profession.value == craftsman_ &&
+              resident.post.unit.value == yard_unit.parent.value) {
+            post_cold += resident.cold_stage == 1 ? 1U : 0U;
+            post_frozen += resident.cold_stage == 2 ? 1U : 0U;
+          }
         }
+        yard_month_.post_cold += post_cold;
+        yard_month_.post_frozen += post_frozen;
         double stores = 0.0;
         double buffers = 0.0;
         std::uint32_t empty = 0;
@@ -167,7 +178,8 @@ class HeatingProbe {
            << d.capped / static_cast<double>(d.days) << " holders_days " << d.holders_days
            << " split_m3 " << d.split_m3 << " mean need_2m " << d.need_2m / n << " stores_m3 "
            << d.stores / n << " buffers_m3 " << d.buffers / n << " fuel_logs_kg " << d.fuel_logs / n
-           << " empty_houses " << d.empty_houses / n;
+           << " empty_houses " << d.empty_houses / n << " craftsmen_kholodno " << d.post_cold / n
+           << " craftsmen_zamerz " << d.post_frozen / n;
       yard_day_lines_.push_back(line.str());
       yard_month_ = YardDay{};
     }
@@ -396,6 +408,8 @@ class HeatingProbe {
     double buffers = 0.0;
     double fuel_logs = 0.0;
     double empty_houses = 0.0;
+    double post_cold = 0.0;
+    double post_frozen = 0.0;
   };
 
   YardDay yard_month_;
