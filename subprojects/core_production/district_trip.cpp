@@ -189,8 +189,16 @@ OrderRefusal OrderTradePlan(const ProductionConfig& config,
                                    date.year <= 1U + avatar.crop_swap_closed_bargains)) {
     return OrderRefusal::kRuleForbids;
   }
-  if (chairman.raikom_reputation < trip.plan_trade_min_reputation) {
+  // «НА КАРАНДАШЕ» 0-20 INCLUSIVE: «план не торгуется» (district.md, the reputation table; boss
+  // after rpg's #1739 reconciliation) - at exactly the line bargaining is closed, as the pencil's
+  // own summons reads it (<= above). Until 0.37.433 this was «<» and a chairman at 20 bargained.
+  if (chairman.raikom_reputation <= trip.plan_trade_min_reputation) {
     return OrderRefusal::kReputationTooLow;
+  }
+  // «ПЕРВЫЙ ПЛАН НЕ ТОРГУЕТСЯ НИ У КОГО»: it is counted off the start stock (district.md §9,
+  // «Первый план считается от стартового запаса») - the campaign's first year's plan.
+  if (date.year <= 1U) {
+    return OrderRefusal::kRuleForbids;
   }
   const ResourceId position = order.resource;
   if (position.value >= current.plan.due.size() || current.plan.due[position.value] <= 0) {
