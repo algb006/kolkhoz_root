@@ -131,7 +131,7 @@ class FellingPolicy {
       return;
     }
     stock_free_days_ += stock_winter ? 1U : 0U;
-    // #2261 FUEL FELLING FIRST, IN ITS SEASON (econ, STUB): September to February, while the
+    // #2261 FUEL FELLING FIRST, IN ITS SEASON (econ, STUB): June to February, while the
     // village's firewood (stores + buffers + the fuel logs not yet split) is under the coming
     // winter's burn - last winter's at this house count - the crew fells for fuel.
     if (FuelMark(simulation, world)) {
@@ -368,7 +368,7 @@ class FellingPolicy {
 
   /// The fuel mark of the day, if one is due: tracks the heating year's burn (want = burnt +
   /// short, HeatingState's saved heating-year record, the year turning in September), and from
-  /// September to February marks the nearest stand for the logs the shortfall asks.
+  /// June to February marks the nearest stand for the logs the shortfall asks.
   bool FuelMark(core::ISimulation& simulation, const core::WorldState& world) {
     if (!(firewood_grams_per_m3_ > 0.0) || !(m3_per_log_ > 0.0)) {
       return false;
@@ -381,7 +381,9 @@ class FellingPolicy {
     for (const core::FamilyRow& family : world.families.rows) {
       houses += family.house.value != core::kInvalidEntityIdValue ? 1U : 0U;
     }
-    const bool season = month >= static_cast<std::uint32_t>(core::Month::kSeptember) ||
+    // FROM JUNE (econ after hd2261d: the horizon wanted from July and the yard had no wood
+    // until September - the summer felling, split in the long days, is the period's practice).
+    const bool season = month >= static_cast<std::uint32_t>(core::Month::kJune) ||
                         month <= static_cast<std::uint32_t>(core::Month::kFebruary);
     if (!season || heating.last_season_houses == 0 || !(heating.last_season_want_m3 > 0.0F)) {
       return false;  // out of season, or no heating year closed yet (the start's wood: year 1)

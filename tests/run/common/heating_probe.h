@@ -114,6 +114,17 @@ class HeatingProbe {
             yard_month_.holder_satiety += static_cast<double>(resident.satiety);
             yard_month_.holder_travel_h += static_cast<double>(resident.work.travel_hours);
           }
+          // econ for boss's map: the walk to the work, one way, hours - the firewood yard's
+          // holders, and every craftsman of the parent yard at any of its modules.
+          if (here && resident.work.travel_hours >= 0.0F) {
+            year_walk_yard_.push_back(resident.work.travel_hours);
+          }
+          if (resident.post.profession.value == craftsman_ &&
+              resident.post.unit.value == yard_unit.parent.value &&
+              resident.work.kind == core::WorkKind::kUnitWork &&
+              resident.work.travel_hours >= 0.0F) {
+            year_walk_craft_.push_back(resident.work.travel_hours);
+          }
           // econ's (B): the yard's would-be splitters, the parent's craftsmen, by cold stage.
           if (resident.post.profession.value == craftsman_ &&
               resident.post.unit.value == yard_unit.parent.value) {
@@ -204,6 +215,23 @@ class HeatingProbe {
       yard_month_ = YardDay{};
     }
     if ((day + 1U) % core::kDaysPerYear == 0) {
+      // The year's walks: median and p90 of the samples (one a holder-day).
+      const auto quantiles = [](std::vector<float>& v) {
+        if (v.empty()) {
+          return std::string("none");
+        }
+        std::sort(v.begin(), v.end());
+        std::ostringstream s;
+        s << std::fixed << std::setprecision(2) << v[v.size() / 2] << '/'
+          << v[std::min(v.size() - 1, (v.size() * 9) / 10)] << " n " << v.size();
+        return s.str();
+      };
+      walk_lines_.push_back("year " + std::to_string((day / core::kDaysPerYear) + 1U) +
+                            " walk_h(median/p90) firewood_yard_holders " +
+                            quantiles(year_walk_yard_) + " utility_yard_craftsmen " +
+                            quantiles(year_walk_craft_));
+      year_walk_yard_.clear();
+      year_walk_craft_.clear();
       year_work_days_.push_back(cold_work_days_);
       year_fuel_felled_.push_back(world.heating.probe_fuel_felled_m3 - fuel_felled_mark_);
       fuel_felled_mark_ = world.heating.probe_fuel_felled_m3;
@@ -297,6 +325,9 @@ class HeatingProbe {
     }
     for (const std::string& line : yard_lines_) {
       out << "HEAT2261 seed " << seed << " yard " << line << '\n';
+    }
+    for (const std::string& line : walk_lines_) {
+      out << "HEAT2261 seed " << seed << " walk " << line << '\n';
     }
     for (const std::string& line : yard_day_lines_) {
       out << "HEAT2261 seed " << seed << " yardday " << line << '\n';
@@ -440,6 +471,9 @@ class HeatingProbe {
     double holder_travel_h = 0.0;
   };
 
+  std::vector<float> year_walk_yard_;
+  std::vector<float> year_walk_craft_;
+  std::vector<std::string> walk_lines_;
   double written_mark_ = 0.0;
   double labor_mark_ = 0.0;
   double drained_mark_ = 0.0;
