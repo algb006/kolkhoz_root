@@ -1490,6 +1490,71 @@ int CheckTheChurchTakesFeedUntilTheGranary() {
   return failures;
 }
 
+/// #2311 (production.md §1): the utility yard keeps its own-ground wood; a closed good lies
+/// there only while no goods store stands and only above the wood's held 20 t; firewood never.
+int CheckTheUtilityYardRoom() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.resource_stores_read = 1;
+  const core::ResourceId wood{0};
+  const core::ResourceId closed{3};
+  const core::ResourceId firewood{4};
+  config.unit_types.resize(3);
+  SetStorageKg(config.unit_types[0], 30000.0F);  // the utility yard
+  config.unit_types[0].home_of = {wood, closed, firewood};
+  config.unit_types[0].own_ground = {wood};
+  config.unit_types[0].module_goods = {
+      core::UnitTypeDef::ModuleGood{.resource = closed, .module_type = core::UnitTypeId{1}},
+      core::UnitTypeDef::ModuleGood{.resource = firewood, .module_type = core::UnitTypeId{2}}};
+  SetStorageKg(config.unit_types[1], 80000.0F);  // the goods store
+  config.unit_types[1].home_of = {closed};
+  SetStorageKg(config.unit_types[2], 30000.0F);  // the firewood yard
+  config.unit_types[2].home_of = {firewood};
+  config.goods_store_type = core::UnitTypeId{1};
+  config.farming.utility_yard_wood_held_t = 20.0F;
+  core::WorldState world = MakeHerdWorld(0.0F);
+  core::UnitRow& yard = world.units.rows[0];
+  yard.type = core::UnitTypeId{0};
+  yard.level = 1;
+  yard.stock.clear();
+  failures += Expect(core::NumberedStoreAccepts(world, yard, config, wood) &&
+                         core::NumberedStoreAccepts(world, yard, config, closed) &&
+                         !core::NumberedStoreAccepts(world, yard, config, firewood),
+                     "utility yard (#2311): no goods store - it takes wood and closed goods, "
+                     "never firewood");
+  const core::Grams tonne = 1000 * 1000;
+  failures += Expect(core::FreeRoomFor(yard, config, wood) == 30 * tonne &&
+                         core::FreeRoomFor(yard, config, closed) == 10 * tonne,
+                     "utility yard (#2311): empty - the wood has 30 t, a closed good the 10 t "
+                     "above the wood's held 20 t");
+  core::AddToStock(world.units.rows[0].stock, wood, 15 * tonne);
+  failures += Expect(core::FreeRoomFor(world.units.rows[0], config, closed) == 10 * tonne,
+                     "utility yard (#2311): 15 t of wood in - a closed good still has 10 t "
+                     "(15 free, 5 held)");
+  core::UnitRow goods_store;
+  goods_store.type = core::UnitTypeId{1};
+  goods_store.level = 1;
+  core::AppendRow(world.units, goods_store);
+  failures += Expect(!core::NumberedStoreAccepts(world, world.units.rows[0], config, closed) &&
+                         core::NumberedStoreAccepts(world, world.units.rows[0], config, wood),
+                     "utility yard (#2311): the goods store stands - closed goods refused, wood "
+                     "still taken");
+  // «Брёвна — в ближайшую кучу брёвен, если она есть»: a standing log pile (an outline home of
+  // the yard's own-ground good) takes the logs; the yard does not.
+  config.unit_types.resize(4);
+  config.unit_types[3].capacity_by_plot = 1;
+  config.unit_types[3].home_of = {wood};
+  failures += Expect(core::NumberedStoreAccepts(world, world.units.rows[0], config, wood),
+                     "utility yard (#2311): no log pile - the yard takes the logs");
+  core::UnitRow pile;
+  pile.type = core::UnitTypeId{3};
+  pile.level = 1;
+  core::AppendRow(world.units, pile);
+  failures += Expect(!core::NumberedStoreAccepts(world, world.units.rows[0], config, wood),
+                     "utility yard (#2311): a log pile stands - the logs go there, not the yard");
+  return failures;
+}
+
 /// THE FIRST MOVE BY THE FEED THAT RUNS OUT (0.37.57; AlarmAdvice): the hay
 /// - the cut; a feed whose home is a numbered store (a granary) with no such
 /// store standing - «амбар под комбикорм», and nothing once its site is under
@@ -18925,6 +18990,7 @@ int main() {
   failures += CheckTheHerdHayForecast();
   failures += CheckTheForecastAdvice();
   failures += CheckTheChurchTakesFeedUntilTheGranary();  // #1636
+  failures += CheckTheUtilityYardRoom();                 // #2311
   failures += CheckTheHayLampByTheCutsPace();
   failures += CheckTheHarvestFeedStillToCome();
   failures += CheckTheForecastHorseEatsItsWorkGrain();

@@ -123,8 +123,9 @@ Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world, Re
     if (!NumberedStoreTakes(world, unit, config, resource)) {
       continue;
     }
-    // In grams of this resource, as the door counts it (DeliverToStores).
-    room += GramsFitting(config.processing, resource, free_here);
+    // In grams of this resource, as the door counts it (DeliverToStores): less the wood's
+    // held room in the utility yard (#2311, FreeRoomFor).
+    room += GramsFitting(config.processing, resource, FreeRoomFor(unit, config, resource));
   }
   return room;
 }

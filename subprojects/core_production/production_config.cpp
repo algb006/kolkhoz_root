@@ -843,8 +843,19 @@ bool ParseResourceStores(const ITable& table,
       return false;
     }
     const ResourceId resource = DefIdFromRow<ResourceIdTag>(resource_row);
-    for (const std::uint32_t type_row :
-         {unit_row, unit_types.FindRowByKey(table.CellText(row, storage_col))}) {
+    // #2311: a storage that is a unit type of its own is a MODULE - the parent keeps its goods
+    // only by ParentKeepsModuleGood; any other storage is the unit's own ground.
+    const std::uint32_t storage_row = unit_types.FindRowByKey(table.CellText(row, storage_col));
+    if (unit_row < types.size()) {
+      UnitTypeDef& parent = types[unit_row];
+      if (storage_row != kNoTableRow && storage_row != unit_row && storage_row < types.size()) {
+        parent.module_goods.push_back(UnitTypeDef::ModuleGood{
+            .resource = resource, .module_type = DefIdFromRow<UnitTypeIdTag>(storage_row)});
+      } else {
+        parent.own_ground.push_back(resource);
+      }
+    }
+    for (const std::uint32_t type_row : {unit_row, storage_row}) {
       if (type_row >= types.size()) {
         continue;  // a storage that is no unit type of its own
       }
@@ -1208,7 +1219,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 41> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 42> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -1266,7 +1277,9 @@ constexpr std::array<std::string_view, 41> kProductionWorldParamKeys = {
     // #1764 (A): the first plan's failure forgiven for the theft before acceptance (0 off).
     "plan_credit_pre_act_theft",
     // #1737: the hand-over sized to the hay as well as to the plan (1 on, 0 the 380 count).
-    "hand_over_by_hay"};
+    "hand_over_by_hay",
+    // #2311: the utility yard's room held for its own-ground wood (STUB 20 t).
+    "utility_yard_wood_held_t"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1448,7 +1461,10 @@ bool ParseProductionWorldParams(const ITable& world,
                  .range = Range{.low = 0.0F, .high = 1.0F}},
       ScalarKnob{.key = kProductionWorldParamKeys[40],
                  .value = &by_hay,
-                 .range = Range{.low = 0.0F, .high = 1.0F}}};
+                 .range = Range{.low = 0.0F, .high = 1.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[41],
+                 .value = &farming.utility_yard_wood_held_t,
+                 .range = Range{.low = 0.0F, .high = 1000.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }
@@ -1588,6 +1604,9 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
       return false;
     }
     config.resource_stores_read = 1;
+    const std::uint32_t goods_store = unit_types->FindRowByKey("goods_store");
+    config.goods_store_type =
+        goods_store == kNoTableRow ? UnitTypeId{} : DefIdFromRow<UnitTypeIdTag>(goods_store);
   }
   if (resources != nullptr && !ParseFeedValues(*resources, config.feed_values, error)) {
     return false;
