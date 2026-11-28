@@ -212,6 +212,7 @@ core::WorldState MakeWorld() {
   world.heating.seeded = 1;          // save 237 (#2261)
   world.heating.need_1m_m3 = 12.5F;  // and the splitting's demand (stage 3b)
   world.heating.need_2m_m3 = 30.25F;
+  world.heating.covered_2m_m3 = 18.5F;   // what the stoves cover (econ's (A))
   world.heating.fuel_log_grams = 7'000;  // and the fuel logs, the heating year's burn
   world.heating.season_want_m3 = 41.5F;
   world.heating.last_season_want_m3 = 300.75F;
@@ -1888,6 +1889,7 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"heating.seeded", U8(world.heating.seeded)});           // save 237 (#2261)
   chunks.push_back({"heating.need_1m_m3", F32(world.heating.need_1m_m3)});  // 237, stage 3b
   chunks.push_back({"heating.need_2m_m3", F32(world.heating.need_2m_m3)});
+  chunks.push_back({"heating.covered_2m_m3", F32(world.heating.covered_2m_m3)});  // 237
   chunks.push_back({"heating.fuel_log_grams",
                     U64(static_cast<std::uint64_t>(world.heating.fuel_log_grams))});  // 237
   chunks.push_back({"heating.season_want_m3", F32(world.heating.season_want_m3)});
@@ -2353,7 +2355,8 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // And (the same unshipped 237, #2261's fuel felling) fuel_log_grams (8) and the heating
     // year's burn (two floats + a u16 = 10): 1700 -> 1718 predicted, held; the hash read off
     // hh2261q.
-    {"world", 1718, 0x833d9f4cab64fb68ULL},
+    // And covered_2m_m3, a float (econ's (A)): 1718 -> 1722 predicted; the hash re-read owed.
+    {"world", 1722, 0x833d9f4cab64fb68ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -3458,8 +3461,9 @@ int main() {
           loaded.help_fund.share_permille == 25 && loaded.help_fund.held.size() == 1 &&
           loaded.help_fund.held[0] == 40'000 && loaded.help_fund.empty_said == 1 &&
           loaded.heating.seeded == 1 && loaded.heating.need_1m_m3 == 12.5F &&
-          loaded.heating.need_2m_m3 == 30.25F && loaded.heating.fuel_log_grams == 7'000 &&
-          loaded.heating.season_want_m3 == 41.5F && loaded.heating.last_season_want_m3 == 300.75F &&
+          loaded.heating.need_2m_m3 == 30.25F && loaded.heating.covered_2m_m3 == 18.5F &&
+          loaded.heating.fuel_log_grams == 7'000 && loaded.heating.season_want_m3 == 41.5F &&
+          loaded.heating.last_season_want_m3 == 300.75F &&
           loaded.heating.last_season_houses == 21 && loaded.chairman.year_under_pressure == 1 &&
           loaded.chairman.issue_raised_month == 8 && loaded.chairman.understood_day == 9 &&
           loaded.chairman.unfair_season == 10 && loaded.chairman.raise_season == 11 &&
