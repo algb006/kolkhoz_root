@@ -15580,7 +15580,9 @@ int CheckDistrictTrip() {
     world.plan.announced = 1;
     world.plan.due = {10 * kTonne, 0};
     world.chairman.raikom_reputation = 50.0F;
-    at(world, 2U * core::kDaysPerMonth, 9);  // March, away since 8:00
+    // March of YEAR 2, away since 8:00 - the first plan is not bargained (district.md;
+    // 0.37.433), so the bargain tests stand a year in.
+    at(world, core::kDaysPerYear + (2U * core::kDaysPerMonth), 9);
     world.chairman.away_from_tick = world.calendar.tick - 1;
     world.chairman.away_until_tick = world.calendar.tick + 10;
     return world;
@@ -15652,14 +15654,14 @@ int CheckDistrictTrip() {
       Expect(core::OrderTradePlan(config, pencil, down) == core::OrderRefusal::kReputationTooLow,
              "plan: «на карандаше» the district does not bargain");
   core::WorldState april = march();
-  at(april, 3U * core::kDaysPerMonth, 9);
+  at(april, core::kDaysPerYear + (3U * core::kDaysPerMonth), 9);
   april.chairman.away_from_tick = april.calendar.tick - 1;
   april.chairman.away_until_tick = april.calendar.tick + 10;
   failures += Expect(core::OrderTradePlan(config, april, down) == core::OrderRefusal::kTradeClosed,
                      "plan: after March, no bargain");
   // The letter comes in January (boss seq 210): the window opens with it.
   core::WorldState january = march();
-  at(january, 1, 9);
+  at(january, core::kDaysPerYear + 1U, 9);
   january.chairman.away_from_tick = january.calendar.tick - 1;
   january.chairman.away_until_tick = january.calendar.tick + 10;
   failures += Expect(core::OrderTradePlan(config, january, down) == core::OrderRefusal::kNone,
