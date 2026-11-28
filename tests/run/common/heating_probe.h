@@ -34,6 +34,9 @@ class HeatingProbe {
     if (const core::ITable* const types = tables.FindTable("unit_types")) {
       firewood_yard_ = types->FindRowByKey("firewood_yard");
     }
+    if (const core::ITable* const resources = tables.FindTable("resources")) {
+      firewood_ = resources->FindRowByKey("firewood");
+    }
     if (const core::ITable* const professions = tables.FindTable("professions")) {
       craftsman_ = professions->FindRowByKey("farm_craftsman");
     }
@@ -80,6 +83,93 @@ class HeatingProbe {
       for (const core::ResidentRow& resident : world.residents.rows) {
         cold_work_days_ += resident.work.kind != core::WorkKind::kNone ? 1U : 0U;
       }
+    }
+    // THE YARD'S DAY (hp2261f split ~1/10 of two splitters' capacity; hd2261a's month-close
+    // read was blind - demand is rewritten before it): today's want and its two sides, the
+    // holders at the yard, the m³ split today, and the heated units standing empty.
+    if (firewood_yard_ != core::kNoTableRow && firewood_ != core::kNoTableRow) {
+      std::uint32_t yard_row = core::kNoRow;
+      for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+        if (world.units.rows[row].type.value == firewood_yard_ && world.units.rows[row].level > 0 &&
+            world.units.rows[row].dead == 0) {
+          yard_row = row;
+          break;
+        }
+      }
+      if (yard_row != core::kNoRow) {
+        const core::UnitId yard_id = world.units.row_ids[yard_row];
+        std::uint32_t at_yard = 0;
+        for (const core::ResidentRow& resident : world.residents.rows) {
+          at_yard += resident.work.kind == core::WorkKind::kUnitWork &&
+                             resident.work.unit.value == yard_id.value
+                         ? 1U
+                         : 0U;
+        }
+        double stores = 0.0;
+        double buffers = 0.0;
+        std::uint32_t empty = 0;
+        std::uint32_t stoves = 0;
+        for (const core::UnitRow& unit : world.units.rows) {
+          if (unit.dead != 0) {
+            continue;
+          }
+          stoves +=
+              unit.heat_buffer_m3 > 0.0F || unit.household.value != core::kInvalidEntityIdValue
+                  ? 1U
+                  : 0U;
+          if (firewood_ < unit.stock.size()) {
+            stores += static_cast<double>(unit.stock[firewood_]) / 500'000.0;
+          }
+        }
+        // econ's variant (2): each stove counts only up to ITS share of the coming 2 months'
+        // burn - APPROXIMATED as need_2m ÷ the stoves (the probe has no per-unit burn), named.
+        const double need_2m = static_cast<double>(world.heating.need_2m_m3);
+        const double per_stove = stoves > 0 ? need_2m / static_cast<double>(stoves) : 0.0;
+        double capped = 0.0;
+        for (const core::UnitRow& unit : world.units.rows) {
+          if (unit.dead == 0) {
+            buffers += static_cast<double>(unit.heat_buffer_m3);
+            capped += std::min(static_cast<double>(unit.heat_buffer_m3), per_stove);
+          }
+        }
+        for (const core::FamilyRow& family : world.families.rows) {
+          const std::uint32_t house = core::FindRow(world.units, family.house);
+          empty +=
+              house != core::kNoRow && !(world.units.rows[house].heat_buffer_m3 > 0.0F) ? 1U : 0U;
+        }
+        const double split_today = world.heating.probe_split_m3 - split_mark_;
+        split_mark_ = world.heating.probe_split_m3;
+        YardDay& d = yard_month_;
+        ++d.days;
+        // The core's want (SplittingWant: stores + every buffer; fuel logs NOT counted) and
+        // econ's (1) with the unsplit fuel logs counted (as the bot does) and (2) capped stoves.
+        const double fuel_m3 = static_cast<double>(world.heating.fuel_log_grams) / 200'000.0 * 0.33;
+        d.want_days += (need_2m > stores + buffers) ? 1U : 0U;
+        d.want_with_logs_days += (need_2m > stores + buffers + fuel_m3) ? 1U : 0U;
+        d.want_capped_days += (need_2m > stores + capped) ? 1U : 0U;
+        d.capped += capped;
+        d.holders_days += at_yard > 0 ? 1U : 0U;
+        d.split_m3 += split_today;
+        d.need_2m += need_2m;
+        d.stores += stores;
+        d.buffers += buffers;
+        d.fuel_logs += static_cast<double>(world.heating.fuel_log_grams) / 1000.0;
+        d.empty_houses += empty;
+      }
+    }
+    if ((day + 1U) % core::kDaysPerMonth == 0 && yard_month_.days > 0) {
+      const YardDay& d = yard_month_;
+      const double n = d.days;
+      std::ostringstream line;
+      line << std::fixed << std::setprecision(1) << "month " << (day / core::kDaysPerMonth) + 1U
+           << " days " << d.days << " want_days " << d.want_days << " want_with_logs_days "
+           << d.want_with_logs_days << " want_capped_days " << d.want_capped_days << " capped_m3 "
+           << d.capped / static_cast<double>(d.days) << " holders_days " << d.holders_days
+           << " split_m3 " << d.split_m3 << " mean need_2m " << d.need_2m / n << " stores_m3 "
+           << d.stores / n << " buffers_m3 " << d.buffers / n << " fuel_logs_kg " << d.fuel_logs / n
+           << " empty_houses " << d.empty_houses / n;
+      yard_day_lines_.push_back(line.str());
+      yard_month_ = YardDay{};
     }
     if ((day + 1U) % core::kDaysPerYear == 0) {
       year_work_days_.push_back(cold_work_days_);
@@ -175,6 +265,9 @@ class HeatingProbe {
     }
     for (const std::string& line : yard_lines_) {
       out << "HEAT2261 seed " << seed << " yard " << line << '\n';
+    }
+    for (const std::string& line : yard_day_lines_) {
+      out << "HEAT2261 seed " << seed << " yardday " << line << '\n';
     }
     for (std::size_t year = 0; year < band_lines_.size(); ++year) {
       const std::array<std::uint32_t, 3>& b = band_lines_[year];
@@ -289,6 +382,26 @@ class HeatingProbe {
   core::HeatingState last_;
   std::vector<Month> months_;
   float life_speedup_ = 4.0F;
+
+  struct YardDay {
+    std::uint32_t days = 0;
+    std::uint32_t want_days = 0;
+    std::uint32_t want_with_logs_days = 0;
+    std::uint32_t want_capped_days = 0;
+    double capped = 0.0;
+    std::uint32_t holders_days = 0;
+    double split_m3 = 0.0;
+    double need_2m = 0.0;
+    double stores = 0.0;
+    double buffers = 0.0;
+    double fuel_logs = 0.0;
+    double empty_houses = 0.0;
+  };
+
+  YardDay yard_month_;
+  double split_mark_ = 0.0;
+  std::uint32_t firewood_ = core::kNoTableRow;
+  std::vector<std::string> yard_day_lines_;
   std::uint64_t cold_work_days_ = 0;
   double fuel_felled_mark_ = 0.0;
   std::vector<std::uint64_t> year_work_days_;
