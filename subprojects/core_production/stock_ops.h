@@ -709,6 +709,41 @@ inline Grams DeliverFirewoodToPiles(WorldState& world,
   return std::min(placed, amount);
 }
 
+/// @brief #2261: the grams of firewood the inhabited houses' piles still take up to
+///        house_woodpile_m3 (the room DeliverFirewoodToPiles fills).
+inline Grams PilesRoomGrams(const WorldState& world, const ProductionConfig& config) {
+  const double pile = static_cast<double>(config.farming.house_woodpile_m3);
+  if (!(config.firewood_grams_per_m3 > 0.0) || !(pile > 0.0)) {
+    return 0;
+  }
+  std::vector<std::uint32_t> seen;
+  double room_m3 = 0.0;
+  for (const FamilyRow& family : world.families.rows) {
+    const std::uint32_t row = FindRow(world.units, family.house);
+    if (row == kNoRow || std::find(seen.begin(), seen.end(), row) != seen.end()) {
+      continue;
+    }
+    seen.push_back(row);
+    const UnitRow& unit = world.units.rows[row];
+    if (unit.dead == 0 && unit.level > 0) {
+      room_m3 += std::max(0.0, pile - static_cast<double>(unit.heat_buffer_m3));
+    }
+  }
+  return static_cast<Grams>(room_m3 * config.firewood_grams_per_m3);
+}
+
+/// @brief #2261: where the splitting's surplus starts from - the first standing firewood yard
+///        by id; the origin when none stands.
+inline Vec2 FirewoodYardPosition(const WorldState& world, const ProductionConfig& config) {
+  for (const std::uint32_t row : RowsById(world.units)) {
+    const UnitRow& unit = world.units.rows[row];
+    if (unit.type.value == config.firewood_yard_type.value && unit.dead == 0 && unit.level > 0) {
+      return unit.position;
+    }
+  }
+  return Vec2{};
+}
+
 /// @brief Whether TakeFromStorage takes from this unit: built, and a store
 /// of goods (a numbered store or an outline the player drew).
 ///

@@ -459,10 +459,11 @@ void LimitByOutputs(const ProductionConfig& config,
       continue;
     }
     const auto grams = static_cast<double>(output.grams);
-    // #2261: the splitting's firewood fits only the firewood yards' room (DeliverFirewood).
+    // #2261: the splitting's firewood fits the firewood yards' room (DeliverFirewood) and the
+    // houses' piles beyond it (DeliverFirewoodToPiles).
     if (recipe.rule == ProcessingRule::kFirewoodSplitting &&
         output.resource.value == config.firewood_resource.value) {
-      Grams room = 0;
+      Grams room = PilesRoomGrams(world, config);
       for (const UnitRow& unit : world.units.rows) {
         if (unit.type.value == config.firewood_yard_type.value &&
             NumberedStoreAccepts(world, unit, config, output.resource)) {
@@ -531,11 +532,17 @@ void WorkBatches(const ProductionConfig& config,
     // The room and the barrels were checked for the whole batches already.
     const auto made = static_cast<Grams>(std::llround(batches * static_cast<double>(output.grams) *
                                                       static_cast<double>(wear_factor)));
-    // #2261: the splitting's firewood into the firewood yard only (DeliverFirewood, hb2261b).
-    const Grams placed = output.resource.value == config.firewood_resource.value &&
-                                 recipe.rule == ProcessingRule::kFirewoodSplitting
-                             ? DeliverFirewood(current, config, made)
+    // #2261: the splitting's firewood into the firewood yard only (DeliverFirewood, hb2261b),
+    // and what the yard cannot hold into the houses' piles nearest the yard (econ after
+    // hx2261f: the yard is a pass-through).
+    const bool splitting = output.resource.value == config.firewood_resource.value &&
+                           recipe.rule == ProcessingRule::kFirewoodSplitting;
+    Grams placed = splitting ? DeliverFirewood(current, config, made)
                              : DeliverToStores(current, config, output.resource, made);
+    if (splitting && made > placed) {
+      placed += DeliverFirewoodToPiles(
+          current, config, made - placed, FirewoodYardPosition(current, config));
+    }
     AddLedgerAmount(book.made, output.resource, made);
     AddLedgerAmount(book.lost_no_room, output.resource, made - placed);
   }
